@@ -26,6 +26,11 @@ Scenario: your app invokes external MCP tools.
 4. Permit tool execution only when `check_tool_call(...).allowed` is `True`.
 5. Optionally require runtime confirmation with `await guard.guard_tool_call(..., require_confirmation=True)`.
 
+Implementation note:
+- Configure `context.confirmation_handler` for manual gating callbacks.
+- Without a confirmation handler, L2 confirmation is fail-closed and returns deny.
+- Use `context_has_web_derived=True` when tool decisions are influenced by web-derived context.
+
 Benefits:
 - explicit-user-intent enforcement
 - anti-replay binding

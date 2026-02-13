@@ -42,6 +42,12 @@ Recommended pattern for write-capable tools:
 - `await guard.guard_tool_call(tool, args, context, ...) -> GateResult`
 - `guard.sanitize_exception(exception, retry_after=None) -> dict`
 
+### Manual Gating (L2) Behavior
+
+- `confirm_action(...)` and `guard_tool_call(..., require_confirmation=True)` rely on `context.confirmation_handler`.
+- If no handler is configured, confirmation fails closed (`False`) and the action is blocked.
+- For heightened scrutiny, pass `context_has_web_derived=True` to include the hardcoded warning context in the confirmation payload.
+
 ## Return Objects
 
 - `ProcessedContent`: sanitized content, warnings, source metadata.

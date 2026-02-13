@@ -95,7 +95,10 @@ Primary API:
 - Integration patterns: `docs/integration.md`
 - Integration templates: `docs/integration_templates.md`
 - Configuration and policy: `docs/configuration.md`
+- Policy tuning: `docs/policy_tuning.md`
+- Troubleshooting and FAQ: `docs/troubleshooting.md`
 - Production checklist: `docs/production_checklist.md`
+- Framework integrations: `docs/integrations/`
 - Benchmarking: `benchmarks/README.md`
 - Tutorials: `tutorials/README.md`
 

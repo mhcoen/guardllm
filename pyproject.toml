@@ -9,7 +9,7 @@ description = "Standalone hardening library for MCP clients/servers and untruste
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "GuardLLM Contributors"}]
+authors = [{name = "guardllm Contributors"}]
 dependencies = [
   "beautifulsoup4>=4.12",
 ]

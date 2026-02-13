@@ -1,6 +1,6 @@
-# GuardLLM
+# guardllm
 
-GuardLLM is a standalone Python library for hardening MCP servers and MCP clients against content from unknown provenance, including web search results, emails, documents, calendar data, and other untrusted inputs.
+guardllm is a standalone Python library for hardening MCP servers and MCP clients against content from unknown provenance, including web search results, emails, documents, calendar data, and other untrusted inputs.
 
 It provides:
 - inbound sanitization and isolation for untrusted content
@@ -68,6 +68,19 @@ Primary API:
 - `Guard.process_inbound(...)`
 - `Guard.check_tool_call(...)`
 - `Guard.check_outbound(...)`
+- `Guard.validate_tool_args(...)`
+- `Guard.confirm_action(...)` (async)
+- `Guard.guard_tool_call(...)` (async orchestration)
+- `Guard.sanitize_exception(...)`
+
+## Documentation
+
+- Architecture: `docs/security.md`
+- API details: `docs/api.md`
+- Integration patterns: `docs/integration.md`
+- Configuration and policy: `docs/configuration.md`
+- Benchmarking: `benchmarks/README.md`
+- Tutorials: `tutorials/README.md`
 
 ## Development
 

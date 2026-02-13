@@ -125,6 +125,14 @@ Detailed report is written to `benchmarks/results/latest.json`.
 ## Development
 
 ```bash
-pip install -e .[dev]
-PYTHONPATH=src pytest -q
+pip install -e '.[dev]'
+pytest                        # full suite
+pytest tests/security/        # security-focused tests
+pytest -x --tb=short          # stop on first failure
 ```
+
+## 👤 Author
+
+**Michael H. Coen**  
+Email: mhcoen@gmail.com | mhcoen@alum.mit.edu  
+GitHub: [@mhcoen](https://github.com/mhcoen)

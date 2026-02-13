@@ -4,6 +4,14 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 - PINT-style prompt-injection cases
 - BIPIA-style indirect prompt-injection cases
 - AgentDojo-style agent/tool security cases
+- OWASP LLM Top 10-style threat profiles
+- garak-style probe cases
+- promptfoo red-team style cases
+- MCP protocol abuse scenarios
+- RAG poisoning scenarios
+- secrets exfiltration scenarios
+- multistep agent attack chains
+- Unicode evasion attacks
 
 ## What this is
 
@@ -28,8 +36,22 @@ Run a single suite:
 Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `id`: stable case identifier
 - `suite`: suite name (`pint_style`, `bipia_style`, `agentdojo_style`)
-- `kind`: evaluator type (`inbound_sanitize`, `tool_gate`, `outbound_check`, `validation`, `error_sanitize`, `binding_replay`, `action_gate`)
+- `kind`: evaluator type (`inbound_sanitize`, `tool_gate`, `tool_gate_auth`, `outbound_check`, `validation`, `error_sanitize`, `binding_replay`, `action_gate`, `source_gate`, `canary_check`, `rate_limit`)
 - additional fields required by that `kind`
+
+## Current Suites
+
+- `pint_style`
+- `bipia_style`
+- `agentdojo_style`
+- `owasp_llm_top10_style`
+- `garak_style`
+- `promptfoo_redteam_style`
+- `mcp_protocol_abuse_style`
+- `rag_poisoning_style`
+- `secrets_exfil_style`
+- `multistep_agent_attack_style`
+- `unicode_evasion_style`
 
 ## Notes
 

@@ -17,7 +17,14 @@ from typing import Any
 
 from _bootstrap import ROOT  # noqa: F401
 from guardllm import Guard
-from guardllm.security.error_sanitizer import PermissionDeniedError
+from guardllm.security.canary import generate_canary
+from guardllm.security.error_sanitizer import (
+    InvalidParamsError,
+    PermissionDeniedError,
+    RateLimitError,
+)
+from guardllm.security.rate_limiter import RateLimiter
+from guardllm.security.source_gate import check_extraction_allowed
 from guardllm.security.types import (
     ConfirmationHandler,
     ContentType,
@@ -99,6 +106,11 @@ def run_inbound_sanitize(case: dict[str, Any]) -> CaseResult:
             passed = False
             details.append(f"content still contains forbidden token: {token}")
 
+    for token in case.get("expect_contains", []):
+        if token not in processed.content:
+            passed = False
+            details.append(f"missing required token in content: {token}")
+
     for token in case.get("expect_warning_contains", []):
         if not any(token.lower() in w.lower() for w in processed.warnings):
             passed = False
@@ -107,6 +119,13 @@ def run_inbound_sanitize(case: dict[str, Any]) -> CaseResult:
     if case.get("expect_isolated") and "<untrusted_content" not in processed.content:
         passed = False
         details.append("expected isolation wrapper")
+
+    if "expect_class_hiding_possible" in case:
+        expected = bool(case["expect_class_hiding_possible"])
+        actual = bool(processed.sanitization and processed.sanitization.class_hiding_possible)
+        if actual != expected:
+            passed = False
+            details.append(f"class_hiding_possible={actual}, expected={expected}")
 
     return CaseResult(
         id=case["id"],
@@ -142,11 +161,51 @@ def run_tool_gate(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def run_tool_gate_auth(case: dict[str, Any]) -> CaseResult:
+    guard = Guard()
+    policy = PolicyConfig(**case.get("policy", {}))
+    mode = case.get("mode", "client")
+    if mode == "server":
+        ctx = SecurityContext(
+            mode="server",
+            source_type="mcp_client",
+            source_id="client-1",
+            policy=policy,
+        )
+    else:
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="server-1",
+            policy=policy,
+        )
+
+    auth = Guard.authorize(
+        action=case["auth_action"],
+        scope=case.get("auth_scope", {}),
+        user_message=case.get("message", "authorized message"),
+        timestamp=time.time() - case.get("timestamp_offset_sec", 0),
+    )
+    result = guard.check_tool_call(
+        case["tool"],
+        case["args"],
+        ctx,
+        authorization=auth,
+    )
+    passed = result.allowed is case["expect_allowed"]
+    details = f"allowed={result.allowed} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
 def run_outbound(case: dict[str, Any]) -> CaseResult:
     guard = Guard()
     ctx = _context_for_source(case["source_type"], _content_type(case["content_type"]))
     guard.process_inbound(case["inbound"], ctx)
-    result = guard.check_outbound(case["outbound"], ctx)
+    result = guard.check_outbound(
+        case["outbound"],
+        ctx,
+        has_quoting_directive=case.get("has_quoting_directive", False),
+    )
     passed = result.allowed is case["expect_allowed"]
     details = f"allowed={result.allowed} reason={result.reason}"
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
@@ -165,6 +224,10 @@ def run_error(case: dict[str, Any]) -> CaseResult:
     error_name = case["error"]
     if error_name == "PermissionDeniedError":
         exc = PermissionDeniedError("blocked")
+    elif error_name == "InvalidParamsError":
+        exc = InvalidParamsError("thread_handle")
+    elif error_name == "RateLimitError":
+        exc = RateLimitError(30)
     else:
         exc = RuntimeError("unknown")
     payload = guard.sanitize_exception(exc)
@@ -174,14 +237,85 @@ def run_error(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def run_source_gate(case: dict[str, Any]) -> CaseResult:
+    result = check_extraction_allowed(case["source_type"], case.get("source_id", ""))
+    policy = result.policy.value
+    passed = policy == case["expect_policy"]
+    details = f"policy={policy} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
+def run_canary(case: dict[str, Any]) -> CaseResult:
+    session_id = case.get("session_id", "bench-canary")
+    guard = Guard(canary_session_id=session_id)
+    ctx = _context_for_source(
+        case.get("source_type", "web_content"),
+        _content_type(case.get("content_type", "plaintext")),
+    )
+    canary = generate_canary(session_id)
+    direction = case.get("direction", "outbound")
+
+    if direction == "inbound":
+        content = case.get("content", f"prefix {canary} suffix")
+        processed = guard.process_inbound(content, ctx)
+        detected = any("canary token" in w.lower() for w in processed.warnings)
+        passed = detected is case.get("expect_detected", True)
+        details = f"detected={detected}"
+        return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+    content = case.get("content", f"prefix {canary} suffix")
+    result = guard.check_outbound(content, ctx)
+    expected_allowed = case.get("expect_allowed", False)
+    passed = result.allowed is expected_allowed
+    details = f"allowed={result.allowed} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
+def run_rate_limit(case: dict[str, Any]) -> CaseResult:
+    limiter = RateLimiter(limits=case.get("limits", {}))
+    ctx = _context_for_source("mcp_server", ContentType.PLAINTEXT)
+    action = case.get("action", "gmail_send_email")
+    sequence = case.get("sequence", ["alice@example.com"])
+
+    results = []
+    for recipient in sequence:
+        r = limiter.check(action, ctx, recipient=recipient)
+        results.append(r)
+        if r.allowed:
+            limiter.record(action, ctx, recipient=recipient)
+
+    final = results[-1]
+    passed = final.allowed is case["expect_final_allowed"]
+    details = [f"final_allowed={final.allowed}", f"final_reason={final.reason}"]
+
+    token = case.get("expect_any_anomaly_contains")
+    if token is not None:
+        found = any(
+            token.lower() in anomaly.lower()
+            for r in results
+            for anomaly in r.anomalies
+        )
+        if not found:
+            passed = False
+            details.append(f"missing anomaly token={token}")
+
+    if case.get("expect_retry_after_positive"):
+        if not (final.retry_after and final.retry_after > 0):
+            passed = False
+            details.append("retry_after not positive")
+
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, "; ".join(details))
+
+
 async def run_action_gate(case: dict[str, Any]) -> CaseResult:
     guard = Guard()
+    handler = RejectExternalEmailHandler() if case.get("use_handler", True) else None
     ctx = SecurityContext(
         mode="client",
         source_type="mcp_server",
         source_id="server-1",
         policy=PolicyConfig(enable_destructive=True),
-        confirmation_handler=RejectExternalEmailHandler(),
+        confirmation_handler=handler,
     )
     confirmed = await guard.confirm_action(
         tool=case["tool"],
@@ -233,6 +367,8 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return run_inbound_sanitize(case)
     if kind == "tool_gate":
         return run_tool_gate(case)
+    if kind == "tool_gate_auth":
+        return run_tool_gate_auth(case)
     if kind == "outbound_check":
         return run_outbound(case)
     if kind == "validation":
@@ -241,6 +377,12 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return run_error(case)
     if kind == "binding_replay":
         return run_binding_replay(case)
+    if kind == "source_gate":
+        return run_source_gate(case)
+    if kind == "canary_check":
+        return run_canary(case)
+    if kind == "rate_limit":
+        return run_rate_limit(case)
     if kind == "action_gate":
         return asyncio.run(run_action_gate(case))
     return CaseResult(case.get("id", "unknown"), case.get("suite", "unknown"), kind, False, f"unsupported kind: {kind}")

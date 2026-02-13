@@ -1,6 +1,6 @@
 # guardllm
 
-guardllm is a standalone Python library for hardening MCP servers and MCP clients against content from unknown provenance, including web search results, emails, documents, calendar data, and other untrusted inputs.
+guardllm is a standalone Python library for hardening LLM-based applications by securing how they process and act on unknown-provenance content, including web search results, emails, documents, calendar data, MCP tool traffic, and other untrusted inputs.
 
 It provides:
 - inbound sanitization and isolation for untrusted content
@@ -8,6 +8,8 @@ It provides:
 - outbound DLP/provenance/rate-limit checks
 - source-gate controls for KG extraction and quarantine
 - error sanitization and structured audit support
+
+Benchmark status: guardllm currently passes all benchmark cases in this repo (`82/82`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), and [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl) suites (see [benchmark harness docs](benchmarks/README.md)).
 
 ## Install
 
@@ -81,6 +83,23 @@ Primary API:
 - Configuration and policy: `docs/configuration.md`
 - Benchmarking: `benchmarks/README.md`
 - Tutorials: `tutorials/README.md`
+
+## Current Benchmark Results
+
+Latest local benchmark run:
+- Total: `82`
+- Passed: `82`
+- Failed: `0`
+- Pass rate: `100%`
+- Suites: `pint_style (14/14)`, `bipia_style (14/14)`, `agentdojo_style (14/14)`, `owasp_llm_top10_style (5/5)`, `garak_style (5/5)`, `promptfoo_redteam_style (5/5)`, `mcp_protocol_abuse_style (5/5)`, `rag_poisoning_style (5/5)`, `secrets_exfil_style (5/5)`, `multistep_agent_attack_style (5/5)`, `unicode_evasion_style (5/5)`
+
+Re-run:
+
+```bash
+/Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py
+```
+
+Detailed report is written to `benchmarks/results/latest.json`.
 
 ## Development
 

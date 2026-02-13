@@ -38,7 +38,7 @@ Expected behavior:
 ## Run
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/gsuite_mcp_client_tutorial.py
+python tutorials/gsuite_mcp_client_tutorial.py
 ```
 
 ## Adapt to Production

@@ -1,8 +1,8 @@
 """Run guardllm security benchmark cases.
 
 Usage:
-  /Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py
-  /Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py --suite pint_style
+  python benchmarks/run_benchmarks.py
+  python benchmarks/run_benchmarks.py --suite pint_style
 """
 
 from __future__ import annotations

@@ -16,5 +16,5 @@ Expected behavior:
 Run:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/05_mcp_client_tutorial.py
+python tutorials/05_mcp_client_tutorial.py
 ```

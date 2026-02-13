@@ -16,5 +16,5 @@ Isolation note:
 Run:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/03_safe_tool_call_pipeline.py
+python tutorials/03_safe_tool_call_pipeline.py
 ```

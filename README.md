@@ -17,6 +17,19 @@ Benchmark status: guardllm currently passes all benchmark cases in this repo (`8
 pip install -e .
 ```
 
+## Start Here (5 Minutes)
+
+1. Install and run benchmark baseline:
+   - `python benchmarks/run_benchmarks.py`
+2. Pick your entrypoint:
+   - MCP server integration template: `docs/integration_templates.md`
+   - MCP client integration template: `docs/integration_templates.md`
+3. Run the matching tutorial:
+   - Server: `python tutorials/04_mcp_server_tutorial.py`
+   - Client: `python tutorials/05_mcp_client_tutorial.py`
+4. Validate production readiness:
+   - `docs/production_checklist.md`
+
 ## Quick Start
 
 ```python
@@ -80,7 +93,9 @@ Primary API:
 - Architecture: `docs/security.md`
 - API details: `docs/api.md`
 - Integration patterns: `docs/integration.md`
+- Integration templates: `docs/integration_templates.md`
 - Configuration and policy: `docs/configuration.md`
+- Production checklist: `docs/production_checklist.md`
 - Benchmarking: `benchmarks/README.md`
 - Tutorials: `tutorials/README.md`
 
@@ -96,7 +111,7 @@ Latest local benchmark run:
 Re-run:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py
+python benchmarks/run_benchmarks.py
 ```
 
 Detailed report is written to `benchmarks/results/latest.json`.

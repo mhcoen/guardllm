@@ -7,7 +7,7 @@ This example shows how to:
 4) run outbound checks before sending content externally
 
 Run:
-  /Users/mhcoen/proj/episodic/.venv/bin/python examples/12_tutorial_gsuite_mcp_client.py
+  python tutorials/gsuite_mcp_client_tutorial.py
 """
 
 from __future__ import annotations

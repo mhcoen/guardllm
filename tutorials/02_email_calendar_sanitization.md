@@ -17,5 +17,5 @@ Expected behavior:
 Run:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/02_email_calendar_sanitization.py
+python tutorials/02_email_calendar_sanitization.py
 ```

@@ -22,13 +22,13 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 ## Run
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py
+python benchmarks/run_benchmarks.py
 ```
 
 Run a single suite:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python benchmarks/run_benchmarks.py --suite pint_style
+python benchmarks/run_benchmarks.py --suite pint_style
 ```
 
 ## Case format

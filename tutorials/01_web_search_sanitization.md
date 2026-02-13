@@ -17,5 +17,5 @@ Expected behavior:
 Run:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/01_web_search_sanitization.py
+python tutorials/01_web_search_sanitization.py
 ```

@@ -14,10 +14,10 @@ Step-by-step guides for larger end-to-end integrations.
 Run tutorial scripts from repo root:
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/01_web_search_sanitization.py
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/02_email_calendar_sanitization.py
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/03_safe_tool_call_pipeline.py
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/04_mcp_server_tutorial.py
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/05_mcp_client_tutorial.py
-/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/gsuite_mcp_client_tutorial.py
+python tutorials/01_web_search_sanitization.py
+python tutorials/02_email_calendar_sanitization.py
+python tutorials/03_safe_tool_call_pipeline.py
+python tutorials/04_mcp_server_tutorial.py
+python tutorials/05_mcp_client_tutorial.py
+python tutorials/gsuite_mcp_client_tutorial.py
 ```

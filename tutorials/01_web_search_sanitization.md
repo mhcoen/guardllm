@@ -10,6 +10,10 @@ What it demonstrates:
 2. Sanitize and isolate HTML via `guard.process_inbound(...)`.
 3. Enforce source gate policy (`web_content` -> blocked for KG extraction by default).
 
+Expected behavior:
+- Processed output is wrapped in an untrusted isolation block, for example:
+  - `<untrusted_content source="web_content:duckduckgo" trust="untrusted"> ... </untrusted_content>`
+
 Run:
 
 ```bash

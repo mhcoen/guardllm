@@ -3,7 +3,7 @@
 This tutorial shows how to build an MCP client that safely handles unknown-provenance GSuite inputs (email and calendar) and safely executes outbound actions.
 
 Runnable example:
-- `examples/12_tutorial_gsuite_mcp_client.py`
+- `tutorials/gsuite_mcp_client_tutorial.py`
 
 ## Goals
 
@@ -30,10 +30,15 @@ Runnable example:
    - If allowed, run `guard.check_outbound(...)` before transport.
 5. Inspect `audit_logger.get_events(...)` for observability.
 
+Expected behavior:
+- Email/calendar inbound outputs are wrapped in untrusted isolation blocks, for example:
+  - `<untrusted_content source="email_content:msg-001" trust="untrusted"> ... </untrusted_content>`
+  - `<untrusted_content source="calendar_content:evt-123" trust="untrusted"> ... </untrusted_content>`
+
 ## Run
 
 ```bash
-/Users/mhcoen/proj/episodic/.venv/bin/python examples/12_tutorial_gsuite_mcp_client.py
+/Users/mhcoen/proj/episodic/.venv/bin/python tutorials/gsuite_mcp_client_tutorial.py
 ```
 
 ## Adapt to Production

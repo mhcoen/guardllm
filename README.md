@@ -21,14 +21,17 @@ pip install -e .
 
 1. Install and run benchmark baseline:
    - `python benchmarks/run_benchmarks.py`
-2. Pick your entrypoint:
-   - MCP server integration template: `docs/integration_templates.md`
-   - MCP client integration template: `docs/integration_templates.md`
-3. Run the matching tutorial:
-   - Server: `python tutorials/04_mcp_server_tutorial.py`
-   - Client: `python tutorials/05_mcp_client_tutorial.py`
+2. Add inbound protection for unknown-provenance content:
+   - `guard.process_inbound(...)` with `Guard.context_web(...)` / `Guard.context_document(...)` or custom `SecurityContext`
+   - Tutorial: `python tutorials/01_web_search_sanitization.py`
+3. Add outbound protection before responses/actions leave your app:
+   - `guard.check_outbound(...)`
+   - Tutorial: `python tutorials/03_safe_tool_call_pipeline.py`
 4. Validate production readiness:
    - `docs/production_checklist.md`
+5. Optional integration paths:
+   - MCP server/client templates: `docs/integration_templates.md`
+   - Framework starters: `docs/integrations/`
 
 ## Quick Start
 

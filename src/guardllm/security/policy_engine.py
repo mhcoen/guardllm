@@ -1,0 +1,186 @@
+"""Parts 6 + 12: Unified policy engine.
+
+Combines client-mode tool firewall (allowlist + authorization event
+verification) with server-mode capability token authorization.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import FrozenSet, Optional
+
+from guardllm.security.types import (
+    AuthorizationEvent,
+    GateResult,
+    SecurityContext,
+)
+
+# Tools that can modify external state (spec §6)
+DESTRUCTIVE_TOOLS: FrozenSet[str] = frozenset({
+    "gmail_send_email",
+    "gmail_delete_email",
+    "gmail_modify_labels",
+    "calendar_create_event",
+    "calendar_delete_event",
+    "slack_send_message",
+    "slack_delete_message",
+    "file_write",
+    "file_delete",
+    "shell_execute",
+    # mcp-gsuite tools (v1.1)
+    "delete_calendar_event",
+    "delete_gmail_draft",
+    "create_calendar_event",
+    "reply_gmail_email",
+    "create_gmail_draft",
+})
+
+
+class PolicyEngine:
+    """Unified policy engine for client and server mode.
+
+    Client mode: requires AuthorizationEvent for write-capable tools.
+    Server mode: checks capability token (auth_event not required).
+    """
+
+    def __init__(
+        self,
+        auth_ttl: float = 300.0,
+        destructive_tools: Optional[FrozenSet[str]] = None,
+    ) -> None:
+        self._auth_ttl = auth_ttl
+        self._destructive_tools = (
+            destructive_tools if destructive_tools is not None
+            else DESTRUCTIVE_TOOLS
+        )
+
+    def check_tool_execution(
+        self,
+        tool: str,
+        args: dict,
+        auth_event: Optional[AuthorizationEvent],
+        ctx: SecurityContext,
+    ) -> GateResult:
+        """Policy check before tool execution.
+
+        Server mode: checks capability_scopes and destructive flag.
+        Client mode: requires AuthorizationEvent for destructive tools.
+        """
+        if ctx.mode == "server":
+            return self._check_server(tool, args, auth_event, ctx)
+        return self._check_client(tool, args, auth_event, ctx)
+
+    def _check_server(
+        self,
+        tool: str,
+        args: dict,
+        auth_event: Optional[AuthorizationEvent],
+        ctx: SecurityContext,
+    ) -> GateResult:
+        """Server mode: check capability scopes."""
+        scopes = ctx.policy.capability_scopes
+        if scopes:
+            # If scopes are configured, tool must be in them
+            if tool not in scopes:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Tool '{tool}' not in capability scopes",
+                    confidence="none",
+                )
+
+        # Destructive tools require explicit enablement
+        if tool in self._destructive_tools:
+            if not ctx.policy.enable_destructive:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Destructive tool '{tool}' not enabled in policy",
+                    confidence="none",
+                )
+
+        return GateResult(
+            allowed=True,
+            reason="Server policy allows execution",
+            confidence="implicit",
+        )
+
+    def _check_client(
+        self,
+        tool: str,
+        args: dict,
+        auth_event: Optional[AuthorizationEvent],
+        ctx: SecurityContext,
+    ) -> GateResult:
+        """Client mode: verify authorization event."""
+        is_destructive = tool in self._destructive_tools
+
+        # Destructive tools must be enabled in policy
+        if is_destructive and not ctx.policy.enable_destructive:
+            return GateResult(
+                allowed=False,
+                reason=f"Destructive tool '{tool}' not enabled",
+                confidence="none",
+            )
+
+        # Destructive tools require an authorization event
+        if is_destructive and auth_event is None:
+            return GateResult(
+                allowed=False,
+                reason=f"Destructive tool '{tool}' requires authorization",
+                confidence="none",
+            )
+
+        # Non-destructive tools without auth_event are implicitly allowed
+        if auth_event is None:
+            return GateResult(
+                allowed=True,
+                reason="Non-destructive tool, implicit allow",
+                confidence="implicit",
+            )
+
+        # Verify auth_event.action matches the tool
+        if auth_event.action != tool:
+            return GateResult(
+                allowed=False,
+                reason=(
+                    f"Action mismatch: authorized='{auth_event.action}', "
+                    f"executing='{tool}'"
+                ),
+                confidence="none",
+            )
+
+        # Verify scope constraints: each scope key must appear in args
+        for key, value in auth_event.scope.items():
+            if key not in args:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Scope key '{key}' missing from args",
+                    confidence="none",
+                )
+            if args[key] != value:
+                return GateResult(
+                    allowed=False,
+                    reason=(
+                        f"Scope violation: '{key}' expected "
+                        f"'{value}', got '{args[key]}'"
+                    ),
+                    confidence="none",
+                )
+
+        # Verify timestamp within TTL
+        elapsed = time.time() - auth_event.timestamp
+        if elapsed > self._auth_ttl:
+            return GateResult(
+                allowed=False,
+                reason=(
+                    f"Authorization expired ({elapsed:.0f}s > "
+                    f"{self._auth_ttl:.0f}s TTL)"
+                ),
+                confidence="none",
+            )
+
+        return GateResult(
+            allowed=True,
+            reason="Authorization verified",
+            matched_directive=auth_event.source,
+            confidence="explicit",
+        )

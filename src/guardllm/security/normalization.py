@@ -1,0 +1,126 @@
+"""Normalization contract for overlap computation (spec §8).
+
+Five-step pipeline producing canonical text for DLP overlap checks,
+provenance comparison, and other content matching operations.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+
+# Zero-width and invisible characters (spec §1.2)
+_INVISIBLE_RE = re.compile(
+    "["
+    "\u00AD"          # Soft hyphen
+    "\u200B-\u200D"   # Zero-width space/non-joiner/joiner
+    "\u2060"          # Word joiner
+    "\uFEFF"          # BOM / zero-width no-break space
+    "\uFFFC"          # Object replacement character
+    "\uFFF9-\uFFFB"   # Interlinear annotation markers
+    "]",
+    flags=re.UNICODE,
+)
+
+# Tag characters (invisible metadata plane)
+_TAG_CHAR_RE = re.compile(r"[\U000E0001-\U000E007F]")
+
+# Bidi controls
+_BIDI_RE = re.compile(
+    "["
+    "\u202A-\u202E"   # LRE, RLE, PDF, LRO, RLO
+    "\u2066-\u2069"   # LRI, RLI, FSI, PDI
+    "]"
+)
+
+# Whitespace collapse: runs of any whitespace → single space
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def normalize_for_overlap(text: str) -> str:
+    """Apply the 5-step normalization pipeline.
+
+    Steps:
+    1. Unicode NFC normalization
+    2. Strip invisible characters (zero-width, directional, tags)
+    3. Collapse whitespace (all runs → single space, trim)
+    4. Lowercase
+    5. Strip bidi controls
+
+    The result is suitable for overlap comparison (DLP, provenance).
+    This function is idempotent: normalize(normalize(x)) == normalize(x).
+    """
+    # Step 1: NFC
+    text = unicodedata.normalize("NFC", text)
+
+    # Step 2: Strip invisible characters
+    text = _INVISIBLE_RE.sub("", text)
+    text = _TAG_CHAR_RE.sub("", text)
+
+    # Step 3: Collapse whitespace
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+
+    # Step 4: Lowercase
+    text = text.lower()
+
+    # Step 5: Strip bidi controls
+    text = _BIDI_RE.sub("", text)
+
+    # Re-collapse whitespace after bidi removal (ensures idempotency)
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Shared overlap computation utilities (used by DLP and provenance)
+# ---------------------------------------------------------------------------
+
+
+def compute_lcs_length(a: str, b: str) -> int:
+    """Compute longest common substring length using rolling-row DP.
+
+    O(m*n) time, O(min(m,n)) space. Inputs should be pre-normalized
+    via normalize_for_overlap() before calling.
+    """
+    if not a or not b:
+        return 0
+    # Ensure b is the shorter string for space efficiency
+    if len(a) < len(b):
+        a, b = b, a
+    prev = [0] * (len(b) + 1)
+    best = 0
+    for i in range(1, len(a) + 1):
+        curr = [0] * (len(b) + 1)
+        for j in range(1, len(b) + 1):
+            if a[i - 1] == b[j - 1]:
+                curr[j] = prev[j - 1] + 1
+                if curr[j] > best:
+                    best = curr[j]
+        prev = curr
+    return best
+
+
+def compute_ngram_overlap(a: str, b: str, n: int = 5) -> float:
+    """Compute character-level n-gram overlap ratio.
+
+    Returns the fraction of b's n-grams found in a. Inputs should be
+    pre-normalized via normalize_for_overlap() before calling.
+
+    Args:
+        a: The content being checked (e.g. outbound text).
+        b: The reference text (e.g. untrusted span).
+        n: N-gram size (default 5).
+
+    Returns:
+        Overlap ratio in [0.0, 1.0]. Returns 0.0 if either string
+        is shorter than n characters.
+    """
+    if len(b) < n or len(a) < n:
+        return 0.0
+    b_grams = {b[i:i + n] for i in range(len(b) - n + 1)}
+    a_grams = {a[i:i + n] for i in range(len(a) - n + 1)}
+    if not b_grams:
+        return 0.0
+    overlap = b_grams & a_grams
+    return len(overlap) / len(b_grams)

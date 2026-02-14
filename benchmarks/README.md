@@ -111,4 +111,5 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - Upstream snapshots are expected to come from official exports/checkpoints pinned by commit/tag in provenance metadata.
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.
 - `compare_mitigations.py` compares `guardllm` against a `no_defense` baseline on identical cases and includes pinned export reference stats.
+- Azure category moderation is intentionally excluded from the injection benchmark; Prompt Shields integration is tracked separately.
 - The comparison report's "Official Reference" section summarizes pinned export dataset stats; it is not a direct upstream leaderboard scrape.

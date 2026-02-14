@@ -10,9 +10,12 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib import error, request
 
+from guardllm import Guard
 from guardllm.security.source_gate import check_extraction_allowed
 from run_benchmarks import (  # noqa: F401
     BENCH_ROOT,
@@ -22,10 +25,24 @@ from run_benchmarks import (  # noqa: F401
     load_cases,
     run_case,
     summarize,
+    _content_type,
+    _context_for_source,
 )
 
 COMPARE_JSON = RESULTS_DIR / "comparison.json"
 COMPARE_MD = RESULTS_DIR / "comparison.md"
+
+
+@dataclass
+class TextRecord:
+    id: str
+    suite: str
+    kind: str
+    source_type: str
+    content_type: str
+    text: str
+    inbound_seed: str
+    label_attack: bool
 
 
 def run_case_no_defense(case: dict[str, Any]) -> CaseResult:
@@ -145,6 +162,186 @@ def run_strategy(cases: list[dict[str, Any]], strategy: str) -> list[CaseResult]
     raise ValueError(f"Unsupported strategy: {strategy}")
 
 
+def _text_label_from_case(case: dict[str, Any]) -> bool | None:
+    kind = case.get("kind")
+    if kind == "outbound_check":
+        return not bool(case.get("expect_allowed", True))
+    if kind != "inbound_sanitize":
+        return None
+    if "meta_upstream_label" in case:
+        return bool(case["meta_upstream_label"])
+    if case.get("expect_warning_contains"):
+        return True
+    if case.get("expect_not_contains"):
+        return True
+    if bool(case.get("expect_class_hiding_possible", False)):
+        return True
+    return False
+
+
+def build_text_records(cases: list[dict[str, Any]]) -> list[TextRecord]:
+    records: list[TextRecord] = []
+    for case in cases:
+        label = _text_label_from_case(case)
+        if label is None:
+            continue
+        kind = str(case.get("kind", ""))
+        if kind == "inbound_sanitize":
+            text = str(case.get("input", ""))
+            inbound_seed = text
+        else:
+            text = str(case.get("outbound", ""))
+            inbound_seed = str(case.get("inbound", text))
+        if not text.strip():
+            continue
+        records.append(
+            TextRecord(
+                id=str(case.get("id", "unknown")),
+                suite=str(case.get("suite", "unknown")),
+                kind=kind,
+                source_type=str(case.get("source_type", "web_content")),
+                content_type=str(case.get("content_type", "plaintext")),
+                text=text,
+                inbound_seed=inbound_seed,
+                label_attack=label,
+            )
+        )
+    return records
+
+
+def _predict_guardllm_text(record: TextRecord) -> bool:
+    guard = Guard()
+    ctx = _context_for_source(record.source_type, _content_type(record.content_type))
+    if record.kind == "inbound_sanitize":
+        processed = guard.process_inbound(record.text, ctx)
+        has_warning = bool(processed.warnings)
+        class_hide = bool(processed.sanitization and processed.sanitization.class_hiding_possible)
+        return has_warning or class_hide
+
+    guard.process_inbound(record.inbound_seed, ctx)
+    result = guard.check_outbound(record.text, ctx)
+    return not result.allowed
+
+
+def _predict_no_defense_text(record: TextRecord) -> bool:
+    del record
+    return False
+
+
+def run_text_only_strategies(
+    records: list[TextRecord],
+    azure_endpoint: str | None,
+    azure_key: str | None,
+) -> dict[str, dict[str, Any]]:
+    predictions: dict[str, list[dict[str, Any]]] = {}
+    azure_error: str | None = None
+
+    def score(name: str, fn: Any) -> None:
+        rows = []
+        for rec in records:
+            pred = bool(fn(rec))
+            rows.append(
+                {
+                    "id": rec.id,
+                    "suite": rec.suite,
+                    "kind": rec.kind,
+                    "label_attack": rec.label_attack,
+                    "pred_attack": pred,
+                }
+            )
+        predictions[name] = rows
+
+    score("guardllm", _predict_guardllm_text)
+    score("no_defense", _predict_no_defense_text)
+
+    if azure_endpoint and azure_key:
+        def _predict_azure_prompt_shields(rec: TextRecord) -> bool:
+            base = azure_endpoint.rstrip("/")
+            url = f"{base}/contentsafety/text:shieldPrompt?api-version=2024-09-01"
+            payload = {
+                "userPrompt": rec.text,
+                "documents": [rec.inbound_seed],
+            }
+            req = request.Request(
+                url=url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Ocp-Apim-Subscription-Key": azure_key,
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with request.urlopen(req, timeout=20.0) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+            except error.HTTPError as exc:
+                message = exc.read().decode("utf-8", errors="replace")
+                raise RuntimeError(f"Azure Prompt Shields API error {exc.code}: {message}") from exc
+            prompt_attack = bool(body.get("userPromptAnalysis", {}).get("attackDetected", False))
+            doc_attack = any(
+                bool(item.get("attackDetected", False))
+                for item in body.get("documentsAnalysis", [])
+                if isinstance(item, dict)
+            )
+            return prompt_attack or doc_attack
+
+        try:
+            score("azure_prompt_shields", _predict_azure_prompt_shields)
+        except Exception as exc:  # pragma: no cover - external API failures
+            azure_error = str(exc)
+
+    summary: dict[str, dict[str, Any]] = {}
+    for name, rows in predictions.items():
+        tp = tn = fp = fn = 0
+        by_suite: dict[str, dict[str, int]] = {}
+        for row in rows:
+            label = bool(row["label_attack"])
+            pred = bool(row["pred_attack"])
+            if label and pred:
+                tp += 1
+            elif (not label) and (not pred):
+                tn += 1
+            elif (not label) and pred:
+                fp += 1
+            else:
+                fn += 1
+
+            suite_stats = by_suite.setdefault(row["suite"], {"total": 0, "correct": 0})
+            suite_stats["total"] += 1
+            suite_stats["correct"] += 1 if label == pred else 0
+
+        total = len(rows)
+        accuracy = round(((tp + tn) / total) * 100, 2) if total else 0.0
+        precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0
+        recall = round((tp / (tp + fn)) * 100, 2) if (tp + fn) else 0.0
+        f1 = round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
+
+        by_suite_accuracy = {
+            s: round((v["correct"] / v["total"]) * 100, 2) if v["total"] else 0.0
+            for s, v in by_suite.items()
+        }
+        summary[name] = {
+            "total": total,
+            "tp": tp,
+            "tn": tn,
+            "fp": fp,
+            "fn": fn,
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "by_suite_accuracy": by_suite_accuracy,
+        }
+
+    return {
+        "record_count": len(records),
+        "azure_prompt_shields_enabled": bool(azure_endpoint and azure_key),
+        "azure_error": azure_error,
+        "strategies": summary,
+        "predictions": predictions,
+    }
+
+
 def official_reference_summary() -> dict[str, Any]:
     payload: dict[str, Any] = {"sources": []}
     if not UPSTREAM_MANIFEST.exists():
@@ -240,6 +437,7 @@ def write_markdown(
     table_rows: list[dict[str, Any]],
     strategies: dict[str, dict[str, Any]],
     official: dict[str, Any],
+    text_only: dict[str, Any],
 ) -> None:
     lines: list[str] = []
     lines.append("# Mitigation Comparison")
@@ -267,6 +465,24 @@ def write_markdown(
         )
 
     lines.append("")
+    lines.append("## Text-Only Comparison")
+    lines.append("")
+    lines.append(
+        f"- Record count: `{text_only.get('record_count', 0)}`"
+    )
+    lines.append(f"- Azure Prompt Shields enabled: `{text_only.get('azure_prompt_shields_enabled', False)}`")
+    if text_only.get("azure_error"):
+        lines.append(f"- Azure Prompt Shields error: `{text_only['azure_error']}`")
+    lines.append("")
+    lines.append("| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for name, stats in text_only.get("strategies", {}).items():
+        lines.append(
+            f"| {name} | {stats['accuracy']}% | {stats['precision']}% | {stats['recall']}% | "
+            f"{stats['f1']} | {stats['tp']} | {stats['tn']} | {stats['fp']} | {stats['fn']} |"
+        )
+
+    lines.append("")
     lines.append("## Official Reference (Pinned Sources)")
     lines.append("")
     lines.append(
@@ -284,6 +500,8 @@ def write_markdown(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
+    parser.add_argument("--azure-endpoint", default=None, help="Azure Content Safety endpoint")
+    parser.add_argument("--azure-key", default=None, help="Azure Content Safety key")
     args = parser.parse_args()
 
     cases = load_cases(args.suite)
@@ -301,16 +519,28 @@ def main() -> int:
 
     table_rows = build_table(strategies)
     official = official_reference_summary()
+    text_records = build_text_records(cases)
+    text_only = run_text_only_strategies(
+        records=text_records,
+        azure_endpoint=args.azure_endpoint,
+        azure_key=args.azure_key,
+    )
     payload = {
         "generated_at": int(time.time()),
         "suite_filter": args.suite,
         "strategies": strategies,
         "table_rows": table_rows,
+        "text_only": text_only,
         "official_reference": official,
     }
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     COMPARE_JSON.write_text(json.dumps(payload, indent=2) + "\n")
-    write_markdown(table_rows=table_rows, strategies=strategies, official=official)
+    write_markdown(
+        table_rows=table_rows,
+        strategies=strategies,
+        official=official,
+        text_only=text_only,
+    )
 
     print(f"comparison json: {COMPARE_JSON}")
     print(f"comparison md:   {COMPARE_MD}")
@@ -318,6 +548,11 @@ def main() -> int:
     for name, item in strategies.items():
         s = item["summary"]
         print(f"- {name}: {s['passed']}/{s['total']} ({s['pass_rate']}%)")
+    print("text-only:")
+    for name, stats in text_only["strategies"].items():
+        print(
+            f"- {name}: accuracy={stats['accuracy']}% precision={stats['precision']}% recall={stats['recall']}%"
+        )
     return 0
 
 

@@ -24,6 +24,17 @@
 - `source_gate_only`: 113/248 (45.56%)
 - `no_defense`: 35/248 (14.11%)
 
+## Text-Only Comparison
+
+- Record count: `125`
+- Azure Prompt Shields enabled: `True`
+
+| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| guardllm | 95.2% | 92.86% | 86.67% | 89.66 | 26 | 93 | 2 | 4 |
+| no_defense | 76.0% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 30 |
+| azure_prompt_shields | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
+
 ## Official Reference (Pinned Sources)
 
 - These stats are derived from pinned official exports in `benchmarks/upstream/manifest.json`.

@@ -130,6 +130,8 @@ pytest tests/security/        # security-focused tests
 pytest -x --tb=short          # stop on first failure
 ```
 
+Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves.
+
 ## 👤 Author
 
 **Michael H. Coen**  

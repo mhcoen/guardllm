@@ -86,6 +86,7 @@ These source types integrate directly with source-gate and provenance behavior.
 - Destructive tool calls are blocked unless explicitly enabled via `PolicyConfig(enable_destructive=True)`.
 - Destructive tool calls require authorization events in client mode.
 - Request binding is optional but recommended for all write-capable actions.
+- OAuth/OIDC integration is supported via host-side scope-to-policy mapping (see `docs/oauth_integration.md`).
 
 ## Threats Covered
 
@@ -102,5 +103,6 @@ guardllm is an application-layer hardening library. It does not replace:
 - host/container isolation
 - secret management systems
 - transport-layer authN/authZ
+- OAuth/OIDC token issuance, validation, and lifecycle management
 
 Use guardllm as one layer in a full security architecture.

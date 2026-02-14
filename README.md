@@ -14,6 +14,7 @@ It provides:
 - outbound DLP and provenance copy controls
 - rate limiting and anomaly checks
 - source-gate controls for KG extraction and quarantine
+- OAuth/OIDC integration patterns for mapping user scopes to tool policy decisions
 - argument validation and error sanitization
 - structured audit logging hooks
 
@@ -91,20 +92,20 @@ Primary API:
 
 ## Documentation
 
-- Architecture: `docs/security.md`
-- Quick start guide: `docs/quick_start.md`
-- API details: `docs/api.md`
-- Complete API specification: `docs/api_spec.md`
-- Integration patterns: `docs/integration.md`
-- OAuth integration: `docs/oauth_integration.md`
-- Integration templates: `docs/integration_templates.md`
-- Configuration and policy: `docs/configuration.md`
-- Policy tuning: `docs/policy_tuning.md`
-- Troubleshooting and FAQ: `docs/troubleshooting.md`
-- Production checklist: `docs/production_checklist.md`
-- Framework integrations: `docs/integrations/`
-- Benchmarking: `benchmarks/README.md`
-- Tutorials: `tutorials/README.md`
+- Architecture: [docs/security.md](docs/security.md)
+- Quick start guide: [docs/quick_start.md](docs/quick_start.md)
+- API details: [docs/api.md](docs/api.md)
+- Complete API specification: [docs/api_spec.md](docs/api_spec.md)
+- Integration patterns: [docs/integration.md](docs/integration.md)
+- OAuth integration: [docs/oauth_integration.md](docs/oauth_integration.md)
+- Integration templates: [docs/integration_templates.md](docs/integration_templates.md)
+- Configuration and policy: [docs/configuration.md](docs/configuration.md)
+- Policy tuning: [docs/policy_tuning.md](docs/policy_tuning.md)
+- Troubleshooting and FAQ: [docs/troubleshooting.md](docs/troubleshooting.md)
+- Production checklist: [docs/production_checklist.md](docs/production_checklist.md)
+- Framework integrations: [docs/integrations/](docs/integrations/)
+- Benchmarking: [benchmarks/README.md](benchmarks/README.md)
+- Tutorials: [tutorials/README.md](tutorials/README.md)
 
 ## Current Benchmark Results
 

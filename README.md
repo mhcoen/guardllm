@@ -28,7 +28,7 @@ Benchmark status: GuardLLM currently passes all benchmark cases in this repo (`8
 ## Install
 
 ```bash
-pip install -e .
+pip install guardllm
 ```
 
 ## Start Here (5 Minutes)

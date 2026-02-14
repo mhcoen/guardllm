@@ -1,7 +1,7 @@
-# guardllm
+# GuardLLM
 
-guardllm is a standalone Python library for hardening LLM-based applications. It is designed to be easy to use and integrate into your own code, securing how your app processes and acts on unknown-provenance content, including web search results, emails, documents, calendar data, MCP tool traffic, and other untrusted inputs.
-guardllm is model-agnostic: it adds application-layer protections that remain important for state-of-the-art models and are often essential for the many models that ship with limited built-in safety controls.
+GuardLLM (`guardllm`) is a standalone Python library for hardening LLM-based applications. It is designed to be easy to use and integrate into your own code, securing how your app processes and acts on unknown-provenance content, including web search results, emails, documents, calendar data, MCP tool traffic, and other untrusted inputs.
+GuardLLM is model-agnostic: it adds application-layer protections that remain important for state-of-the-art models and are often essential for the many models that ship with limited built-in safety controls.
 
 It provides:
 - input sanitization for unknown-provenance content
@@ -19,11 +19,11 @@ It provides:
 
 ## Security Disclaimer
 
-guardllm applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
+GuardLLM applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
 
-However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. guardllm reduces risk; it does not eliminate it. Use guardllm as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
+However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
 
-Benchmark status: guardllm currently passes all benchmark cases in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
+Benchmark status: GuardLLM currently passes all benchmark cases in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
 
 ## Install
 

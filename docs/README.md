@@ -4,6 +4,7 @@ This directory contains architecture and integration documentation for using gua
 
 ## Documents
 
+- `quick_start.md`: simple, interaction-focused setup for first integration.
 - `security.md`: Defense-in-depth architecture and layer-by-layer controls.
 - `api.md`: Stable public API (`Guard`) and usage contract.
 - `integration.md`: Practical integration patterns for MCP server/client systems.

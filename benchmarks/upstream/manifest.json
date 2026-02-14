@@ -4,20 +4,28 @@
       "suite": "pint",
       "repo": "https://github.com/lakeraai/pint-benchmark",
       "ref": "0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8",
-      "snapshot_dir": "benchmarks/upstream/pint/v0aa0d64",
-      "notes": "PINT repo currently exposes an example dataset file, not the full benchmark dataset."
+      "snapshot_dir": "benchmarks/upstream/pint/v0aa0d641",
+      "source_export": "benchmark/data/example-dataset.yaml",
+      "imported_raw_records": 8,
+      "mapped_cases": 16
     },
     {
       "suite": "bipia",
       "repo": "https://github.com/microsoft/BIPIA",
       "ref": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
-      "snapshot_dir": "benchmarks/upstream/bipia/va004b69"
+      "snapshot_dir": "benchmarks/upstream/bipia/va004b69e",
+      "source_export": "benchmark/email/test.jsonl",
+      "imported_raw_records": 50,
+      "mapped_cases": 124
     },
     {
       "suite": "agentdojo",
       "repo": "https://github.com/ethz-spylab/agentdojo",
       "ref": "462c88ddf596cb745882702f9999c8aeb5fe467f",
-      "snapshot_dir": "benchmarks/upstream/agentdojo/v462c88d"
+      "snapshot_dir": "benchmarks/upstream/agentdojo/v462c88dd",
+      "source_export": "src/agentdojo/data/suites/workspace/injection_vectors.yaml",
+      "imported_raw_records": 16,
+      "mapped_cases": 26
     }
   ]
 }

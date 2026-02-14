@@ -18,6 +18,8 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 - A reproducible local regression suite for guardllm controls.
 - A starter threat library in JSONL format under `benchmarks/cases/`.
 - Versioned upstream-derived fixture snapshots under `benchmarks/upstream/`.
+- Import tooling for official benchmark exports.
+- Checkpoint files for regression gating in CI.
 - A report generator writing to `benchmarks/results/latest.json`.
 
 ## Run
@@ -31,6 +33,36 @@ Run a single suite:
 ```bash
 python benchmarks/run_benchmarks.py --suite pint_style
 ```
+
+Run with checkpoint validation:
+
+```bash
+python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json
+```
+
+Write/update a checkpoint from current results:
+
+```bash
+python benchmarks/run_benchmarks.py --write-checkpoint benchmarks/checkpoints/official-baseline.json
+```
+
+## Import official exports
+
+Import an official export and create a versioned upstream snapshot:
+
+```bash
+python benchmarks/import_official_exports.py \
+  --suite bipia \
+  --input /path/to/official/export.jsonl \
+  --ref <upstream_commit_or_tag>
+```
+
+This writes:
+- `benchmarks/upstream/<suite>/v<ref8>/raw_samples.jsonl`
+- `benchmarks/upstream/<suite>/v<ref8>/mapped_cases.jsonl`
+- `benchmarks/upstream/<suite>/v<ref8>/README.md`
+
+and updates `benchmarks/upstream/manifest.json` provenance metadata.
 
 ## Case format
 
@@ -60,5 +92,5 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 ## Notes
 
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
-- The harness is designed to be extended with official benchmark exports/checkpoints as the next step. (See branch test/benchmark.)
+- Upstream snapshots are expected to come from official exports/checkpoints pinned by commit/tag in provenance metadata.
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.

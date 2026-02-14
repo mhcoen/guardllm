@@ -32,4 +32,4 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          python benchmarks/run_benchmarks.py
+          python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json

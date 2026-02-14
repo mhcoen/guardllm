@@ -24,7 +24,7 @@ GuardLLM applies a defense-in-depth security model across untrusted content hand
 
 However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
 
-Benchmark status: GuardLLM currently passes all benchmark cases in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
+Benchmark status: GuardLLM currently passes the pinned benchmark checkpoint in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
 
 ## Install
 
@@ -37,7 +37,7 @@ pip install guardllm
 1. Install GuardLLM:
    - `pip install guardllm`
 2. Optionally run the benchmark baseline:
-   - `python benchmarks/run_benchmarks.py`
+   - `python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json`
 3. Follow the simplified quick-start guide:
    - [docs/quick_start.md](docs/quick_start.md)
 4. Run practical tutorials:
@@ -121,7 +121,7 @@ Latest local benchmark run:
 Re-run:
 
 ```bash
-python benchmarks/run_benchmarks.py
+python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json
 ```
 
 Detailed report is written to [benchmarks/results/latest.json](benchmarks/results/latest.json).

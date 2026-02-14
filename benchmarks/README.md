@@ -60,5 +60,5 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 ## Notes
 
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
-- The harness is designed to be extended with official benchmark exports/checkpoints as your next step.
+- The harness is designed to be extended with official benchmark exports/checkpoints as the next step. (See branch test/benchmark.)
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.

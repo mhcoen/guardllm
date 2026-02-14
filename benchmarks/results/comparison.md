@@ -28,12 +28,14 @@
 
 - Record count: `125`
 - Azure Prompt Shields enabled: `True`
+- Bedrock Guardrails enabled: `True`
 
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | guardllm | 95.2% | 92.86% | 86.67% | 89.66 | 26 | 93 | 2 | 4 |
 | no_defense | 76.0% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 30 |
 | azure_prompt_shields | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
+| bedrock_guardrails | 77.6% | 100.0% | 6.67% | 12.51 | 2 | 95 | 0 | 28 |
 
 ## Official Reference (Pinned Sources)
 

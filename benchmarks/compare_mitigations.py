@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -232,9 +234,14 @@ def run_text_only_strategies(
     records: list[TextRecord],
     azure_endpoint: str | None,
     azure_key: str | None,
+    bedrock_guardrail_id: str | None,
+    bedrock_guardrail_version: str | None,
+    bedrock_profile: str | None,
+    bedrock_region: str | None,
 ) -> dict[str, dict[str, Any]]:
     predictions: dict[str, list[dict[str, Any]]] = {}
     azure_error: str | None = None
+    bedrock_error: str | None = None
 
     def score(name: str, fn: Any) -> None:
         rows = []
@@ -290,6 +297,41 @@ def run_text_only_strategies(
         except Exception as exc:  # pragma: no cover - external API failures
             azure_error = str(exc)
 
+    if bedrock_guardrail_id and bedrock_guardrail_version:
+        def _predict_bedrock_guardrails(rec: TextRecord) -> bool:
+            content = json.dumps([{"text": {"text": rec.text}}], ensure_ascii=False)
+            cmd = [
+                "aws",
+                "bedrock-runtime",
+                "apply-guardrail",
+                "--guardrail-identifier",
+                bedrock_guardrail_id,
+                "--guardrail-version",
+                str(bedrock_guardrail_version),
+                "--source",
+                "INPUT",
+                "--content",
+                content,
+                "--output",
+                "json",
+            ]
+            env = os.environ.copy()
+            if bedrock_profile:
+                env["AWS_PROFILE"] = bedrock_profile
+            if bedrock_region:
+                env["AWS_REGION"] = bedrock_region
+                env["AWS_DEFAULT_REGION"] = bedrock_region
+            proc = subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "Bedrock apply-guardrail failed")
+            payload = json.loads(proc.stdout)
+            return payload.get("action") == "GUARDRAIL_INTERVENED"
+
+        try:
+            score("bedrock_guardrails", _predict_bedrock_guardrails)
+        except Exception as exc:  # pragma: no cover - external CLI/API failures
+            bedrock_error = str(exc)
+
     summary: dict[str, dict[str, Any]] = {}
     for name, rows in predictions.items():
         tp = tn = fp = fn = 0
@@ -337,6 +379,8 @@ def run_text_only_strategies(
         "record_count": len(records),
         "azure_prompt_shields_enabled": bool(azure_endpoint and azure_key),
         "azure_error": azure_error,
+        "bedrock_guardrails_enabled": bool(bedrock_guardrail_id and bedrock_guardrail_version),
+        "bedrock_error": bedrock_error,
         "strategies": summary,
         "predictions": predictions,
     }
@@ -473,6 +517,9 @@ def write_markdown(
     lines.append(f"- Azure Prompt Shields enabled: `{text_only.get('azure_prompt_shields_enabled', False)}`")
     if text_only.get("azure_error"):
         lines.append(f"- Azure Prompt Shields error: `{text_only['azure_error']}`")
+    lines.append(f"- Bedrock Guardrails enabled: `{text_only.get('bedrock_guardrails_enabled', False)}`")
+    if text_only.get("bedrock_error"):
+        lines.append(f"- Bedrock Guardrails error: `{text_only['bedrock_error']}`")
     lines.append("")
     lines.append("| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |")
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -502,6 +549,10 @@ def main() -> int:
     parser.add_argument("--suite", default=None, help="Filter to one suite")
     parser.add_argument("--azure-endpoint", default=None, help="Azure Content Safety endpoint")
     parser.add_argument("--azure-key", default=None, help="Azure Content Safety key")
+    parser.add_argument("--bedrock-guardrail-id", default=None, help="Bedrock guardrail identifier")
+    parser.add_argument("--bedrock-guardrail-version", default=None, help="Bedrock guardrail version")
+    parser.add_argument("--bedrock-profile", default=os.getenv("AWS_PROFILE"), help="AWS profile for Bedrock calls")
+    parser.add_argument("--bedrock-region", default=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"), help="AWS region for Bedrock calls")
     args = parser.parse_args()
 
     cases = load_cases(args.suite)
@@ -524,6 +575,10 @@ def main() -> int:
         records=text_records,
         azure_endpoint=args.azure_endpoint,
         azure_key=args.azure_key,
+        bedrock_guardrail_id=args.bedrock_guardrail_id,
+        bedrock_guardrail_version=args.bedrock_guardrail_version,
+        bedrock_profile=args.bedrock_profile,
+        bedrock_region=args.bedrock_region,
     )
     payload = {
         "generated_at": int(time.time()),

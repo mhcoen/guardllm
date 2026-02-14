@@ -48,7 +48,7 @@ pip install guardllm
 from guardllm import Guard
 
 guard = Guard()
-ctx = Guard.context_web(source_id="duckduckgo")
+ctx = Guard.context_web(source_id="githubusercontent.com")
 
 search_result = """
 <h1>How to set up backups</h1>
@@ -94,6 +94,7 @@ Primary API:
 - Architecture: `docs/security.md`
 - Quick start guide: `docs/quick_start.md`
 - API details: `docs/api.md`
+- Complete API specification: `docs/api_spec.md`
 - Integration patterns: `docs/integration.md`
 - Integration templates: `docs/integration_templates.md`
 - Configuration and policy: `docs/configuration.md`

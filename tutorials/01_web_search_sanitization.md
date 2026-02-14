@@ -1,6 +1,6 @@
 # Tutorial 01: Sanitize Web Search Content
 
-Use this when your MCP client ingests search results from unknown websites.
+Use this when your LLM application ingests search results from unknown websites.
 
 Script:
 - `tutorials/01_web_search_sanitization.py`

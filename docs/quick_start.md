@@ -5,7 +5,12 @@ This guide is for integrating `guardllm` quickly into any LLM-based app, not onl
 ## 1) Install and Sanity Check
 
 ```bash
-pip install -e .
+pip install guardllm
+```
+
+Optional (from source checkout) benchmark sanity check:
+
+```bash
 python benchmarks/run_benchmarks.py
 ```
 
@@ -107,7 +112,7 @@ if not outbound.allowed:
 
 ## Next References
 
-- `examples/README.md`
-- `tutorials/README.md`
-- `docs/api.md`
-- `docs/integration_templates.md`
+- [examples/README.md](../examples/README.md)
+- [tutorials/README.md](../tutorials/README.md)
+- [docs/api.md](api.md)
+- [docs/integration_templates.md](integration_templates.md)

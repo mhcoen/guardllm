@@ -34,11 +34,13 @@ pip install guardllm
 
 ## Start Here (5 Minutes)
 
-1. Install and run the benchmark baseline:
+1. Install GuardLLM:
+   - `pip install guardllm`
+2. Optionally run the benchmark baseline:
    - `python benchmarks/run_benchmarks.py`
-2. Follow the simplified quick-start guide:
+3. Follow the simplified quick-start guide:
    - [docs/quick_start.md](docs/quick_start.md)
-3. Run practical tutorials:
+4. Run practical tutorials:
    - `python tutorials/01_web_search_sanitization.py`
    - `python tutorials/02_email_calendar_sanitization.py`
    - `python tutorials/03_safe_tool_call_pipeline.py`

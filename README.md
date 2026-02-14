@@ -1,6 +1,6 @@
 # GuardLLM
 
-GuardLLM (`guardllm`) is a standalone Python library for hardening LLM-based applications. It is designed to be easy to use and integrate into your own code, securing how your app processes and acts on unknown-provenance content, including web search results, emails, documents, calendar data, MCP tool traffic, and other untrusted inputs.
+GuardLLM (`guardllm`) is a standalone Python library for hardening LLM-based applications. It is designed to be easy to use and integrate into your own code, securing how your app processes and acts on unknown-provenance content. Examples include web search results, emails, documents, application data, calendar data, MCP tool traffic, and other untrusted inputs (or inputs over which you don't have exclusive control).
 GuardLLM is model-agnostic: it adds application-layer protections that remain important for state-of-the-art models and are often essential for the many models that ship with limited built-in safety controls.
 
 It provides:

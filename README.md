@@ -37,7 +37,7 @@ pip install guardllm
 1. Install and run the benchmark baseline:
    - `python benchmarks/run_benchmarks.py`
 2. Follow the simplified quick-start guide:
-   - `docs/quick_start.md`
+   - [docs/quick_start.md](docs/quick_start.md)
 3. Run practical tutorials:
    - `python tutorials/01_web_search_sanitization.py`
    - `python tutorials/02_email_calendar_sanitization.py`
@@ -68,9 +68,9 @@ llm_prompt = f"""Summarize the external search result safely:
 `processed.content` is sanitized and wrapped in `<untrusted_content ...>` tags before you pass it to your model.
 
 More interaction examples:
-- `docs/quick_start.md`
-- `examples/03_web_search_untrusted_input.py`
-- `tutorials/01_web_search_sanitization.py`
+- [docs/quick_start.md](docs/quick_start.md)
+- [examples/03_web_search_untrusted_input.py](examples/03_web_search_untrusted_input.py)
+- [tutorials/01_web_search_sanitization.py](tutorials/01_web_search_sanitization.py)
 
 ## API Surface
 
@@ -122,7 +122,7 @@ Re-run:
 python benchmarks/run_benchmarks.py
 ```
 
-Detailed report is written to `benchmarks/results/latest.json`.
+Detailed report is written to [benchmarks/results/latest.json](benchmarks/results/latest.json).
 
 ## Development
 

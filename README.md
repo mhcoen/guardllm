@@ -9,7 +9,7 @@ It provides:
 - source-gate controls for KG extraction and quarantine
 - error sanitization and structured audit support
 
-Benchmark status: guardllm currently passes all benchmark cases in this repo (`82/82`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), and [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl) suites (see [benchmark harness docs](benchmarks/README.md)).
+Benchmark status: guardllm currently passes all benchmark cases in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
 
 ## Install
 
@@ -108,11 +108,11 @@ Primary API:
 ## Current Benchmark Results
 
 Latest local benchmark run:
-- Total: `82`
-- Passed: `82`
+- Total: `89`
+- Passed: `89`
 - Failed: `0`
 - Pass rate: `100%`
-- Suites: `pint_style (14/14)`, `bipia_style (14/14)`, `agentdojo_style (14/14)`, `owasp_llm_top10_style (5/5)`, `garak_style (5/5)`, `promptfoo_redteam_style (5/5)`, `mcp_protocol_abuse_style (5/5)`, `rag_poisoning_style (5/5)`, `secrets_exfil_style (5/5)`, `multistep_agent_attack_style (5/5)`, `unicode_evasion_style (5/5)`
+- Suites: `pint_style (14/14)`, `bipia_style (14/14)`, `agentdojo_style (14/14)`, `owasp_llm_top10_style (5/5)`, `garak_style (5/5)`, `promptfoo_redteam_style (5/5)`, `mcp_protocol_abuse_style (5/5)`, `rag_poisoning_style (5/5)`, `secrets_exfil_style (5/5)`, `multistep_agent_attack_style (5/5)`, `unicode_evasion_style (5/5)`, `upstream_pint (2/2)`, `upstream_bipia (2/2)`, `upstream_agentdojo (3/3)`
 
 Re-run:
 

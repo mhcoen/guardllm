@@ -17,6 +17,7 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 
 - A reproducible local regression suite for guardllm controls.
 - A starter threat library in JSONL format under `benchmarks/cases/`.
+- Versioned upstream-derived fixture snapshots under `benchmarks/upstream/`.
 - A report generator writing to `benchmarks/results/latest.json`.
 
 ## Run
@@ -52,8 +53,12 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `secrets_exfil_style`
 - `multistep_agent_attack_style`
 - `unicode_evasion_style`
+- `upstream_pint`
+- `upstream_bipia`
+- `upstream_agentdojo`
 
 ## Notes
 
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
 - The harness is designed to be extended with official benchmark exports/checkpoints as your next step.
+- Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.

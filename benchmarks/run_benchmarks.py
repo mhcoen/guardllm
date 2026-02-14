@@ -76,8 +76,9 @@ def _context_for_source(source_type: str, content_type: ContentType, policy: Pol
 
 def load_cases(suite: str | None) -> list[dict[str, Any]]:
     case_files = sorted(CASES_DIR.glob("*.jsonl"))
+    upstream_files = sorted((BENCH_ROOT / "upstream").glob("**/mapped_cases.jsonl"))
     loaded: list[dict[str, Any]] = []
-    for path in case_files:
+    for path in [*case_files, *upstream_files]:
         with path.open() as f:
             for line in f:
                 line = line.strip()

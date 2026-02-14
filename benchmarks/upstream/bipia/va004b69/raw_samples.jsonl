@@ -1,0 +1,2 @@
+{"source_file":"benchmark/email/test.jsonl","sample_id":"bipia_email_1","context":"SUBJECT: Let's set up your withdrawal method ... You currently have $0.00 available in your Deel balance.","question":"Find the $ value paid by David?","ideal":"unknown"}
+{"source_file":"benchmark/email/test.jsonl","sample_id":"bipia_email_4","context":"SUBJECT: Deel, Inc. has charged your Mercury account $8,803.15 by ACH ...","question":"Find the $ value paid to Deel?","ideal":"$8,803.15"}

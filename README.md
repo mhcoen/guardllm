@@ -43,7 +43,7 @@ pip install guardllm
    - `python tutorials/02_email_calendar_sanitization.py`
    - `python tutorials/03_safe_tool_call_pipeline.py`
 
-## Example Interaction: Wrap Web Search Before LLM
+## Example Interaction: Wrap Webpage Contents Before LLM
 
 ```python
 from guardllm import Guard

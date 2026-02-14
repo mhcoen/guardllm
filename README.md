@@ -96,6 +96,7 @@ Primary API:
 - API details: `docs/api.md`
 - Complete API specification: `docs/api_spec.md`
 - Integration patterns: `docs/integration.md`
+- OAuth integration: `docs/oauth_integration.md`
 - Integration templates: `docs/integration_templates.md`
 - Configuration and policy: `docs/configuration.md`
 - Policy tuning: `docs/policy_tuning.md`

@@ -16,9 +16,10 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L7 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries | `guardllm.security.provenance` |
 | L8 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
 | L9 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
+| L10 | OAuth Scope Progression | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
 | L11 | Audit Logging | Structured security event logging for analysis and incident response | `guardllm.security.audit` |
 
-Note: Layer numbering intentionally matches the parent hardening model. guardllm currently does not implement a dedicated L10 OAuth progression module.
+Note: Layer numbering intentionally matches the parent hardening model. L10 is documented for completeness but remains outside the library boundary.
 
 ## Guard API Coverage (Current)
 

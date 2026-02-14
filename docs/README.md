@@ -9,6 +9,7 @@ This directory contains architecture and integration documentation for using gua
 - `api.md`: Stable public API (`Guard`) and usage contract.
 - `api_spec.md`: exhaustive API contract (full signatures, defaults, return types, and error semantics).
 - `integration.md`: Practical integration patterns for MCP server/client systems.
+- `oauth_integration.md`: mapping OAuth scopes to Guard policy and tool-gating decisions.
 - `integration_templates.md`: copy-paste templates for MCP server/client and untrusted-input ingestion.
 - `configuration.md`: Policy controls and deployment guidance.
 - `policy_tuning.md`: guidance for safely tuning policy strictness.

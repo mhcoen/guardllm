@@ -46,6 +46,22 @@ Write/update a checkpoint from current results:
 python benchmarks/run_benchmarks.py --write-checkpoint benchmarks/checkpoints/official-baseline.json
 ```
 
+Generate mitigation comparison tables:
+
+```bash
+python benchmarks/compare_mitigations.py
+```
+
+Outputs:
+- `benchmarks/results/comparison.json`
+- `benchmarks/results/comparison.md`
+
+Current comparison strategies:
+- `guardllm`: full GuardLLM controls
+- `isolation_only`: inbound isolation-only baseline
+- `source_gate_only`: source-gate-only baseline
+- `no_defense`: allow-all baseline
+
 ## Import official exports
 
 Import an official export and create a versioned upstream snapshot:
@@ -94,3 +110,5 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
 - Upstream snapshots are expected to come from official exports/checkpoints pinned by commit/tag in provenance metadata.
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.
+- `compare_mitigations.py` compares `guardllm` against a `no_defense` baseline on identical cases and includes pinned export reference stats.
+- The comparison report's "Official Reference" section summarizes pinned export dataset stats; it is not a direct upstream leaderboard scrape.

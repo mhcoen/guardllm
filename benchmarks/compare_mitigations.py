@@ -340,6 +340,40 @@ def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
     # OPA-backed policy adapter.
     opa_program = _policy_opa_program()
     redis_state_prefix = f"guardbench:{int(time.time()*1000)}"
+    non_text_errors: dict[str, str] = {}
+
+    casbin_enforcer = None
+    try:
+        import casbin  # type: ignore
+
+        model = casbin.Model()
+        model.load_model_from_text(
+            """
+[request_definition]
+r = sub, obj, act
+[policy_definition]
+p = sub, obj, act
+[policy_effect]
+e = some(where (p.eft == allow))
+[matchers]
+m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
+"""
+        )
+        casbin_enforcer = casbin.Enforcer(model)
+        casbin_enforcer.add_policy("reader", "search_knowledge", "execute")
+        casbin_enforcer.add_policy("trusted_sender", "gmail_send_email", "execute")
+        for st in ("assistant_response", "user_input", "cli"):
+            casbin_enforcer.add_policy("source", st, "allow")
+    except Exception as exc:
+        non_text_errors["casbin_rbac"] = str(exc)
+
+    try:
+        import pydantic  # type: ignore # noqa: F401
+
+        pydantic_available = True
+    except Exception as exc:
+        pydantic_available = False
+        non_text_errors["strict_schema_stack"] = str(exc)
 
     def predict_schema(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
@@ -463,11 +497,134 @@ def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
             return {"code": "internal_error"}
         return {}
 
+    def _is_valid_email(value: str) -> bool:
+        return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value))
+
+    def _strict_validate_args(tool: str, args: dict[str, Any]) -> bool:
+        if tool == "search_knowledge":
+            query = args.get("query")
+            source_name = args.get("source_name")
+            thread_handle = args.get("thread_handle")
+            if query is not None and (not isinstance(query, str) or len(query) > 1024):
+                return False
+            if source_name is not None and (not isinstance(source_name, str) or ".." in source_name):
+                return False
+            if thread_handle is not None and (
+                not isinstance(thread_handle, str) or not re.match(r"^[A-Za-z0-9_-]+$", thread_handle)
+            ):
+                return False
+            return True
+        if tool == "gmail_send_email":
+            to = args.get("to")
+            return isinstance(to, str) and _is_valid_email(to)
+        return True
+
+    def predict_casbin_rbac(case: dict[str, Any]) -> dict[str, Any]:
+        if casbin_enforcer is None:
+            return {}
+        kind = case["kind"]
+        tool = str(case.get("tool", ""))
+        args = case.get("args", {})
+        to = str(args.get("to", ""))
+        destructive = bool(case.get("policy", {}).get("enable_destructive", False))
+        subject = "trusted_sender" if destructive and to.endswith("@example.com") else "reader"
+
+        if kind in {"tool_gate", "tool_gate_auth"}:
+            allowed = bool(casbin_enforcer.enforce(subject, tool, "execute"))
+            if kind == "tool_gate_auth":
+                allowed = (
+                    allowed
+                    and str(case.get("auth_action", "")) == tool
+                    and str(case.get("auth_scope", {}).get("to", "")) == to
+                    and int(case.get("timestamp_offset_sec", 0)) <= 3600
+                )
+            return {"allowed": allowed}
+        if kind == "binding_replay":
+            allowed = bool(casbin_enforcer.enforce(subject, tool, "execute"))
+            allowed = allowed and str(case.get("message", "")) == str(case.get("replay_message", ""))
+            return {"allowed": allowed}
+        if kind == "action_gate":
+            allowed = bool(casbin_enforcer.enforce("trusted_sender", tool, "execute")) and to.endswith("@example.com")
+            return {"confirmed": allowed}
+        if kind == "source_gate":
+            source_type = str(case.get("source_type", ""))
+            if bool(casbin_enforcer.enforce("source", source_type, "allow")):
+                return {"policy": "allow"}
+            if source_type in {"mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"}:
+                return {"policy": "quarantine"}
+            return {"policy": "block"}
+        if kind == "validation":
+            return {"valid": _strict_validate_args(tool, args)}
+        if kind == "error_sanitize":
+            return {"code": "internal_error"}
+        if kind == "rate_limit":
+            return {"final_allowed": True, "anomalies": [], "retry_after_positive": False}
+        return {}
+
+    def predict_strict_schema_stack(case: dict[str, Any]) -> dict[str, Any]:
+        kind = case["kind"]
+        tool = str(case.get("tool", ""))
+        args = case.get("args", {})
+        to = str(args.get("to", ""))
+        destructive = bool(case.get("policy", {}).get("enable_destructive", False))
+        if kind == "validation":
+            return {"valid": _strict_validate_args(tool, args)}
+        if kind == "tool_gate":
+            valid = _strict_validate_args(tool, args)
+            if tool == "search_knowledge":
+                return {"allowed": valid}
+            if tool == "gmail_send_email":
+                return {"allowed": valid and destructive and to.endswith("@example.com")}
+            return {"allowed": False}
+        if kind == "tool_gate_auth":
+            valid = _strict_validate_args(tool, args)
+            allowed = (
+                valid
+                and destructive
+                and to.endswith("@example.com")
+                and str(case.get("auth_action", "")) == tool
+                and str(case.get("auth_scope", {}).get("to", "")) == to
+                and int(case.get("timestamp_offset_sec", 0)) <= 3600
+            )
+            return {"allowed": allowed}
+        if kind == "binding_replay":
+            valid = _strict_validate_args(tool, args)
+            allowed = valid and destructive and str(case.get("message", "")) == str(case.get("replay_message", ""))
+            return {"allowed": allowed}
+        if kind == "action_gate":
+            confirmed = (
+                _strict_validate_args(tool, args)
+                and bool(case.get("use_handler", True))
+                and to.endswith("@example.com")
+            )
+            return {"confirmed": confirmed}
+        if kind == "source_gate":
+            source_type = str(case.get("source_type", ""))
+            if source_type in {"assistant_response", "user_input", "cli"}:
+                return {"policy": "allow"}
+            if source_type in {"mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"}:
+                return {"policy": "quarantine"}
+            return {"policy": "block"}
+        if kind == "rate_limit":
+            return predict_rate_limit_redis(case)
+        if kind == "error_sanitize":
+            err = str(case.get("error", ""))
+            if err == "PermissionDeniedError":
+                return {"code": "permission_denied"}
+            if err == "InvalidParamsError":
+                return {"code": "invalid_params"}
+            if err == "RateLimitError":
+                return {"code": "rate_limited"}
+            return {"code": "internal_error"}
+        return {}
+
     strategies = {
         "guardllm_non_text": {"passed": 0, "total": len(non_text_cases)},
         "no_defense_non_text": {"passed": 0, "total": len(non_text_cases)},
         "schema_jsonschema": {"passed": 0, "total": len(non_text_cases)},
         "policy_opa": {"passed": 0, "total": len(non_text_cases)},
+        "casbin_rbac": {"passed": 0, "total": len(non_text_cases)},
+        "strict_schema_stack": {"passed": 0, "total": len(non_text_cases)},
         "redis_rate_limit": {"passed": 0, "total": len(non_text_cases)},
         "non_text_stack": {"passed": 0, "total": len(non_text_cases)},
     }
@@ -489,6 +646,8 @@ def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
         for name, pred_fn in [
             ("schema_jsonschema", predict_schema),
             ("policy_opa", predict_policy_opa),
+            ("casbin_rbac", predict_casbin_rbac),
+            ("strict_schema_stack", predict_strict_schema_stack),
             ("redis_rate_limit", predict_rate_limit_redis),
             ("non_text_stack", predict_non_text_stack),
         ]:
@@ -509,7 +668,13 @@ def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
             total = item["total"]
             item["pass_rate"] = round((item["passed"] / total) * 100, 2) if total else 0.0
 
-    return {"count": len(non_text_cases), "strategies": strategies, "by_kind": by_kind}
+    return {
+        "count": len(non_text_cases),
+        "strategies": strategies,
+        "by_kind": by_kind,
+        "errors": non_text_errors,
+        "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
+    }
 
 
 def _text_label_from_case(case: dict[str, Any]) -> bool | None:
@@ -1162,6 +1327,12 @@ def write_markdown(
     lines.append("## Non-Text Comparison")
     lines.append("")
     lines.append(f"- Record count: `{non_text_only.get('count', 0)}`")
+    deps = non_text_only.get("deps", {})
+    if deps:
+        lines.append(f"- Casbin available: `{deps.get('casbin_available', False)}`")
+        lines.append(f"- Pydantic available: `{deps.get('pydantic_available', False)}`")
+    for k, v in non_text_only.get("errors", {}).items():
+        lines.append(f"- {k} error: `{v}`")
     lines.append("| strategy | passed | total | pass rate |")
     lines.append("|---|---:|---:|---:|")
     for name, stats in non_text_only.get("strategies", {}).items():
@@ -1213,6 +1384,11 @@ def write_markdown(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
+    parser.add_argument(
+        "--non-text-only",
+        action="store_true",
+        help="Skip text-only/API evaluations and refresh only non-text comparisons",
+    )
     parser.add_argument("--azure-endpoint", default=None, help="Azure Content Safety endpoint")
     parser.add_argument("--azure-key", default=None, help="Azure Content Safety key")
     parser.add_argument("--bedrock-guardrail-id", default=None, help="Bedrock guardrail identifier")
@@ -1246,28 +1422,22 @@ def main() -> int:
 
     table_rows = build_table(strategies)
     official = official_reference_summary()
-    text_records = build_text_records(cases)
     non_text_only = run_non_text_strategies(cases)
-    text_only = run_text_only_strategies(
-        records=text_records,
-        azure_endpoint=args.azure_endpoint,
-        azure_key=args.azure_key,
-        bedrock_guardrail_id=args.bedrock_guardrail_id,
-        bedrock_guardrail_version=args.bedrock_guardrail_version,
-        bedrock_profile=args.bedrock_profile,
-        bedrock_region=args.bedrock_region,
-        open_source_model_id=args.open_source_model_id,
-        openai_api_key=args.openai_api_key,
-        openai_model=args.openai_model,
-        anthropic_api_key=args.anthropic_api_key,
-        anthropic_model=args.anthropic_model,
-    )
-    holdout_cases = load_legacy_upstream_cases()
-    holdout_text_only = None
-    if holdout_cases:
-        holdout_records = build_text_records(holdout_cases)
-        holdout_text_only = run_text_only_strategies(
-            records=holdout_records,
+    text_only: dict[str, Any]
+    holdout_text_only: dict[str, Any] | None = None
+    if args.non_text_only:
+        previous_payload: dict[str, Any] = {}
+        if COMPARE_JSON.exists():
+            try:
+                previous_payload = json.loads(COMPARE_JSON.read_text())
+            except Exception:
+                previous_payload = {}
+        text_only = previous_payload.get("text_only", {"record_count": 0, "strategies": {}})
+        holdout_text_only = previous_payload.get("holdout_text_only")
+    else:
+        text_records = build_text_records(cases)
+        text_only = run_text_only_strategies(
+            records=text_records,
             azure_endpoint=args.azure_endpoint,
             azure_key=args.azure_key,
             bedrock_guardrail_id=args.bedrock_guardrail_id,
@@ -1280,6 +1450,23 @@ def main() -> int:
             anthropic_api_key=args.anthropic_api_key,
             anthropic_model=args.anthropic_model,
         )
+        holdout_cases = load_legacy_upstream_cases()
+        if holdout_cases:
+            holdout_records = build_text_records(holdout_cases)
+            holdout_text_only = run_text_only_strategies(
+                records=holdout_records,
+                azure_endpoint=args.azure_endpoint,
+                azure_key=args.azure_key,
+                bedrock_guardrail_id=args.bedrock_guardrail_id,
+                bedrock_guardrail_version=args.bedrock_guardrail_version,
+                bedrock_profile=args.bedrock_profile,
+                bedrock_region=args.bedrock_region,
+                open_source_model_id=args.open_source_model_id,
+                openai_api_key=args.openai_api_key,
+                openai_model=args.openai_model,
+                anthropic_api_key=args.anthropic_api_key,
+                anthropic_model=args.anthropic_model,
+            )
     payload = {
         "generated_at": int(time.time()),
         "suite_filter": args.suite,

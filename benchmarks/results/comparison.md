@@ -52,24 +52,24 @@
 | regex_rule_based | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
 | open_source_deberta | 60.8% | 29.79% | 46.67% | 36.37 | 14 | 62 | 33 | 16 |
 | azure_prompt_shields | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
-| openai_policy_adapter | 76.0% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 30 |
-| anthropic_policy_adapter | 84.0% | 69.23% | 60.0% | 64.29 | 18 | 87 | 8 | 12 |
+| openai_policy_adapter | 89.6% | 90.48% | 63.33% | 74.51 | 19 | 93 | 2 | 11 |
+| anthropic_policy_adapter | 84.8% | 70.37% | 63.33% | 66.66 | 19 | 87 | 8 | 11 |
 | bedrock_guardrails | 77.6% | 100.0% | 6.67% | 12.51 | 2 | 95 | 0 | 28 |
 | azure_plus_guardllm | 96.8% | 93.33% | 93.33% | 93.33 | 28 | 93 | 2 | 2 |
 | bedrock_plus_guardllm | 96.0% | 93.1% | 90.0% | 91.52 | 27 | 93 | 2 | 3 |
 
 | strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |
 |---|---:|---:|---:|
-| guardllm | 0.16 | 0.73 | 0.96 |
+| guardllm | 0.16 | 0.68 | 1.0 |
 | no_defense | 0.0 | 0.0 | 0.0 |
-| regex_rule_based | 0.01 | 0.03 | 0.16 |
-| open_source_deberta | 36.01 | 53.48 | 196.82 |
-| azure_prompt_shields | 210.64 | 244.63 | 293.38 |
-| openai_policy_adapter | 719.02 | 1777.47 | 2252.64 |
-| anthropic_policy_adapter | 644.81 | 840.25 | 1514.04 |
-| bedrock_guardrails | 661.51 | 734.69 | 816.95 |
-| azure_plus_guardllm | 210.8 | 245.36 | 294.34 |
-| bedrock_plus_guardllm | 661.67 | 735.42 | 817.91 |
+| regex_rule_based | 0.01 | 0.03 | 0.19 |
+| open_source_deberta | 35.62 | 52.43 | 181.94 |
+| azure_prompt_shields | 215.7 | 253.9 | 616.4 |
+| openai_policy_adapter | 626.6 | 990.34 | 2641.52 |
+| anthropic_policy_adapter | 645.48 | 892.07 | 1787.38 |
+| bedrock_guardrails | 658.22 | 728.12 | 823.73 |
+| azure_plus_guardllm | 215.86 | 254.58 | 617.4 |
+| bedrock_plus_guardllm | 658.38 | 728.8 | 824.73 |
 
 Cost proxy:
 - Azure Prompt Shields calls: `125`
@@ -86,8 +86,8 @@ Cost proxy:
 | regex_rule_based | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
 | open_source_deberta | 50.0% | 0.0% | 0.0% | 0.0 | 0 | 3 | 2 | 1 |
 | azure_prompt_shields | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| openai_policy_adapter | 83.33% | 0.0% | 0.0% | 0.0 | 0 | 5 | 0 | 1 |
-| anthropic_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
+| openai_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
+| anthropic_policy_adapter | 50.0% | 25.0% | 100.0% | 40.0 | 1 | 2 | 3 | 0 |
 | bedrock_guardrails | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
 | azure_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
 | bedrock_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |

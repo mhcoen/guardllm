@@ -464,7 +464,16 @@ def run_text_only_strategies(
             except error.HTTPError as exc:
                 message = exc.read().decode("utf-8", errors="replace")
                 raise RuntimeError(f"OpenAI API error {exc.code}: {message}") from exc
-            text = str(body.get("output_text", "")).strip().upper()
+            text = str(body.get("output_text") or "").strip().upper()
+            if not text:
+                parts = body.get("output", [])
+                extracted: list[str] = []
+                for item in parts:
+                    for c in item.get("content", []):
+                        value = c.get("text")
+                        if isinstance(value, str):
+                            extracted.append(value)
+                text = " ".join(extracted).strip().upper()
             openai_call_count += 1
             return "ATTACK" in text
 

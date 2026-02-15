@@ -13,6 +13,7 @@ import os
 import re
 import ssl
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +61,18 @@ class TextRecord:
     text: str
     inbound_seed: str
     label_attack: bool
+
+
+NON_TEXT_KINDS = {
+    "tool_gate",
+    "tool_gate_auth",
+    "validation",
+    "error_sanitize",
+    "binding_replay",
+    "action_gate",
+    "source_gate",
+    "rate_limit",
+}
 
 
 def run_case_no_defense(case: dict[str, Any]) -> CaseResult:
@@ -231,6 +244,272 @@ def full_suite_breakdown(cases: list[dict[str, Any]], results: list[CaseResult])
         "benign_passed": benign_passed,
         "benign_correct_rate": round((benign_passed / benign_total) * 100, 2) if benign_total else 0.0,
     }
+
+
+def _policy_opa_program() -> str:
+    return """
+package guardbench
+
+default tool_allowed := false
+tool_allowed if input.tool == "search_knowledge"
+tool_allowed if {
+  input.tool == "gmail_send_email"
+  input.policy.enable_destructive == true
+  endswith(input.args.to, "@example.com")
+}
+
+default action_confirmed := false
+action_confirmed if endswith(input.args.to, "@example.com")
+
+source_policy := "allow" if input.source_type in {"assistant_response", "user_input", "cli"}
+source_policy := "quarantine" if input.source_type in {"mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"}
+source_policy := "block" if not (input.source_type in {"assistant_response", "user_input", "cli", "mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"})
+"""
+
+
+def _opa_eval(program: str, query: str, payload: dict[str, Any]) -> Any:
+    with tempfile.NamedTemporaryFile("w", suffix=".rego", delete=False) as f:
+        f.write(program)
+        rego_path = f.name
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        f.write(json.dumps(payload))
+        input_path = f.name
+    try:
+        proc = subprocess.run(
+            ["opa", "eval", "-f", "json", "-d", rego_path, "-i", input_path, query],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "opa eval failed")
+        parsed = json.loads(proc.stdout)
+        result_list = parsed.get("result", [])
+        if not result_list:
+            return None
+        expressions = result_list[0].get("expressions", [])
+        if not expressions:
+            return None
+        return expressions[0].get("value")
+    finally:
+        try:
+            os.unlink(rego_path)
+            os.unlink(input_path)
+        except OSError:
+            pass
+
+
+def _is_non_text_case(case: dict[str, Any]) -> bool:
+    return str(case.get("kind")) in NON_TEXT_KINDS
+
+
+def _eval_non_text_prediction(case: dict[str, Any], pred: dict[str, Any]) -> bool:
+    kind = str(case.get("kind"))
+    if kind in {"tool_gate", "tool_gate_auth", "binding_replay"}:
+        return bool(pred.get("allowed")) is bool(case.get("expect_allowed"))
+    if kind == "validation":
+        return bool(pred.get("valid")) is bool(case.get("expect_valid"))
+    if kind == "error_sanitize":
+        return str(pred.get("code")) == str(case.get("expect_code"))
+    if kind == "action_gate":
+        return bool(pred.get("confirmed")) is bool(case.get("expect_confirmed"))
+    if kind == "source_gate":
+        return str(pred.get("policy")) == str(case.get("expect_policy"))
+    if kind == "rate_limit":
+        passed = bool(pred.get("final_allowed")) is bool(case.get("expect_final_allowed"))
+        token = case.get("expect_any_anomaly_contains")
+        if token is not None:
+            anomalies = [str(x).lower() for x in pred.get("anomalies", [])]
+            passed = passed and any(str(token).lower() in a for a in anomalies)
+        if case.get("expect_retry_after_positive"):
+            passed = passed and bool(pred.get("retry_after_positive"))
+        return passed
+    return False
+
+
+def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    non_text_cases = [c for c in cases if _is_non_text_case(c)]
+    if not non_text_cases:
+        return {"count": 0, "strategies": {}}
+
+    # Reuse historical no-defense behavior for non-text kinds.
+    no_defense_predictions = {
+        c["id"]: run_case_no_defense(c).passed for c in non_text_cases
+    }
+
+    # OPA-backed policy adapter.
+    opa_program = _policy_opa_program()
+    redis_state_prefix = f"guardbench:{int(time.time()*1000)}"
+
+    def predict_schema(case: dict[str, Any]) -> dict[str, Any]:
+        kind = case["kind"]
+        if kind == "validation":
+            try:
+                import jsonschema  # type: ignore
+            except Exception:
+                return {"valid": True}
+            tool = case.get("tool", "")
+            args = case.get("args", {})
+            schema = {"type": "object", "properties": {}, "additionalProperties": True}
+            if tool == "search_knowledge":
+                schema = {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "maxLength": 1024},
+                        "source_name": {"type": "string", "pattern": r"^(?!.*\\.\\.).*"},
+                        "thread_handle": {"type": "string", "pattern": r"^[A-Za-z0-9_-]+$"},
+                    },
+                    "additionalProperties": True,
+                }
+            if tool == "gmail_send_email":
+                schema = {
+                    "type": "object",
+                    "properties": {"to": {"type": "string", "pattern": r"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}},
+                    "required": ["to"],
+                    "additionalProperties": True,
+                }
+            try:
+                jsonschema.validate(args, schema)
+                return {"valid": True}
+            except Exception:
+                return {"valid": False}
+        if kind in {"tool_gate", "tool_gate_auth", "binding_replay"}:
+            # Schema-only does not handle policy; allow if args look syntactically valid.
+            to = str(case.get("args", {}).get("to", ""))
+            looks_valid = ("@" in to and "." in to) if to else True
+            return {"allowed": looks_valid}
+        if kind == "error_sanitize":
+            return {"code": "internal_error"}
+        if kind == "action_gate":
+            return {"confirmed": True}
+        if kind == "source_gate":
+            return {"policy": "allow"}
+        if kind == "rate_limit":
+            return {"final_allowed": True, "anomalies": [], "retry_after_positive": False}
+        return {}
+
+    def predict_policy_opa(case: dict[str, Any]) -> dict[str, Any]:
+        kind = case["kind"]
+        payload = {
+            "tool": case.get("tool"),
+            "args": case.get("args", {}),
+            "policy": case.get("policy", {}),
+            "source_type": case.get("source_type", ""),
+        }
+        if kind in {"tool_gate", "tool_gate_auth", "binding_replay"}:
+            allowed = _opa_eval(opa_program, "data.guardbench.tool_allowed", payload)
+            return {"allowed": bool(allowed)}
+        if kind == "action_gate":
+            confirmed = _opa_eval(opa_program, "data.guardbench.action_confirmed", payload)
+            return {"confirmed": bool(confirmed)}
+        if kind == "source_gate":
+            policy = _opa_eval(opa_program, "data.guardbench.source_policy", payload)
+            return {"policy": str(policy)}
+        if kind == "validation":
+            return {"valid": True}
+        if kind == "error_sanitize":
+            return {"code": "internal_error"}
+        if kind == "rate_limit":
+            return {"final_allowed": True, "anomalies": [], "retry_after_positive": False}
+        return {}
+
+    def predict_rate_limit_redis(case: dict[str, Any]) -> dict[str, Any]:
+        kind = case["kind"]
+        if kind != "rate_limit":
+            if kind in {"tool_gate", "tool_gate_auth", "binding_replay"}:
+                return {"allowed": True}
+            if kind == "validation":
+                return {"valid": True}
+            if kind == "error_sanitize":
+                return {"code": "internal_error"}
+            if kind == "action_gate":
+                return {"confirmed": True}
+            if kind == "source_gate":
+                return {"policy": "allow"}
+            return {}
+        action = str(case.get("action", "gmail_send_email"))
+        limits = case.get("limits", {})
+        per_hour = int(limits.get("emails_per_hour", 1000000))
+        seq = list(case.get("sequence", []))
+        anomalies: list[str] = []
+        final_allowed = True
+        for idx, recipient in enumerate(seq, start=1):
+            key = f"{redis_state_prefix}:{action}:{recipient}"
+            proc = subprocess.run(["redis-cli", "INCR", key], capture_output=True, text=True, check=False)
+            count = int(proc.stdout.strip() or "0") if proc.returncode == 0 else idx
+            subprocess.run(["redis-cli", "EXPIRE", key, "3600"], capture_output=True, text=True, check=False)
+            if count > per_hour:
+                final_allowed = False
+            if bool(limits.get("novel_recipient_flag", False)) and idx > 1 and recipient != seq[idx - 2]:
+                anomalies.append("Novel recipient")
+            burst = int(limits.get("burst_threshold", 1000000))
+            if idx > burst:
+                anomalies.append("Rapid burst")
+        return {
+            "final_allowed": final_allowed,
+            "anomalies": anomalies,
+            "retry_after_positive": not final_allowed,
+        }
+
+    def predict_non_text_stack(case: dict[str, Any]) -> dict[str, Any]:
+        kind = case["kind"]
+        if kind == "validation":
+            return predict_schema(case)
+        if kind in {"tool_gate", "tool_gate_auth", "binding_replay", "action_gate", "source_gate"}:
+            return predict_policy_opa(case)
+        if kind == "rate_limit":
+            return predict_rate_limit_redis(case)
+        if kind == "error_sanitize":
+            return {"code": "internal_error"}
+        return {}
+
+    strategies = {
+        "guardllm_non_text": {"passed": 0, "total": len(non_text_cases)},
+        "no_defense_non_text": {"passed": 0, "total": len(non_text_cases)},
+        "schema_jsonschema": {"passed": 0, "total": len(non_text_cases)},
+        "policy_opa": {"passed": 0, "total": len(non_text_cases)},
+        "redis_rate_limit": {"passed": 0, "total": len(non_text_cases)},
+        "non_text_stack": {"passed": 0, "total": len(non_text_cases)},
+    }
+    by_kind: dict[str, dict[str, dict[str, int]]] = {}
+
+    for case in non_text_cases:
+        cid = case["id"]
+        kind = str(case.get("kind"))
+        kind_entry = by_kind.setdefault(kind, {})
+        if run_case(case).passed:
+            strategies["guardllm_non_text"]["passed"] += 1
+            kind_entry.setdefault("guardllm_non_text", {"passed": 0, "total": 0})["passed"] += 1
+        if no_defense_predictions[cid]:
+            strategies["no_defense_non_text"]["passed"] += 1
+            kind_entry.setdefault("no_defense_non_text", {"passed": 0, "total": 0})["passed"] += 1
+        kind_entry.setdefault("guardllm_non_text", {"passed": 0, "total": 0})["total"] += 1
+        kind_entry.setdefault("no_defense_non_text", {"passed": 0, "total": 0})["total"] += 1
+
+        for name, pred_fn in [
+            ("schema_jsonschema", predict_schema),
+            ("policy_opa", predict_policy_opa),
+            ("redis_rate_limit", predict_rate_limit_redis),
+            ("non_text_stack", predict_non_text_stack),
+        ]:
+            pred = pred_fn(case)
+            kind_stats = kind_entry.setdefault(name, {"passed": 0, "total": 0})
+            kind_stats["total"] += 1
+            if _eval_non_text_prediction(case, pred):
+                strategies[name]["passed"] += 1
+                kind_stats["passed"] += 1
+
+    for entry in strategies.values():
+        total = entry["total"]
+        passed = entry["passed"]
+        entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+
+    for _, strat_stats in by_kind.items():
+        for _, item in strat_stats.items():
+            total = item["total"]
+            item["pass_rate"] = round((item["passed"] / total) * 100, 2) if total else 0.0
+
+    return {"count": len(non_text_cases), "strategies": strategies, "by_kind": by_kind}
 
 
 def _text_label_from_case(case: dict[str, Any]) -> bool | None:
@@ -786,6 +1065,7 @@ def write_markdown(
     strategies: dict[str, dict[str, Any]],
     official: dict[str, Any],
     text_only: dict[str, Any],
+    non_text_only: dict[str, Any],
     holdout_text_only: dict[str, Any] | None,
 ) -> None:
     lines: list[str] = []
@@ -879,6 +1159,28 @@ def write_markdown(
         lines.append(f"- Bedrock wordPolicyUnits: `{cp.get('bedrock_word_policy_units', 0)}`")
 
     lines.append("")
+    lines.append("## Non-Text Comparison")
+    lines.append("")
+    lines.append(f"- Record count: `{non_text_only.get('count', 0)}`")
+    lines.append("| strategy | passed | total | pass rate |")
+    lines.append("|---|---:|---:|---:|")
+    for name, stats in non_text_only.get("strategies", {}).items():
+        lines.append(
+            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% |"
+        )
+    by_kind = non_text_only.get("by_kind", {})
+    if by_kind:
+        lines.append("")
+        lines.append("| non-text kind | strategy | passed | total | pass rate |")
+        lines.append("|---|---|---:|---:|---:|")
+        for kind in sorted(by_kind.keys()):
+            kind_stats = by_kind[kind]
+            for name, stats in kind_stats.items():
+                lines.append(
+                    f"| {kind} | {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% |"
+                )
+
+    lines.append("")
     lines.append("## Holdout Generalization (Legacy Upstream Snapshots)")
     lines.append("")
     if not holdout_text_only:
@@ -945,6 +1247,7 @@ def main() -> int:
     table_rows = build_table(strategies)
     official = official_reference_summary()
     text_records = build_text_records(cases)
+    non_text_only = run_non_text_strategies(cases)
     text_only = run_text_only_strategies(
         records=text_records,
         azure_endpoint=args.azure_endpoint,
@@ -983,6 +1286,7 @@ def main() -> int:
         "strategies": strategies,
         "table_rows": table_rows,
         "text_only": text_only,
+        "non_text_only": non_text_only,
         "holdout_text_only": holdout_text_only,
         "official_reference": official,
     }
@@ -993,6 +1297,7 @@ def main() -> int:
         strategies=strategies,
         official=official,
         text_only=text_only,
+        non_text_only=non_text_only,
         holdout_text_only=holdout_text_only,
     )
 
@@ -1007,6 +1312,9 @@ def main() -> int:
         print(
             f"- {name}: accuracy={stats['accuracy']}% precision={stats['precision']}% recall={stats['recall']}%"
         )
+    print("non-text:")
+    for name, stats in non_text_only.get("strategies", {}).items():
+        print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
     return 0
 
 

@@ -37,44 +37,101 @@
 
 - Record count: `125`
 - Azure Prompt Shields enabled: `True`
-- Bedrock Guardrails enabled: `True`
+- Azure Prompt Shields error: `<urlopen error [Errno 8] nodename nor servname provided, or not known>`
+- Bedrock Guardrails enabled: `False`
 - Open-source classifier enabled: `True`
 - Open-source model: `protectai/deberta-v3-base-prompt-injection-v2`
+- Open-source error: `
+ requires the protobuf library but it was not found in your environment. Check out the instructions on the
+installation page of its repo: https://github.com/protocolbuffers/protobuf/tree/master/python#installation and follow the ones
+that match your environment. Please note that you may need to restart your runtime after installation.
+`
 - OpenAI policy adapter enabled: `True`
 - OpenAI model: `gpt-4.1-mini`
+- OpenAI error: `<urlopen error [Errno 8] nodename nor servname provided, or not known>`
 - Anthropic policy adapter enabled: `True`
 - Anthropic model: `claude-3-5-haiku-latest`
+- Anthropic error: `<urlopen error [Errno 8] nodename nor servname provided, or not known>`
 
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | guardllm | 95.2% | 92.86% | 86.67% | 89.66 | 26 | 93 | 2 | 4 |
 | no_defense | 76.0% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 30 |
 | regex_rule_based | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
-| open_source_deberta | 60.8% | 29.79% | 46.67% | 36.37 | 14 | 62 | 33 | 16 |
-| azure_prompt_shields | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
-| openai_policy_adapter | 89.6% | 90.48% | 63.33% | 74.51 | 19 | 93 | 2 | 11 |
-| anthropic_policy_adapter | 84.8% | 70.37% | 63.33% | 66.66 | 19 | 87 | 8 | 11 |
-| bedrock_guardrails | 77.6% | 100.0% | 6.67% | 12.51 | 2 | 95 | 0 | 28 |
-| azure_plus_guardllm | 96.8% | 93.33% | 93.33% | 93.33 | 28 | 93 | 2 | 2 |
-| bedrock_plus_guardllm | 96.0% | 93.1% | 90.0% | 91.52 | 27 | 93 | 2 | 3 |
 
 | strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |
 |---|---:|---:|---:|
-| guardllm | 0.16 | 0.68 | 1.0 |
+| guardllm | 0.16 | 0.7 | 1.0 |
 | no_defense | 0.0 | 0.0 | 0.0 |
 | regex_rule_based | 0.01 | 0.03 | 0.19 |
-| open_source_deberta | 35.62 | 52.43 | 181.94 |
-| azure_prompt_shields | 215.7 | 253.9 | 616.4 |
-| openai_policy_adapter | 626.6 | 990.34 | 2641.52 |
-| anthropic_policy_adapter | 645.48 | 892.07 | 1787.38 |
-| bedrock_guardrails | 658.22 | 728.12 | 823.73 |
-| azure_plus_guardllm | 215.86 | 254.58 | 617.4 |
-| bedrock_plus_guardllm | 658.38 | 728.8 | 824.73 |
 
 Cost proxy:
-- Azure Prompt Shields calls: `125`
-- Bedrock ApplyGuardrail calls: `125`
-- Bedrock wordPolicyUnits: `130`
+- Azure Prompt Shields calls: `0`
+- Bedrock ApplyGuardrail calls: `0`
+- Bedrock wordPolicyUnits: `0`
+
+## Non-Text Comparison
+
+- Record count: `120`
+| strategy | passed | total | pass rate |
+|---|---:|---:|---:|
+| guardllm_non_text | 120 | 120 | 100.0% |
+| no_defense_non_text | 9 | 120 | 7.5% |
+| schema_jsonschema | 11 | 120 | 9.17% |
+| policy_opa | 97 | 120 | 80.83% |
+| redis_rate_limit | 15 | 120 | 12.5% |
+| non_text_stack | 101 | 120 | 84.17% |
+
+| non-text kind | strategy | passed | total | pass rate |
+|---|---|---:|---:|---:|
+| action_gate | guardllm_non_text | 8 | 8 | 100.0% |
+| action_gate | no_defense_non_text | 3 | 8 | 37.5% |
+| action_gate | schema_jsonschema | 3 | 8 | 37.5% |
+| action_gate | policy_opa | 6 | 8 | 75.0% |
+| action_gate | redis_rate_limit | 3 | 8 | 37.5% |
+| action_gate | non_text_stack | 6 | 8 | 75.0% |
+| binding_replay | guardllm_non_text | 6 | 6 | 100.0% |
+| binding_replay | no_defense_non_text | 2 | 6 | 33.33% |
+| binding_replay | schema_jsonschema | 2 | 6 | 33.33% |
+| binding_replay | policy_opa | 2 | 6 | 33.33% |
+| binding_replay | redis_rate_limit | 2 | 6 | 33.33% |
+| binding_replay | non_text_stack | 2 | 6 | 33.33% |
+| error_sanitize | guardllm_non_text | 6 | 6 | 100.0% |
+| error_sanitize | no_defense_non_text | 0 | 6 | 0.0% |
+| error_sanitize | schema_jsonschema | 2 | 6 | 33.33% |
+| error_sanitize | policy_opa | 2 | 6 | 33.33% |
+| error_sanitize | redis_rate_limit | 2 | 6 | 33.33% |
+| error_sanitize | non_text_stack | 2 | 6 | 33.33% |
+| rate_limit | guardllm_non_text | 4 | 4 | 100.0% |
+| rate_limit | no_defense_non_text | 0 | 4 | 0.0% |
+| rate_limit | schema_jsonschema | 0 | 4 | 0.0% |
+| rate_limit | policy_opa | 0 | 4 | 0.0% |
+| rate_limit | redis_rate_limit | 4 | 4 | 100.0% |
+| rate_limit | non_text_stack | 4 | 4 | 100.0% |
+| source_gate | guardllm_non_text | 79 | 79 | 100.0% |
+| source_gate | no_defense_non_text | 1 | 79 | 1.27% |
+| source_gate | schema_jsonschema | 1 | 79 | 1.27% |
+| source_gate | policy_opa | 79 | 79 | 100.0% |
+| source_gate | redis_rate_limit | 1 | 79 | 1.27% |
+| source_gate | non_text_stack | 79 | 79 | 100.0% |
+| tool_gate | guardllm_non_text | 9 | 9 | 100.0% |
+| tool_gate | no_defense_non_text | 3 | 9 | 33.33% |
+| tool_gate | schema_jsonschema | 3 | 9 | 33.33% |
+| tool_gate | policy_opa | 8 | 9 | 88.89% |
+| tool_gate | redis_rate_limit | 3 | 9 | 33.33% |
+| tool_gate | non_text_stack | 8 | 9 | 88.89% |
+| tool_gate_auth | guardllm_non_text | 4 | 4 | 100.0% |
+| tool_gate_auth | no_defense_non_text | 0 | 4 | 0.0% |
+| tool_gate_auth | schema_jsonschema | 0 | 4 | 0.0% |
+| tool_gate_auth | policy_opa | 0 | 4 | 0.0% |
+| tool_gate_auth | redis_rate_limit | 0 | 4 | 0.0% |
+| tool_gate_auth | non_text_stack | 0 | 4 | 0.0% |
+| validation | guardllm_non_text | 4 | 4 | 100.0% |
+| validation | no_defense_non_text | 0 | 4 | 0.0% |
+| validation | schema_jsonschema | 0 | 4 | 0.0% |
+| validation | policy_opa | 0 | 4 | 0.0% |
+| validation | redis_rate_limit | 0 | 4 | 0.0% |
+| validation | non_text_stack | 0 | 4 | 0.0% |
 
 ## Holdout Generalization (Legacy Upstream Snapshots)
 
@@ -84,13 +141,6 @@ Cost proxy:
 | guardllm | 100.0% | 100.0% | 100.0% | 100.0 | 1 | 5 | 0 | 0 |
 | no_defense | 83.33% | 0.0% | 0.0% | 0.0 | 0 | 5 | 0 | 1 |
 | regex_rule_based | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| open_source_deberta | 50.0% | 0.0% | 0.0% | 0.0 | 0 | 3 | 2 | 1 |
-| azure_prompt_shields | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| openai_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
-| anthropic_policy_adapter | 50.0% | 25.0% | 100.0% | 40.0 | 1 | 2 | 3 | 0 |
-| bedrock_guardrails | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| azure_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
-| bedrock_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
 
 ## Official Reference (Pinned Sources)
 

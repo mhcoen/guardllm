@@ -21,77 +21,93 @@
 | upstream_mcp_bench | 320/320 (100.0%) | 80/320 (25.0%) | 80/320 (25.0%) | 40/320 (12.5%) | 87.5% |
 | upstream_mcpbench | 4794/4800 (99.88%) | 1194/4800 (24.88%) | 1200/4800 (25.0%) | 600/4800 (12.5%) | 87.38% |
 | upstream_pint | 16/16 (100.0%) | 8/16 (50.0%) | 8/16 (50.0%) | 0/16 (0.0%) | 100.0% |
+| upstream_wainjectbench | 3486/3698 (94.27%) | 3490/3698 (94.38%) | 0/3698 (0.0%) | 0/3698 (0.0%) | 94.27% |
 
 ## Overall
 
-- `guardllm`: 6441/6448 (99.89%)
-- `isolation_only`: 1859/6448 (28.83%)
-- `source_gate_only`: 1873/6448 (29.05%)
-- `no_defense`: 705/6448 (10.93%)
+- `guardllm`: 9927/10146 (97.84%)
+- `isolation_only`: 5349/10146 (52.72%)
+- `source_gate_only`: 1873/10146 (18.46%)
+- `no_defense`: 705/10146 (6.95%)
 
 ## Full-Suite Breakdown
 
 | strategy | attack-mitigation success | benign/allow correctness |
 |---|---:|---:|
-| guardllm | 5667/5674 (99.88%) | 774/774 (100.0%) |
-| isolation_only | 1085/5674 (19.12%) | 774/774 (100.0%) |
-| source_gate_only | 1168/5674 (20.59%) | 705/774 (91.09%) |
-| no_defense | 0/5674 (0.0%) | 705/774 (91.09%) |
+| guardllm | 6657/6665 (99.88%) | 3270/3481 (93.94%) |
+| isolation_only | 2075/6665 (31.13%) | 3274/3481 (94.05%) |
+| source_gate_only | 1168/6665 (17.52%) | 705/3481 (20.25%) |
+| no_defense | 0/6665 (0.0%) | 705/3481 (20.25%) |
 
 ## Text-Only Comparison
 
-- Record count: `1215`
-- Azure Prompt Shields enabled: `True`
+- Text scope: `injection`
+- Included suites in text scope: `bipia_style, garak_style, owasp_llm_top10_style, pint_style, promptfoo_redteam_style, rag_poisoning_style, secrets_exfil_style, unicode_evasion_style, upstream_agentdojo, upstream_bipia, upstream_pint, upstream_wainjectbench`
+- Record count: `3823`
+- Azure Prompt Shields enabled: `False`
 - Bedrock Guardrails enabled: `False`
-- Open-source classifier enabled: `True`
-- Open-source model: `protectai/deberta-v3-base-prompt-injection-v2`
-- OpenAI policy adapter enabled: `True`
+- Open-source classifier enabled: `False`
+- OpenAI policy adapter enabled: `False`
 - OpenAI model: `gpt-4.1-mini`
-- Anthropic policy adapter enabled: `True`
+- Anthropic policy adapter enabled: `False`
 - Anthropic model: `claude-3-5-haiku-latest`
 
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| guardllm | 9.79% | 92.86% | 2.32% | 4.53 | 26 | 93 | 2 | 1094 |
-| no_defense | 7.82% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 1120 |
-| regex_rule_based | 8.15% | 100.0% | 0.36% | 0.72 | 4 | 95 | 0 | 1116 |
-| open_source_deberta | 11.85% | 71.3% | 7.32% | 13.28 | 82 | 62 | 33 | 1038 |
-| azure_prompt_shields | 9.63% | 100.0% | 1.96% | 3.84 | 22 | 95 | 0 | 1098 |
-| openai_policy_adapter | 38.27% | 99.47% | 33.21% | 49.79 | 372 | 93 | 2 | 748 |
-| anthropic_policy_adapter | 28.97% | 97.07% | 23.66% | 38.05 | 265 | 87 | 8 | 855 |
-| azure_plus_guardllm | 11.52% | 95.92% | 4.2% | 8.05 | 47 | 93 | 2 | 1073 |
+| guardllm | 93.17% | 99.1% | 75.12% | 85.46 | 767 | 2795 | 7 | 254 |
+| no_defense | 73.29% | 0.0% | 0.0% | 0.0 | 0 | 2802 | 0 | 1021 |
+| regex_rule_based | 73.37% | 100.0% | 0.29% | 0.58 | 3 | 2802 | 0 | 1018 |
 
 | strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |
 |---|---:|---:|---:|
-| guardllm | 0.03 | 0.08 | 0.98 |
+| guardllm | 0.08 | 0.21 | 2.59 |
 | no_defense | 0.0 | 0.0 | 0.0 |
-| regex_rule_based | 0.0 | 0.01 | 0.18 |
-| open_source_deberta | 23.48 | 45.97 | 692.0 |
-| azure_prompt_shields | 286.95 | 550.68 | 4978.92 |
-| openai_policy_adapter | 687.92 | 1159.07 | 2480.23 |
-| anthropic_policy_adapter | 686.36 | 1024.03 | 3893.35 |
-| azure_plus_guardllm | 286.98 | 550.76 | 4979.9 |
+| regex_rule_based | 0.01 | 0.02 | 0.19 |
+
+Top GuardLLM false-negative patterns:
+- `very`: `438`
+- `image`: `64`
+- `white`: `36`
+- `background`: `36`
+- `important`: `33`
+- `patterned`: `32`
+- `against`: `29`
+- `like`: `28`
+- `blue`: `28`
+- `comment`: `27`
+- `click`: `26`
+- `possibly`: `26`
+- `must`: `25`
+- `attention`: `24`
+- `functionality`: `24`
+- `moved`: `24`
+- `order`: `24`
+- `page`: `24`
+- `parked`: `22`
+- `animated`: `20`
 
 Cost proxy:
-- Azure Prompt Shields calls: `1215`
+- Azure Prompt Shields calls: `0`
 - Bedrock ApplyGuardrail calls: `0`
 - Bedrock wordPolicyUnits: `0`
 
 ## Non-Text Comparison
 
 - Record count: `5230`
-- Casbin available: `True`
-- Pydantic available: `True`
+- Casbin available: `False`
+- Pydantic available: `False`
+- casbin_rbac error: `No module named 'casbin'`
+- strict_schema_stack error: `No module named 'pydantic'`
 | strategy | passed | total | micro pass rate | macro-by-kind |
 |---|---:|---:|---:|
 | guardllm_non_text | 5230 | 5230 | 100.0% | 100.0% |
 | no_defense_non_text | 679 | 5230 | 12.98% | 12.49% |
-| schema_jsonschema | 681 | 5230 | 13.02% | 16.66% |
+| schema_jsonschema | 1354 | 5230 | 25.89% | 29.14% |
 | policy_opa | 2527 | 5230 | 48.32% | 41.65% |
-| casbin_rbac | 4549 | 5230 | 86.98% | 79.11% |
+| casbin_rbac | 2703 | 5230 | 51.68% | 50.02% |
 | strict_schema_stack | 5229 | 5230 | 99.98% | 99.98% |
 | redis_rate_limit | 1355 | 5230 | 25.91% | 29.16% |
-| non_text_stack | 3201 | 5230 | 61.2% | 54.15% |
+| non_text_stack | 3874 | 5230 | 74.07% | 66.63% |
 
 Excluding `source_gate`:
 
@@ -99,12 +115,12 @@ Excluding `source_gate`:
 |---|---:|---:|---:|---:|
 | guardllm_non_text | 4061 | 4061 | 100.0% | 100.0% |
 | no_defense_non_text | 678 | 4061 | 16.7% | 14.27% |
-| schema_jsonschema | 680 | 4061 | 16.74% | 19.03% |
+| schema_jsonschema | 1353 | 4061 | 33.32% | 33.29% |
 | policy_opa | 1358 | 4061 | 33.44% | 33.31% |
-| casbin_rbac | 3380 | 4061 | 83.23% | 76.13% |
+| casbin_rbac | 2703 | 4061 | 66.56% | 57.16% |
 | strict_schema_stack | 4060 | 4061 | 99.98% | 99.98% |
 | redis_rate_limit | 1354 | 4061 | 33.34% | 33.31% |
-| non_text_stack | 2032 | 4061 | 50.04% | 47.6% |
+| non_text_stack | 2705 | 4061 | 66.61% | 61.86% |
 
 | non-text kind | strategy | passed | total | pass rate |
 |---|---|---:|---:|---:|
@@ -112,7 +128,7 @@ Excluding `source_gate`:
 | action_gate | no_defense_non_text | 3 | 678 | 0.44% |
 | action_gate | schema_jsonschema | 3 | 678 | 0.44% |
 | action_gate | policy_opa | 676 | 678 | 99.71% |
-| action_gate | casbin_rbac | 676 | 678 | 99.71% |
+| action_gate | casbin_rbac | 675 | 678 | 99.56% |
 | action_gate | strict_schema_stack | 678 | 678 | 100.0% |
 | action_gate | redis_rate_limit | 3 | 678 | 0.44% |
 | action_gate | non_text_stack | 676 | 678 | 99.71% |
@@ -120,7 +136,7 @@ Excluding `source_gate`:
 | binding_replay | no_defense_non_text | 2 | 676 | 0.3% |
 | binding_replay | schema_jsonschema | 2 | 676 | 0.3% |
 | binding_replay | policy_opa | 2 | 676 | 0.3% |
-| binding_replay | casbin_rbac | 676 | 676 | 100.0% |
+| binding_replay | casbin_rbac | 674 | 676 | 99.7% |
 | binding_replay | strict_schema_stack | 676 | 676 | 100.0% |
 | binding_replay | redis_rate_limit | 2 | 676 | 0.3% |
 | binding_replay | non_text_stack | 2 | 676 | 0.3% |
@@ -128,7 +144,7 @@ Excluding `source_gate`:
 | error_sanitize | no_defense_non_text | 0 | 6 | 0.0% |
 | error_sanitize | schema_jsonschema | 2 | 6 | 33.33% |
 | error_sanitize | policy_opa | 2 | 6 | 33.33% |
-| error_sanitize | casbin_rbac | 2 | 6 | 33.33% |
+| error_sanitize | casbin_rbac | 0 | 6 | 0.0% |
 | error_sanitize | strict_schema_stack | 6 | 6 | 100.0% |
 | error_sanitize | redis_rate_limit | 2 | 6 | 33.33% |
 | error_sanitize | non_text_stack | 2 | 6 | 33.33% |
@@ -144,7 +160,7 @@ Excluding `source_gate`:
 | source_gate | no_defense_non_text | 1 | 1169 | 0.09% |
 | source_gate | schema_jsonschema | 1 | 1169 | 0.09% |
 | source_gate | policy_opa | 1169 | 1169 | 100.0% |
-| source_gate | casbin_rbac | 1169 | 1169 | 100.0% |
+| source_gate | casbin_rbac | 0 | 1169 | 0.0% |
 | source_gate | strict_schema_stack | 1169 | 1169 | 100.0% |
 | source_gate | redis_rate_limit | 1 | 1169 | 0.09% |
 | source_gate | non_text_stack | 1169 | 1169 | 100.0% |
@@ -152,7 +168,7 @@ Excluding `source_gate`:
 | tool_gate | no_defense_non_text | 673 | 679 | 99.12% |
 | tool_gate | schema_jsonschema | 673 | 679 | 99.12% |
 | tool_gate | policy_opa | 678 | 679 | 99.85% |
-| tool_gate | casbin_rbac | 678 | 679 | 99.85% |
+| tool_gate | casbin_rbac | 6 | 679 | 0.88% |
 | tool_gate | strict_schema_stack | 678 | 679 | 99.85% |
 | tool_gate | redis_rate_limit | 673 | 679 | 99.12% |
 | tool_gate | non_text_stack | 678 | 679 | 99.85% |
@@ -166,26 +182,21 @@ Excluding `source_gate`:
 | tool_gate_auth | non_text_stack | 0 | 674 | 0.0% |
 | validation | guardllm_non_text | 674 | 674 | 100.0% |
 | validation | no_defense_non_text | 0 | 674 | 0.0% |
-| validation | schema_jsonschema | 0 | 674 | 0.0% |
+| validation | schema_jsonschema | 673 | 674 | 99.85% |
 | validation | policy_opa | 0 | 674 | 0.0% |
 | validation | casbin_rbac | 674 | 674 | 100.0% |
 | validation | strict_schema_stack | 674 | 674 | 100.0% |
 | validation | redis_rate_limit | 0 | 674 | 0.0% |
-| validation | non_text_stack | 0 | 674 | 0.0% |
+| validation | non_text_stack | 673 | 674 | 99.85% |
 
 ## Holdout Generalization (Legacy Upstream Snapshots)
 
 - Record count: `6`
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| guardllm | 100.0% | 100.0% | 100.0% | 100.0 | 1 | 5 | 0 | 0 |
+| guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
 | no_defense | 83.33% | 0.0% | 0.0% | 0.0 | 0 | 5 | 0 | 1 |
 | regex_rule_based | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| open_source_deberta | 50.0% | 0.0% | 0.0% | 0.0 | 0 | 3 | 2 | 1 |
-| azure_prompt_shields | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
-| openai_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
-| anthropic_policy_adapter | 66.67% | 33.33% | 100.0% | 50.0 | 1 | 3 | 2 | 0 |
-| azure_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
 
 ## Official Reference (Pinned Sources)
 
@@ -198,3 +209,4 @@ Excluding `source_gate`:
 - `injecagent` @ `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`: {"rows": 30}
 - `mcpbench` @ `5f397445370e6cb44dfdfc5680a48f128a75d349`: {"rows": 600}
 - `mcp_bench` @ `7a8eaeae83a842a2949080acc5473f65e1569daf`: {"rows": 40}
+- `wainjectbench` @ `4a5b7a5d4e393983d7105aed3485014b7206d205`: {"rows": 3698}

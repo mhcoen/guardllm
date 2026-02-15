@@ -52,7 +52,7 @@
       "snapshot_dir": "benchmarks/upstream/injecagent/vf19c9f2c",
       "source_export": "data/attacker_cases_dh.jsonl",
       "imported_raw_records": 30,
-      "mapped_cases": 60
+      "mapped_cases": 240
     },
     {
       "suite": "mcpbench",
@@ -61,7 +61,7 @@
       "snapshot_dir": "benchmarks/upstream/mcpbench/v5f397445",
       "source_export": "langProBe/WebSearch/data/websearch_600.jsonl",
       "imported_raw_records": 600,
-      "mapped_cases": 1200
+      "mapped_cases": 4800
     },
     {
       "suite": "mcp_bench",
@@ -70,7 +70,7 @@
       "snapshot_dir": "benchmarks/upstream/mcp_bench/v7a8eaeae",
       "source_export": "mcp_servers/medcalc/MedCalcBench/dataset/test_data_short.csv",
       "imported_raw_records": 40,
-      "mapped_cases": 80
+      "mapped_cases": 320
     }
   ]
 }

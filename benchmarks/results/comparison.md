@@ -16,27 +16,27 @@
 | upstream_agentdojo | 26/26 (100.0%) | 13/26 (50.0%) | 13/26 (50.0%) | 0/26 (0.0%) | 100.0% |
 | upstream_bipia | 124/124 (100.0%) | 74/124 (59.68%) | 74/124 (59.68%) | 24/124 (19.35%) | 80.65% |
 | upstream_harmbench | 640/640 (100.0%) | 320/640 (50.0%) | 320/640 (50.0%) | 0/640 (0.0%) | 100.0% |
-| upstream_injecagent | 60/60 (100.0%) | 30/60 (50.0%) | 30/60 (50.0%) | 0/60 (0.0%) | 100.0% |
+| upstream_injecagent | 240/240 (100.0%) | 60/240 (25.0%) | 60/240 (25.0%) | 30/240 (12.5%) | 87.5% |
 | upstream_jailbreakbench | 199/200 (99.5%) | 99/200 (49.5%) | 100/200 (50.0%) | 0/200 (0.0%) | 99.5% |
-| upstream_mcp_bench | 80/80 (100.0%) | 40/80 (50.0%) | 40/80 (50.0%) | 0/80 (0.0%) | 100.0% |
-| upstream_mcpbench | 1194/1200 (99.5%) | 594/1200 (49.5%) | 600/1200 (50.0%) | 0/1200 (0.0%) | 99.5% |
+| upstream_mcp_bench | 320/320 (100.0%) | 80/320 (25.0%) | 80/320 (25.0%) | 40/320 (12.5%) | 87.5% |
+| upstream_mcpbench | 4794/4800 (99.88%) | 1194/4800 (24.88%) | 1200/4800 (25.0%) | 600/4800 (12.5%) | 87.38% |
 | upstream_pint | 16/16 (100.0%) | 8/16 (50.0%) | 8/16 (50.0%) | 0/16 (0.0%) | 100.0% |
 
 ## Overall
 
-- `guardllm`: 2421/2428 (99.71%)
-- `isolation_only`: 1189/2428 (48.97%)
-- `source_gate_only`: 1203/2428 (49.55%)
-- `no_defense`: 35/2428 (1.44%)
+- `guardllm`: 6441/6448 (99.89%)
+- `isolation_only`: 1859/6448 (28.83%)
+- `source_gate_only`: 1873/6448 (29.05%)
+- `no_defense`: 705/6448 (10.93%)
 
 ## Full-Suite Breakdown
 
 | strategy | attack-mitigation success | benign/allow correctness |
 |---|---:|---:|
-| guardllm | 2317/2324 (99.7%) | 104/104 (100.0%) |
-| isolation_only | 1085/2324 (46.69%) | 104/104 (100.0%) |
-| source_gate_only | 1168/2324 (50.26%) | 35/104 (33.65%) |
-| no_defense | 0/2324 (0.0%) | 35/104 (33.65%) |
+| guardllm | 5667/5674 (99.88%) | 774/774 (100.0%) |
+| isolation_only | 1085/5674 (19.12%) | 774/774 (100.0%) |
+| source_gate_only | 1168/5674 (20.59%) | 705/774 (91.09%) |
+| no_defense | 0/5674 (0.0%) | 705/774 (91.09%) |
 
 ## Text-Only Comparison
 
@@ -79,51 +79,51 @@ Cost proxy:
 
 ## Non-Text Comparison
 
-- Record count: `1210`
+- Record count: `5230`
 - Casbin available: `True`
 - Pydantic available: `True`
 | strategy | passed | total | micro pass rate | macro-by-kind |
 |---|---:|---:|---:|
-| guardllm_non_text | 1210 | 1210 | 100.0% | 100.0% |
-| no_defense_non_text | 9 | 1210 | 0.74% | 13.03% |
-| schema_jsonschema | 11 | 1210 | 0.91% | 17.2% |
-| policy_opa | 1187 | 1210 | 98.1% | 41.32% |
-| casbin_rbac | 1199 | 1210 | 99.09% | 74.65% |
-| strict_schema_stack | 1209 | 1210 | 99.92% | 98.61% |
-| redis_rate_limit | 15 | 1210 | 1.24% | 29.7% |
-| non_text_stack | 1191 | 1210 | 98.43% | 53.82% |
+| guardllm_non_text | 5230 | 5230 | 100.0% | 100.0% |
+| no_defense_non_text | 679 | 5230 | 12.98% | 12.49% |
+| schema_jsonschema | 681 | 5230 | 13.02% | 16.66% |
+| policy_opa | 2527 | 5230 | 48.32% | 41.65% |
+| casbin_rbac | 4549 | 5230 | 86.98% | 79.11% |
+| strict_schema_stack | 5229 | 5230 | 99.98% | 99.98% |
+| redis_rate_limit | 1355 | 5230 | 25.91% | 29.16% |
+| non_text_stack | 3201 | 5230 | 61.2% | 54.15% |
 
 Excluding `source_gate`:
 
 | strategy | passed | total | micro pass rate | macro-by-kind |
 |---|---:|---:|---:|---:|
-| guardllm_non_text | 41 | 41 | 100.0% | 100.0% |
-| no_defense_non_text | 8 | 41 | 19.51% | 14.88% |
-| schema_jsonschema | 10 | 41 | 24.39% | 19.64% |
-| policy_opa | 18 | 41 | 43.9% | 32.94% |
-| casbin_rbac | 30 | 41 | 73.17% | 71.03% |
-| strict_schema_stack | 40 | 41 | 97.56% | 98.41% |
-| redis_rate_limit | 14 | 41 | 34.15% | 33.93% |
-| non_text_stack | 22 | 41 | 53.66% | 47.22% |
+| guardllm_non_text | 4061 | 4061 | 100.0% | 100.0% |
+| no_defense_non_text | 678 | 4061 | 16.7% | 14.27% |
+| schema_jsonschema | 680 | 4061 | 16.74% | 19.03% |
+| policy_opa | 1358 | 4061 | 33.44% | 33.31% |
+| casbin_rbac | 3380 | 4061 | 83.23% | 76.13% |
+| strict_schema_stack | 4060 | 4061 | 99.98% | 99.98% |
+| redis_rate_limit | 1354 | 4061 | 33.34% | 33.31% |
+| non_text_stack | 2032 | 4061 | 50.04% | 47.6% |
 
 | non-text kind | strategy | passed | total | pass rate |
 |---|---|---:|---:|---:|
-| action_gate | guardllm_non_text | 8 | 8 | 100.0% |
-| action_gate | no_defense_non_text | 3 | 8 | 37.5% |
-| action_gate | schema_jsonschema | 3 | 8 | 37.5% |
-| action_gate | policy_opa | 6 | 8 | 75.0% |
-| action_gate | casbin_rbac | 6 | 8 | 75.0% |
-| action_gate | strict_schema_stack | 8 | 8 | 100.0% |
-| action_gate | redis_rate_limit | 3 | 8 | 37.5% |
-| action_gate | non_text_stack | 6 | 8 | 75.0% |
-| binding_replay | guardllm_non_text | 6 | 6 | 100.0% |
-| binding_replay | no_defense_non_text | 2 | 6 | 33.33% |
-| binding_replay | schema_jsonschema | 2 | 6 | 33.33% |
-| binding_replay | policy_opa | 2 | 6 | 33.33% |
-| binding_replay | casbin_rbac | 6 | 6 | 100.0% |
-| binding_replay | strict_schema_stack | 6 | 6 | 100.0% |
-| binding_replay | redis_rate_limit | 2 | 6 | 33.33% |
-| binding_replay | non_text_stack | 2 | 6 | 33.33% |
+| action_gate | guardllm_non_text | 678 | 678 | 100.0% |
+| action_gate | no_defense_non_text | 3 | 678 | 0.44% |
+| action_gate | schema_jsonschema | 3 | 678 | 0.44% |
+| action_gate | policy_opa | 676 | 678 | 99.71% |
+| action_gate | casbin_rbac | 676 | 678 | 99.71% |
+| action_gate | strict_schema_stack | 678 | 678 | 100.0% |
+| action_gate | redis_rate_limit | 3 | 678 | 0.44% |
+| action_gate | non_text_stack | 676 | 678 | 99.71% |
+| binding_replay | guardllm_non_text | 676 | 676 | 100.0% |
+| binding_replay | no_defense_non_text | 2 | 676 | 0.3% |
+| binding_replay | schema_jsonschema | 2 | 676 | 0.3% |
+| binding_replay | policy_opa | 2 | 676 | 0.3% |
+| binding_replay | casbin_rbac | 676 | 676 | 100.0% |
+| binding_replay | strict_schema_stack | 676 | 676 | 100.0% |
+| binding_replay | redis_rate_limit | 2 | 676 | 0.3% |
+| binding_replay | non_text_stack | 2 | 676 | 0.3% |
 | error_sanitize | guardllm_non_text | 6 | 6 | 100.0% |
 | error_sanitize | no_defense_non_text | 0 | 6 | 0.0% |
 | error_sanitize | schema_jsonschema | 2 | 6 | 33.33% |
@@ -132,14 +132,14 @@ Excluding `source_gate`:
 | error_sanitize | strict_schema_stack | 6 | 6 | 100.0% |
 | error_sanitize | redis_rate_limit | 2 | 6 | 33.33% |
 | error_sanitize | non_text_stack | 2 | 6 | 33.33% |
-| rate_limit | guardllm_non_text | 4 | 4 | 100.0% |
-| rate_limit | no_defense_non_text | 0 | 4 | 0.0% |
-| rate_limit | schema_jsonschema | 0 | 4 | 0.0% |
-| rate_limit | policy_opa | 0 | 4 | 0.0% |
-| rate_limit | casbin_rbac | 0 | 4 | 0.0% |
-| rate_limit | strict_schema_stack | 4 | 4 | 100.0% |
-| rate_limit | redis_rate_limit | 4 | 4 | 100.0% |
-| rate_limit | non_text_stack | 4 | 4 | 100.0% |
+| rate_limit | guardllm_non_text | 674 | 674 | 100.0% |
+| rate_limit | no_defense_non_text | 0 | 674 | 0.0% |
+| rate_limit | schema_jsonschema | 0 | 674 | 0.0% |
+| rate_limit | policy_opa | 0 | 674 | 0.0% |
+| rate_limit | casbin_rbac | 0 | 674 | 0.0% |
+| rate_limit | strict_schema_stack | 674 | 674 | 100.0% |
+| rate_limit | redis_rate_limit | 674 | 674 | 100.0% |
+| rate_limit | non_text_stack | 674 | 674 | 100.0% |
 | source_gate | guardllm_non_text | 1169 | 1169 | 100.0% |
 | source_gate | no_defense_non_text | 1 | 1169 | 0.09% |
 | source_gate | schema_jsonschema | 1 | 1169 | 0.09% |
@@ -148,30 +148,30 @@ Excluding `source_gate`:
 | source_gate | strict_schema_stack | 1169 | 1169 | 100.0% |
 | source_gate | redis_rate_limit | 1 | 1169 | 0.09% |
 | source_gate | non_text_stack | 1169 | 1169 | 100.0% |
-| tool_gate | guardllm_non_text | 9 | 9 | 100.0% |
-| tool_gate | no_defense_non_text | 3 | 9 | 33.33% |
-| tool_gate | schema_jsonschema | 3 | 9 | 33.33% |
-| tool_gate | policy_opa | 8 | 9 | 88.89% |
-| tool_gate | casbin_rbac | 8 | 9 | 88.89% |
-| tool_gate | strict_schema_stack | 8 | 9 | 88.89% |
-| tool_gate | redis_rate_limit | 3 | 9 | 33.33% |
-| tool_gate | non_text_stack | 8 | 9 | 88.89% |
-| tool_gate_auth | guardllm_non_text | 4 | 4 | 100.0% |
-| tool_gate_auth | no_defense_non_text | 0 | 4 | 0.0% |
-| tool_gate_auth | schema_jsonschema | 0 | 4 | 0.0% |
-| tool_gate_auth | policy_opa | 0 | 4 | 0.0% |
-| tool_gate_auth | casbin_rbac | 4 | 4 | 100.0% |
-| tool_gate_auth | strict_schema_stack | 4 | 4 | 100.0% |
-| tool_gate_auth | redis_rate_limit | 0 | 4 | 0.0% |
-| tool_gate_auth | non_text_stack | 0 | 4 | 0.0% |
-| validation | guardllm_non_text | 4 | 4 | 100.0% |
-| validation | no_defense_non_text | 0 | 4 | 0.0% |
-| validation | schema_jsonschema | 0 | 4 | 0.0% |
-| validation | policy_opa | 0 | 4 | 0.0% |
-| validation | casbin_rbac | 4 | 4 | 100.0% |
-| validation | strict_schema_stack | 4 | 4 | 100.0% |
-| validation | redis_rate_limit | 0 | 4 | 0.0% |
-| validation | non_text_stack | 0 | 4 | 0.0% |
+| tool_gate | guardllm_non_text | 679 | 679 | 100.0% |
+| tool_gate | no_defense_non_text | 673 | 679 | 99.12% |
+| tool_gate | schema_jsonschema | 673 | 679 | 99.12% |
+| tool_gate | policy_opa | 678 | 679 | 99.85% |
+| tool_gate | casbin_rbac | 678 | 679 | 99.85% |
+| tool_gate | strict_schema_stack | 678 | 679 | 99.85% |
+| tool_gate | redis_rate_limit | 673 | 679 | 99.12% |
+| tool_gate | non_text_stack | 678 | 679 | 99.85% |
+| tool_gate_auth | guardllm_non_text | 674 | 674 | 100.0% |
+| tool_gate_auth | no_defense_non_text | 0 | 674 | 0.0% |
+| tool_gate_auth | schema_jsonschema | 0 | 674 | 0.0% |
+| tool_gate_auth | policy_opa | 0 | 674 | 0.0% |
+| tool_gate_auth | casbin_rbac | 674 | 674 | 100.0% |
+| tool_gate_auth | strict_schema_stack | 674 | 674 | 100.0% |
+| tool_gate_auth | redis_rate_limit | 0 | 674 | 0.0% |
+| tool_gate_auth | non_text_stack | 0 | 674 | 0.0% |
+| validation | guardllm_non_text | 674 | 674 | 100.0% |
+| validation | no_defense_non_text | 0 | 674 | 0.0% |
+| validation | schema_jsonschema | 0 | 674 | 0.0% |
+| validation | policy_opa | 0 | 674 | 0.0% |
+| validation | casbin_rbac | 674 | 674 | 100.0% |
+| validation | strict_schema_stack | 674 | 674 | 100.0% |
+| validation | redis_rate_limit | 0 | 674 | 0.0% |
+| validation | non_text_stack | 0 | 674 | 0.0% |
 
 ## Holdout Generalization (Legacy Upstream Snapshots)
 

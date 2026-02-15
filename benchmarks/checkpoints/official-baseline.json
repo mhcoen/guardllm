@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "expected_summary": {
+    "total": 248,
+    "passed": 248,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "by_suite": {
+      "agentdojo_style": {
+        "total": 14,
+        "passed": 14
+      },
+      "bipia_style": {
+        "total": 14,
+        "passed": 14
+      },
+      "garak_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "mcp_protocol_abuse_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "multistep_agent_attack_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "owasp_llm_top10_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "pint_style": {
+        "total": 14,
+        "passed": 14
+      },
+      "promptfoo_redteam_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "rag_poisoning_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "secrets_exfil_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "unicode_evasion_style": {
+        "total": 5,
+        "passed": 5
+      },
+      "upstream_pint": {
+        "total": 16,
+        "passed": 16
+      },
+      "upstream_bipia": {
+        "total": 124,
+        "passed": 124
+      },
+      "upstream_agentdojo": {
+        "total": 26,
+        "passed": 26
+      }
+    }
+  },
+  "expected_failed_case_ids": []
+}

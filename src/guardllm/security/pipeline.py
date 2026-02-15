@@ -17,6 +17,7 @@ from guardllm.security.source_gate import (
 from guardllm.security.isolation import wrap_untrusted
 from guardllm.security.outbound_dlp import OutboundDLP
 from guardllm.security.policy_engine import PolicyEngine
+from guardllm.security.prompt_injection_detector import detect_prompt_injection
 from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
 from guardllm.security.rate_limiter import RateLimiter
 from guardllm.security.request_binding import verify_binding
@@ -70,6 +71,10 @@ class SecurityPipeline:
         """
         warnings: list[str] = []
 
+        # Early prompt-injection signal pass on raw input.
+        detection = detect_prompt_injection(content, ctx.content_type)
+        warnings.extend(detection.warnings)
+
         # L0: Sanitize
         san_result = self._sanitizer(content, ctx.content_type)
         cleaned = san_result.cleaned_text
@@ -78,6 +83,16 @@ class SecurityPipeline:
         # L1: Isolate untrusted/semi-trusted content
         isolated = False
         if ctx.trust_level in (TrustLevel.UNTRUSTED, TrustLevel.SEMI_TRUSTED):
+            cleaned = wrap_untrusted(
+                cleaned,
+                source_type=ctx.source_type,
+                source_id=ctx.source_id,
+                trust=ctx.trust_level.value,
+            )
+            isolated = True
+        elif detection.is_attack:
+            # If trusted content carries strong injection signals, keep the same
+            # structural boundary used for untrusted input.
             cleaned = wrap_untrusted(
                 cleaned,
                 source_type=ctx.source_type,
@@ -122,10 +137,11 @@ class SecurityPipeline:
         Runs: L6 (DLP) -> L7 (provenance) -> L8 (rate limit) -> L4 (canary).
 
         Ordering rationale (spec §7, §8):
-        - DLP runs first as a coarse pre-filter (LCS >= 100, n-gram >= 40%)
-          to catch obvious exfiltration cheaply before provenance.
+        - DLP runs first as a coarse pre-filter (default LCS >= 100,
+          n-gram >= 40%, configurable via PolicyConfig) to catch obvious
+          exfiltration cheaply before provenance.
         - Provenance runs second as the primary no-copy enforcement
-          (LCS >= 50, n-gram >= 30%) with stricter thresholds.
+          (default LCS >= 50, n-gram >= 30%, configurable via PolicyConfig).
         - Both layers share overlap utilities from normalization.py.
         - Secrets are always checked (even with quoting) in the DLP step.
 
@@ -139,7 +155,10 @@ class SecurityPipeline:
 
         # L7: Provenance check
         prov_allowed, prov_reason = self._provenance.check_outbound(
-            content, has_quoting_directive
+            content,
+            has_quoting_directive,
+            lcs_threshold=int(getattr(ctx.policy, "provenance_verbatim_lcs_min", 50)),
+            ngram_threshold=float(getattr(ctx.policy, "provenance_ngram_overlap_min", 0.30)),
         )
         if not prov_allowed:
             return OutboundResult(

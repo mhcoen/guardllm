@@ -21,6 +21,7 @@ pip-wheel-metadata/
 
 # Virtual environments
 .venv/
+.venv312/
 venv/
 env/
 ENV/
@@ -42,3 +43,12 @@ htmlcov/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Restricted upstream benchmark fixtures (do not redistribute in-repo)
+benchmarks/upstream/mcp_bench/
+benchmarks/upstream/wainjectbench/
+
+# Local benchmark caches/artifacts
+benchmarks/results/openai_policy_adapter_cache.jsonl
+benchmarks/results/bedrock_guardrail_verification*.json
+benchmarks/results/bedrock_prompt_attack_*_50.json

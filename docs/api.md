@@ -64,7 +64,13 @@ from guardllm.security.types import PolicyConfig
 guard = Guard(canary_session_id="session-1")
 ctx = Guard.context_mcp_server(
     server_id="mcp-mail",
-    policy=PolicyConfig(enable_destructive=True),
+    policy=PolicyConfig(
+        enable_destructive=True,
+        dlp_verbatim_lcs_min=100,
+        dlp_ngram_overlap_min=0.40,
+        provenance_verbatim_lcs_min=50,
+        provenance_ngram_overlap_min=0.30,
+    ),
 )
 
 tool = "gmail_send_email"

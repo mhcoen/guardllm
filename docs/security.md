@@ -53,6 +53,10 @@ Inbound path:
 4. Record provenance spans (L7)
 5. Check canary presence in inbound payloads (L4)
 
+L0 encoded payload handling:
+- Base64 and URL-encoded segments are decoded and scored with the prompt-injection detector.
+- This avoids relying only on fixed suspicious keyword lists.
+
 Tool-call path:
 1. Tool authorization/firewall checks (L5)
 2. Rate limiting (L8)
@@ -63,6 +67,12 @@ Outbound path:
 2. Provenance reuse guard (L7)
 3. Rate limiting (L8)
 4. Canary leakage detection (L4)
+
+Threshold tuning:
+- L6 and L7 overlap thresholds are configurable per context via `PolicyConfig`
+  (`dlp_verbatim_lcs_min`, `dlp_ngram_overlap_min`,
+  `provenance_verbatim_lcs_min`, `provenance_ngram_overlap_min`).
+- Defaults preserve prior behavior (`100/0.40` for DLP, `50/0.30` for provenance).
 
 ## Unknown-Provenance Source Handling
 

@@ -54,6 +54,9 @@ class ProvenanceTracker:
         self,
         content: str,
         has_quoting_directive: bool = False,
+        *,
+        lcs_threshold: int = 50,
+        ngram_threshold: float = 0.30,
     ) -> tuple[bool, str]:
         """Check if outbound content violates no-copy policy.
 
@@ -73,18 +76,18 @@ class ProvenanceTracker:
             if not normalized_span:
                 continue
 
-            # LCS check: >= 50 chars is a block
+            # LCS check: configurable (default >= 50 chars) is a block
             lcs_len = compute_lcs_length(normalized_content, normalized_span)
-            if lcs_len >= 50:
+            if lcs_len >= lcs_threshold:
                 return (
                     False,
                     f"Verbatim overlap ({lcs_len} chars) with untrusted "
                     f"content from {span.source_type}:{span.source_id}",
                 )
 
-            # N-gram overlap check: >= 30% is a block
+            # N-gram overlap check: configurable (default >= 30%) is a block
             overlap = compute_ngram_overlap(normalized_content, normalized_span, n=5)
-            if overlap >= 0.30:
+            if overlap >= ngram_threshold:
                 return (
                     False,
                     f"N-gram overlap ({overlap:.0%}) with untrusted "

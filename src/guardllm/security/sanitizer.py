@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup, Comment, Tag
 
+from guardllm.security.prompt_injection_detector import detect_prompt_injection
 from guardllm.security.types import ContentType, SanitizationResult
 
 # ---------------------------------------------------------------------------
@@ -34,13 +35,6 @@ _ALLOWED_TAGS = frozenset({
 })
 
 _EVENT_HANDLER_RE = re.compile(r"^on[a-z]+$", re.IGNORECASE)
-
-_SUSPICIOUS_SUBSTRINGS = [
-    "ignore previous", "ignore all", "forget previous", "override",
-    "system prompt", "new instructions", "forward all", "send to",
-    "delete all", "execute", "admin", "password", "token",
-    "api key", "secret", "credential", "private key",
-]
 
 _BASE64_RE = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
 _URL_ENCODED_RE = re.compile(r"(%[0-9A-Fa-f]{2}){4,}")
@@ -179,10 +173,18 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
 
     soup = BeautifulSoup(html, "html.parser")
 
+    hidden_classes: set[str] = set()
     # Track whether <style> blocks existed (class-based hiding possible)
     style_tags = soup.find_all("style")
     if style_tags:
         class_hiding_possible = True
+        style_blob = "\n".join(tag.get_text(" ", strip=True) for tag in style_tags)
+        for m in re.finditer(
+            r"\.([A-Za-z0-9_-]+)\s*\{[^}]*?(?:display\s*:\s*none|visibility\s*:\s*hidden)",
+            style_blob,
+            re.I | re.S,
+        ):
+            hidden_classes.add(m.group(1).lower())
 
     # Remove forbidden elements
     for tag_name in _STRIP_ELEMENTS:
@@ -192,9 +194,13 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
             el.decompose()
 
     # Remove HTML comments
+    comment_count = 0
     for comment in soup.find_all(string=lambda s: isinstance(s, Comment)):
+        comment_count += 1
         chars_stripped += len(str(comment))
         comment.extract()
+    if comment_count:
+        warnings.append(f"Removed {comment_count} HTML comment(s)")
 
     # Remove elements with hidden inline styles
     hidden_count = 0
@@ -208,6 +214,17 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
                 chars_stripped += len(removed_text)
                 hidden_count += 1
                 el.decompose()
+                continue
+
+        # Class-based hidden patterns from inline style definitions.
+        classes = attrs.get("class", [])
+        if not isinstance(classes, list):
+            classes = [str(classes)]
+        if hidden_classes and any(str(c).lower() in hidden_classes for c in classes):
+            removed_text = el.get_text()
+            chars_stripped += len(removed_text)
+            hidden_count += 1
+            el.decompose()
     if hidden_count:
         warnings.append(f"Removed {hidden_count} CSS-hidden element(s)")
 
@@ -230,6 +247,7 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
         warnings.append(f"Removed {svg_count} svg element(s) with text")
 
     # Strip disallowed attributes and non-allowed tags
+    removed_attr_payloads = 0
     for el in soup.find_all(True):
         tag_name = el.name.lower() if el.name else ""
 
@@ -245,9 +263,13 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
             if (
                 attr_lower.startswith("data-")
                 or attr_lower == "title"
+                or attr_lower == "alt"
                 or attr_lower == "aria-label"
                 or _EVENT_HANDLER_RE.match(attr_lower)
             ):
+                value = el_attrs.get(attr)
+                if value:
+                    removed_attr_payloads += len(" ".join(value) if isinstance(value, list) else str(value))
                 attrs_to_remove.append(attr)
             # Remove style (already processed for hiding)
             elif attr_lower == "style":
@@ -270,6 +292,9 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
         # Unwrap non-allowed tags (preserve inner content)
         if tag_name not in _ALLOWED_TAGS:
             el.unwrap()
+    if removed_attr_payloads:
+        warnings.append("Removed hidden text-bearing attributes (title/alt/data-*/aria-label)")
+        chars_stripped += removed_attr_payloads
 
     text = soup.get_text(separator="\n")
     # Collapse excessive blank lines
@@ -351,14 +376,13 @@ def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
             # Pad to multiple of 4
             padded = candidate + "=" * (-len(candidate) % 4)
             decoded = base64.b64decode(padded, validate=True).decode("utf-8", errors="ignore")
-            decoded_lower = decoded.lower()
-            for substring in _SUSPICIOUS_SUBSTRINGS:
-                if substring in decoded_lower:
-                    warnings.append(
-                        f"Base64 block decodes to text containing '{substring}'"
-                    )
-                    detected = True
-                    break
+            signal = detect_prompt_injection(decoded, ContentType.PLAINTEXT)
+            if signal.score >= 0.25:
+                detail = ", ".join(signal.matched_rules[:3]) if signal.matched_rules else "suspicious directives"
+                warnings.append(
+                    f"Base64 decoded payload flagged ({detail})"
+                )
+                detected = True
         except Exception:
             continue
 
@@ -367,14 +391,13 @@ def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
         candidate = match.group(0)
         try:
             decoded = urllib.parse.unquote(candidate)
-            decoded_lower = decoded.lower()
-            for substring in _SUSPICIOUS_SUBSTRINGS:
-                if substring in decoded_lower:
-                    warnings.append(
-                        f"URL-encoded sequence decodes to text containing '{substring}'"
-                    )
-                    detected = True
-                    break
+            signal = detect_prompt_injection(decoded, ContentType.PLAINTEXT)
+            if signal.score >= 0.25:
+                detail = ", ".join(signal.matched_rules[:3]) if signal.matched_rules else "suspicious directives"
+                warnings.append(
+                    f"URL-encoded payload flagged ({detail})"
+                )
+                detected = True
         except Exception:
             continue
 

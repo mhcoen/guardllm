@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,7 @@ BENCH_ROOT = Path(__file__).resolve().parent
 CASES_DIR = BENCH_ROOT / "cases"
 RESULTS_DIR = BENCH_ROOT / "results"
 LATEST = RESULTS_DIR / "latest.json"
+UPSTREAM_MANIFEST = BENCH_ROOT / "upstream" / "manifest.json"
 
 
 @dataclass
@@ -52,6 +54,9 @@ class RejectExternalEmailHandler(ConfirmationHandler):
     async def confirm(self, tool: str, args: dict, context: dict) -> bool:
         recipient = str(args.get("to", ""))
         return recipient.endswith("@example.com")
+
+
+CHECKPOINT_SCHEMA_VERSION = 1
 
 
 def _content_type(name: str) -> ContentType:
@@ -76,7 +81,18 @@ def _context_for_source(source_type: str, content_type: ContentType, policy: Pol
 
 def load_cases(suite: str | None) -> list[dict[str, Any]]:
     case_files = sorted(CASES_DIR.glob("*.jsonl"))
-    upstream_files = sorted((BENCH_ROOT / "upstream").glob("**/mapped_cases.jsonl"))
+    upstream_files: list[Path] = []
+    if UPSTREAM_MANIFEST.exists():
+        manifest = json.loads(UPSTREAM_MANIFEST.read_text())
+        for src in manifest.get("sources", []):
+            snapshot_dir = src.get("snapshot_dir")
+            if not snapshot_dir:
+                continue
+            mapped_path = ROOT / snapshot_dir / "mapped_cases.jsonl"
+            if mapped_path.exists():
+                upstream_files.append(mapped_path)
+    else:
+        upstream_files = sorted((BENCH_ROOT / "upstream").glob("**/mapped_cases.jsonl"))
     loaded: list[dict[str, Any]] = []
     for path in [*case_files, *upstream_files]:
         with path.open() as f:
@@ -417,15 +433,100 @@ def write_report(results: list[CaseResult], summary: dict[str, Any]) -> None:
     LATEST.write_text(json.dumps(payload, indent=2))
 
 
-def main() -> None:
+def build_checkpoint(summary: dict[str, Any], results: list[CaseResult]) -> dict[str, Any]:
+    failed_case_ids = sorted(r.id for r in results if not r.passed)
+    return {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "expected_summary": summary,
+        "expected_failed_case_ids": failed_case_ids,
+    }
+
+
+def write_checkpoint(path: Path, checkpoint: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(checkpoint, indent=2) + "\n")
+
+
+def load_checkpoint(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text())
+
+
+def compare_checkpoint(
+    expected: dict[str, Any],
+    actual_summary: dict[str, Any],
+    actual_results: list[CaseResult],
+    allow_extra_suites: bool = False,
+) -> list[str]:
+    errors: list[str] = []
+
+    if expected.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+        errors.append(
+            f"unsupported checkpoint schema: {expected.get('schema_version')} (expected {CHECKPOINT_SCHEMA_VERSION})"
+        )
+        return errors
+
+    expected_summary = expected.get("expected_summary", {})
+    expected_failed = sorted(expected.get("expected_failed_case_ids", []))
+    actual_failed = sorted(r.id for r in actual_results if not r.passed)
+
+    for key in ("total", "passed", "failed"):
+        if expected_summary.get(key) != actual_summary.get(key):
+            errors.append(
+                f"summary mismatch for {key}: expected={expected_summary.get(key)} actual={actual_summary.get(key)}"
+            )
+
+    expected_suites = expected_summary.get("by_suite", {})
+    actual_suites = actual_summary.get("by_suite", {})
+
+    for suite, exp_stats in expected_suites.items():
+        got = actual_suites.get(suite)
+        if got is None:
+            errors.append(f"missing suite in run output: {suite}")
+            continue
+        for key in ("total", "passed"):
+            if exp_stats.get(key) != got.get(key):
+                errors.append(
+                    f"suite mismatch {suite}.{key}: expected={exp_stats.get(key)} actual={got.get(key)}"
+                )
+
+    if not allow_extra_suites:
+        extra = sorted(set(actual_suites) - set(expected_suites))
+        if extra:
+            errors.append(f"unexpected suites present in run output: {', '.join(extra)}")
+
+    if expected_failed != actual_failed:
+        errors.append(
+            "failed-case mismatch: "
+            f"expected={expected_failed or '[]'} actual={actual_failed or '[]'}"
+        )
+
+    return errors
+
+
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Validate results against checkpoint JSON file",
+    )
+    parser.add_argument(
+        "--write-checkpoint",
+        default=None,
+        help="Write checkpoint JSON file from current run",
+    )
+    parser.add_argument(
+        "--allow-extra-suites",
+        action="store_true",
+        help="When validating checkpoint, do not fail on extra suites in run output",
+    )
     args = parser.parse_args()
 
     cases = load_cases(args.suite)
     if not cases:
         print("No benchmark cases found.")
-        return
+        return 1
 
     results = [run_case(c) for c in cases]
     summary = summarize(results)
@@ -443,8 +544,33 @@ def main() -> None:
         for r in failed:
             print(f"  {r.id}: {r.details}")
 
+    checkpoint_payload = build_checkpoint(summary, results)
+    if args.write_checkpoint:
+        write_path = Path(args.write_checkpoint)
+        write_checkpoint(write_path, checkpoint_payload)
+        print(f"checkpoint written: {write_path}")
+
+    if args.checkpoint:
+        checkpoint_path = Path(args.checkpoint)
+        expected = load_checkpoint(checkpoint_path)
+        mismatches = compare_checkpoint(
+            expected=expected,
+            actual_summary=summary,
+            actual_results=results,
+            allow_extra_suites=args.allow_extra_suites,
+        )
+        if mismatches:
+            print("\ncheckpoint validation: FAILED")
+            for msg in mismatches:
+                print(f"  - {msg}")
+            print(f"checkpoint: {checkpoint_path}")
+            print(f"report: {LATEST}")
+            return 1
+        print(f"\ncheckpoint validation: PASS ({checkpoint_path})")
+
     print(f"\nreport: {LATEST}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

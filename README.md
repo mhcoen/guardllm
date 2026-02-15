@@ -24,7 +24,7 @@ GuardLLM applies a defense-in-depth security model across untrusted content hand
 
 However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
 
-Benchmark status: GuardLLM currently passes all benchmark cases in this repo (`89/89`) across [PINT-style](benchmarks/cases/pint_style.jsonl), [BIPIA-style](benchmarks/cases/bipia_style.jsonl), [AgentDojo-style](benchmarks/cases/agentdojo_style.jsonl), [OWASP LLM Top 10-style](benchmarks/cases/owasp_llm_top10_style.jsonl), [garak-style](benchmarks/cases/garak_style.jsonl), [promptfoo red-team style](benchmarks/cases/promptfoo_redteam_style.jsonl), [MCP protocol abuse](benchmarks/cases/mcp_protocol_abuse_style.jsonl), [RAG poisoning](benchmarks/cases/rag_poisoning_style.jsonl), [secrets exfiltration](benchmarks/cases/secrets_exfil_style.jsonl), [multistep agent attacks](benchmarks/cases/multistep_agent_attack_style.jsonl), [Unicode evasion](benchmarks/cases/unicode_evasion_style.jsonl), plus versioned upstream-derived snapshots from [PINT](benchmarks/upstream/pint/v0aa0d64/mapped_cases.jsonl), [BIPIA](benchmarks/upstream/bipia/va004b69/mapped_cases.jsonl), and [AgentDojo](benchmarks/upstream/agentdojo/v462c88d/mapped_cases.jsonl) (see [benchmark harness docs](benchmarks/README.md)).
+Benchmark status (latest local snapshot): full suite `9927/10146` (`97.84%`), text-injection `93.17%` accuracy / `85.46` F1 at `0.07ms` average latency over `3823` records, and non-text controls `5230/5230` (`100%`) (`4061/4061` excluding `source_gate`). Full methodology and tables: [benchmarks/README.md](benchmarks/README.md), [benchmarks/results/comparison.md](benchmarks/results/comparison.md).
 
 ## Install
 
@@ -37,7 +37,7 @@ pip install guardllm
 1. Install GuardLLM:
    - `pip install guardllm`
 2. Optionally run the benchmark baseline:
-   - `python benchmarks/run_benchmarks.py`
+   - `python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json`
 3. Follow the simplified quick-start guide:
    - [docs/quick_start.md](docs/quick_start.md)
 4. Run practical tutorials:
@@ -109,22 +109,52 @@ Primary API:
 - Benchmarking: [benchmarks/README.md](benchmarks/README.md)
 - Tutorials: [tutorials/README.md](tutorials/README.md)
 
-## Current Benchmark Results
+## Benchmark Highlights
 
-Latest local benchmark run:
-- Total: `89`
-- Passed: `89`
-- Failed: `0`
-- Pass rate: `100%`
-- Suites: `pint_style (14/14)`, `bipia_style (14/14)`, `agentdojo_style (14/14)`, `owasp_llm_top10_style (5/5)`, `garak_style (5/5)`, `promptfoo_redteam_style (5/5)`, `mcp_protocol_abuse_style (5/5)`, `rag_poisoning_style (5/5)`, `secrets_exfil_style (5/5)`, `multistep_agent_attack_style (5/5)`, `unicode_evasion_style (5/5)`, `upstream_pint (2/2)`, `upstream_bipia (2/2)`, `upstream_agentdojo (3/3)`
+Latest comparison snapshot (`benchmarks/results/comparison.json`).
+
+Text benchmark (prompt-injection scope, `3823` records):
+
+| Strategy | F1 | Precision | Recall | Avg Latency |
+|---|---:|---:|---:|---:|
+| GuardLLM | 85.46 | 99.10% | 75.12% | 0.07ms |
+| OpenAI (`gpt-4.1-mini`) | 61.79 | 96.47% | 45.45% | 615.68ms |
+| Anthropic (`claude-3-5-haiku-latest`) | 49.29 | 89.00% | 34.08% | 662.14ms |
+| Azure Prompt Shields | 23.60 | 97.86% | 13.42% | 209.34ms |
+| Bedrock Guardrails (`HIGH`) | 32.62 | 100.0% | 19.49% | 748.27ms |
+| Regex Rule Baseline | 0.58 | 100.0% | 0.29% | 0.00ms |
+| No Defense | 0.00 | 0.0% | 0.0% | 0.00ms |
+
+Provider rows (OpenAI/Anthropic/Azure) are from the same `3823`-record injection scope in prior provider-enabled runs.
+`No Defense` is the null baseline (always effectively benign/no-attack). Accuracy is intentionally omitted in this table; if included, it is inflated by class imbalance in this text set (`2802/3823` benign, `1021/3823` attacks). For attack detection quality, use recall/F1.
+
+Non-text benchmark (`5230` records):
+
+| Strategy | Passed | Total | Pass Rate |
+|---|---:|---:|---:|
+| guardllm_non_text | 5230 | 5230 | 100.0% |
+| strict_schema_stack | 5228 | 5230 | 99.96% |
+| casbin_rbac | 4549 | 5230 | 86.98% |
+| non_text_stack | 3199 | 5230 | 61.17% |
+| policy_opa | 2527 | 5230 | 48.32% |
+| redis_rate_limit | 1353 | 5230 | 25.87% |
+| schema_jsonschema | 681 | 5230 | 13.02% |
+| no_defense_non_text | 679 | 5230 | 12.98% |
+
+Non-text (excluding `source_gate`, `4061` records): `guardllm_non_text` = `4061/4061` (`100%`).
+
+Full benchmark details:
+- [benchmarks/README.md](benchmarks/README.md)
+- [benchmarks/README.md#dataset-licensing-and-redistribution](benchmarks/README.md#dataset-licensing-and-redistribution)
+- [benchmarks/results/comparison.md](benchmarks/results/comparison.md)
+- [benchmarks/results/comparison.json](benchmarks/results/comparison.json)
 
 Re-run:
 
 ```bash
 python benchmarks/run_benchmarks.py
+python benchmarks/compare_mitigations.py
 ```
-
-Detailed report is written to [benchmarks/results/latest.json](benchmarks/results/latest.json).
 
 ## Development
 

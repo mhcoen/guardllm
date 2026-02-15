@@ -13,6 +13,10 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - `rate_limits`: custom rate limits (overrides defaults where used).
 - `argument_limits`: custom argument constraints.
 - `escalation_gate_enabled`: enable heightened confirmation behavior in action gate.
+- `dlp_verbatim_lcs_min`: outbound DLP verbatim overlap block threshold (default `100` chars).
+- `dlp_ngram_overlap_min`: outbound DLP n-gram overlap block threshold (default `0.40`).
+- `provenance_verbatim_lcs_min`: provenance verbatim overlap block threshold (default `50` chars).
+- `provenance_ngram_overlap_min`: provenance n-gram overlap block threshold (default `0.30`).
 
 ## SecurityContext
 

@@ -112,6 +112,9 @@ class OutboundDLP:
         Returns:
             OutboundResult with allowed=True if content passes DLP.
         """
+        lcs_threshold = int(getattr(ctx.policy, "dlp_verbatim_lcs_min", 100))
+        ngram_threshold = float(getattr(ctx.policy, "dlp_ngram_overlap_min", 0.40))
+
         # Step 1: Secret scan (always runs, even with quoting directive)
         secrets = _scan_secrets(content)
         if secrets:
@@ -128,9 +131,9 @@ class OutboundDLP:
         normalized_content = normalize_for_overlap(content)
 
         for buffered in self._buffer:
-            # Step 2: Verbatim overlap (LCS >= 100 chars)
+            # Step 2: Verbatim overlap (configurable, default LCS >= 100 chars)
             lcs_len = compute_lcs_length(normalized_content, buffered)
-            if lcs_len >= 100:
+            if lcs_len >= lcs_threshold:
                 return OutboundResult(
                     allowed=False,
                     reason=f"Verbatim overlap ({lcs_len} chars) with "
@@ -138,9 +141,9 @@ class OutboundDLP:
                     overlap_pct=0.0,
                 )
 
-            # Step 3: N-gram overlap (>= 40%)
+            # Step 3: N-gram overlap (configurable, default >= 40%)
             overlap = compute_ngram_overlap(normalized_content, buffered, n=5)
-            if overlap >= 0.40:
+            if overlap >= ngram_threshold:
                 return OutboundResult(
                     allowed=False,
                     reason=f"N-gram overlap ({overlap:.0%}) with "

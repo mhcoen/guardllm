@@ -289,3 +289,20 @@ class TestProvenanceTracker:
         allowed, reason = tracker.check_outbound(dangerous)
         assert allowed is False
         assert "evil" in reason
+
+    def test_custom_thresholds_allow_same_content(self):
+        tracker = ProvenanceTracker()
+        shared = "x" * 120
+        tracker.add_span(ProvenancedSpan(
+            text=shared,
+            source_type="mcp_server",
+            source_id="server-1",
+            trust_level="untrusted",
+        ))
+        allowed, reason = tracker.check_outbound(
+            shared,
+            lcs_threshold=1000,
+            ngram_threshold=1.1,
+        )
+        assert allowed is True
+        assert reason == "clean"

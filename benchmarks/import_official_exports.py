@@ -29,7 +29,14 @@ DEFAULT_REPOS = {
     "pint": "https://github.com/lakeraai/pint-benchmark",
     "bipia": "https://github.com/microsoft/BIPIA",
     "agentdojo": "https://github.com/ethz-spylab/agentdojo",
+    "jailbreakbench": "https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors",
+    "harmbench": "https://github.com/centerforaisafety/HarmBench",
+    "injecagent": "https://github.com/uiuc-kang-lab/InjecAgent",
+    "mcpbench": "https://github.com/modelscope/MCPBench",
+    "mcp_bench": "https://github.com/Accenture/mcp-bench",
 }
+
+SUPPORTED_SUITES = sorted(DEFAULT_REPOS.keys())
 
 
 def load_records(path: Path) -> list[dict[str, Any]]:
@@ -90,6 +97,81 @@ def first_present(record: dict[str, Any], keys: list[str]) -> str:
         if text:
             return text
     return ""
+
+
+def _as_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in {"true", "1", "yes", "y", "attack", "malicious", "jailbreak", "harmful"}:
+            return True
+        if token in {"false", "0", "no", "n", "benign", "safe", "clean"}:
+            return False
+    return None
+
+
+def _extract_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("text", "content", "prompt", "instruction", "question", "input"):
+            if key in value:
+                text = _extract_text(value[key])
+                if text:
+                    return text
+        return ""
+    if isinstance(value, list):
+        parts = [_extract_text(item) for item in value]
+        merged = " ".join(x for x in parts if x.strip())
+        return merged.strip()
+    return ""
+
+
+def _best_text(record: dict[str, Any], keys: list[str]) -> str:
+    text = first_present(record, keys)
+    if text:
+        return text
+    for key in ("messages", "conversation", "turns", "history"):
+        if key in record:
+            text = _extract_text(record[key])
+            if text:
+                return text
+    return ""
+
+
+def _infer_source_type(suite: str, record: dict[str, Any]) -> str:
+    if suite in {"mcpbench", "mcp_bench"}:
+        return "mcp_client"
+    blob = json.dumps(record, ensure_ascii=True).lower()
+    if "calendar" in blob:
+        return "calendar_content"
+    if "email" in blob:
+        return "email_content"
+    if any(tok in blob for tok in ("tool", "function_call", "function", "api_call")):
+        return "tool_output"
+    return "web_content"
+
+
+def _infer_tool(record: dict[str, Any]) -> tuple[str, dict[str, Any], bool]:
+    tool_raw = first_present(
+        record,
+        ["tool", "tool_name", "function", "function_name", "action", "api", "target_tool"],
+    ).lower()
+    args = record.get("args")
+    if not isinstance(args, dict):
+        args = record.get("parameters")
+    if not isinstance(args, dict):
+        args = {}
+    if "search" in tool_raw or "retrieve" in tool_raw or "lookup" in tool_raw:
+        return "search_knowledge", {"query": str(args.get("query", "status"))}, True
+    if "email" in tool_raw or "send" in tool_raw or "gmail" in tool_raw:
+        return "gmail_send_email", {"to": str(args.get("to", "x@example.com"))}, False
+    if "shell" in tool_raw or "exec" in tool_raw or "command" in tool_raw:
+        return "shell_execute", {"cmd": str(args.get("cmd", "id"))}, False
+    return "", {}, False
 
 
 def snippet(text: str, width: int = 96) -> str:
@@ -221,6 +303,175 @@ def map_cases_for_suite(
             },
         ]
 
+    if suite == "jailbreakbench":
+        text = _best_text(
+            record,
+            ["prompt", "text", "input", "query", "instruction", "behavior", "goal"],
+        )
+        if not text:
+            return []
+        case_id = f"upstream_jailbreakbench_{snapshot_tag}_{record_index:04d}"
+        label = _as_bool(
+            record.get("label", record.get("is_attack", record.get("jailbreak")))
+        )
+        return [
+            {
+                "id": case_id,
+                "suite": "upstream_jailbreakbench",
+                "kind": "inbound_sanitize",
+                "source_type": "web_content",
+                "content_type": "plaintext",
+                "input": text,
+                "expect_contains": [snippet(text)],
+                "expect_isolated": True,
+                "meta_upstream_label": bool(label) if label is not None else True,
+                "meta_upstream_category": first_present(record, ["category", "split", "attack_type"]) or "unknown",
+            },
+            {
+                "id": f"{case_id}_source_gate",
+                "suite": "upstream_jailbreakbench",
+                "kind": "source_gate",
+                "source_type": "web_content",
+                "source_id": case_id,
+                "expect_policy": "block",
+            },
+        ]
+
+    if suite == "harmbench":
+        text = _best_text(
+            record,
+            ["behavior", "prompt", "text", "input", "goal", "request"],
+        )
+        if not text:
+            return []
+        case_id = f"upstream_harmbench_{snapshot_tag}_{record_index:04d}"
+        label = _as_bool(
+            record.get("label", record.get("is_harmful", record.get("harmful")))
+        )
+        return [
+            {
+                "id": case_id,
+                "suite": "upstream_harmbench",
+                "kind": "inbound_sanitize",
+                "source_type": "web_content",
+                "content_type": "plaintext",
+                "input": text,
+                "expect_contains": [snippet(text)],
+                "expect_isolated": True,
+                "meta_upstream_label": bool(label) if label is not None else True,
+                "meta_upstream_category": first_present(record, ["category", "taxonomy", "attack_type"]) or "unknown",
+            },
+            {
+                "id": f"{case_id}_source_gate",
+                "suite": "upstream_harmbench",
+                "kind": "source_gate",
+                "source_type": "web_content",
+                "source_id": case_id,
+                "expect_policy": "block",
+            },
+        ]
+
+    if suite == "injecagent":
+        text = _best_text(
+            record,
+            ["prompt", "instruction", "text", "input", "attack", "query", "content"],
+        )
+        if not text:
+            return []
+        source_type = _infer_source_type(suite, record)
+        case_id = f"upstream_injecagent_{snapshot_tag}_{record_index:04d}"
+        rows: list[dict[str, Any]] = [
+            {
+                "id": case_id,
+                "suite": "upstream_injecagent",
+                "kind": "inbound_sanitize",
+                "source_type": source_type,
+                "content_type": "plaintext",
+                "input": text,
+                "expect_contains": [snippet(text)],
+                "expect_isolated": True,
+                "meta_upstream_label": True,
+            },
+            {
+                "id": f"{case_id}_source_gate",
+                "suite": "upstream_injecagent",
+                "kind": "source_gate",
+                "source_type": source_type,
+                "source_id": case_id,
+                "expect_policy": "block" if source_type != "assistant_response" else "allow",
+            },
+        ]
+        tool, args, expect_allowed = _infer_tool(record)
+        if tool:
+            rows.append(
+                {
+                    "id": f"{case_id}_tool_gate",
+                    "suite": "upstream_injecagent",
+                    "kind": "tool_gate",
+                    "mode": "client",
+                    "tool": tool,
+                    "args": args,
+                    "policy": {
+                        "capability_scopes": {"search_knowledge": {}},
+                        "enable_destructive": False,
+                    },
+                    "expect_allowed": expect_allowed,
+                }
+            )
+        return rows
+
+    if suite in {"mcpbench", "mcp_bench"}:
+        text = _best_text(
+            record,
+            ["prompt", "instruction", "text", "input", "description", "attack", "query"],
+        )
+        if not text:
+            text = first_present(record, ["record_key", "id", "name", "sample_id"])
+        if not text:
+            return []
+        source_type = _infer_source_type(suite, record)
+        suite_name = f"upstream_{suite}"
+        case_id = f"{suite_name}_{snapshot_tag}_{record_index:04d}"
+        rows = [
+            {
+                "id": case_id,
+                "suite": suite_name,
+                "kind": "inbound_sanitize",
+                "source_type": source_type,
+                "content_type": "plaintext",
+                "input": text,
+                "expect_contains": [snippet(text)],
+                "expect_isolated": True,
+                "meta_upstream_label": True,
+            },
+            {
+                "id": f"{case_id}_source_gate",
+                "suite": suite_name,
+                "kind": "source_gate",
+                "source_type": source_type,
+                "source_id": case_id,
+                "expect_policy": "quarantine" if source_type == "mcp_client" else "block",
+            },
+        ]
+        tool, args, expect_allowed = _infer_tool(record)
+        if tool:
+            rows.append(
+                {
+                    "id": f"{case_id}_tool_gate",
+                    "suite": suite_name,
+                    "kind": "tool_gate",
+                    "mode": "server",
+                    "tool": tool,
+                    "args": args,
+                    "policy": {
+                        "capability_scopes": {"search_knowledge": {}},
+                        "enable_destructive": False,
+                    },
+                    "expect_allowed": expect_allowed,
+                }
+            )
+        return rows
+
     raise ValueError(f"Unsupported suite: {suite}")
 
 
@@ -292,7 +543,7 @@ def upsert_manifest_source(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--suite", required=True, choices=["pint", "bipia", "agentdojo"])
+    parser.add_argument("--suite", required=True, choices=SUPPORTED_SUITES)
     parser.add_argument("--input", required=True, help="Path to official export file (jsonl/json/yaml)")
     parser.add_argument("--ref", required=True, help="Upstream commit/tag ref")
     parser.add_argument("--repo", default=None, help="Override source repository URL")

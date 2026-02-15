@@ -85,12 +85,34 @@ python benchmarks/import_official_exports.py \
   --ref <upstream_commit_or_tag>
 ```
 
+Other supported suites:
+
+```bash
+python benchmarks/import_official_exports.py --suite pint --input /path/to/pint_export.yaml --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite agentdojo --input /path/to/agentdojo_export.yaml --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite jailbreakbench --input /path/to/jbb_export.jsonl --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite harmbench --input /path/to/harmbench_export.jsonl --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite injecagent --input /path/to/injecagent_export.jsonl --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite mcpbench --input /path/to/mcpbench_export.jsonl --ref <upstream_ref>
+python benchmarks/import_official_exports.py --suite mcp_bench --input /path/to/accenture_mcp_bench_export.jsonl --ref <upstream_ref>
+```
+
 This writes:
 - `benchmarks/upstream/<suite>/v<ref8>/raw_samples.jsonl`
 - `benchmarks/upstream/<suite>/v<ref8>/mapped_cases.jsonl`
 - `benchmarks/upstream/<suite>/v<ref8>/README.md`
 
 and updates `benchmarks/upstream/manifest.json` provenance metadata.
+
+Supported values for `--suite`:
+- `pint`
+- `bipia`
+- `agentdojo`
+- `jailbreakbench`
+- `harmbench`
+- `injecagent`
+- `mcpbench`
+- `mcp_bench`
 
 ## Case format
 

@@ -15,27 +15,32 @@
 | unicode_evasion_style | 5/5 (100.0%) | 0/5 (0.0%) | 0/5 (0.0%) | 0/5 (0.0%) | 100.0% |
 | upstream_agentdojo | 26/26 (100.0%) | 13/26 (50.0%) | 13/26 (50.0%) | 0/26 (0.0%) | 100.0% |
 | upstream_bipia | 124/124 (100.0%) | 74/124 (59.68%) | 74/124 (59.68%) | 24/124 (19.35%) | 80.65% |
+| upstream_harmbench | 640/640 (100.0%) | 320/640 (50.0%) | 320/640 (50.0%) | 0/640 (0.0%) | 100.0% |
+| upstream_injecagent | 60/60 (100.0%) | 30/60 (50.0%) | 30/60 (50.0%) | 0/60 (0.0%) | 100.0% |
+| upstream_jailbreakbench | 199/200 (99.5%) | 99/200 (49.5%) | 100/200 (50.0%) | 0/200 (0.0%) | 99.5% |
+| upstream_mcp_bench | 80/80 (100.0%) | 40/80 (50.0%) | 40/80 (50.0%) | 0/80 (0.0%) | 100.0% |
+| upstream_mcpbench | 1194/1200 (99.5%) | 594/1200 (49.5%) | 600/1200 (50.0%) | 0/1200 (0.0%) | 99.5% |
 | upstream_pint | 16/16 (100.0%) | 8/16 (50.0%) | 8/16 (50.0%) | 0/16 (0.0%) | 100.0% |
 
 ## Overall
 
-- `guardllm`: 248/248 (100.0%)
-- `isolation_only`: 106/248 (42.74%)
-- `source_gate_only`: 113/248 (45.56%)
-- `no_defense`: 35/248 (14.11%)
+- `guardllm`: 2421/2428 (99.71%)
+- `isolation_only`: 1189/2428 (48.97%)
+- `source_gate_only`: 1203/2428 (49.55%)
+- `no_defense`: 35/2428 (1.44%)
 
 ## Full-Suite Breakdown
 
 | strategy | attack-mitigation success | benign/allow correctness |
 |---|---:|---:|
-| guardllm | 144/144 (100.0%) | 104/104 (100.0%) |
-| isolation_only | 2/144 (1.39%) | 104/104 (100.0%) |
-| source_gate_only | 78/144 (54.17%) | 35/104 (33.65%) |
-| no_defense | 0/144 (0.0%) | 35/104 (33.65%) |
+| guardllm | 2317/2324 (99.7%) | 104/104 (100.0%) |
+| isolation_only | 1085/2324 (46.69%) | 104/104 (100.0%) |
+| source_gate_only | 1168/2324 (50.26%) | 35/104 (33.65%) |
+| no_defense | 0/2324 (0.0%) | 35/104 (33.65%) |
 
 ## Text-Only Comparison
 
-- Record count: `125`
+- Record count: `1215`
 - Azure Prompt Shields enabled: `True`
 - Bedrock Guardrails enabled: `False`
 - Open-source classifier enabled: `True`
@@ -47,46 +52,59 @@
 
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| guardllm | 95.2% | 92.86% | 86.67% | 89.66 | 26 | 93 | 2 | 4 |
-| no_defense | 76.0% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 30 |
-| regex_rule_based | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
-| open_source_deberta | 60.8% | 29.79% | 46.67% | 36.37 | 14 | 62 | 33 | 16 |
-| azure_prompt_shields | 78.4% | 100.0% | 10.0% | 18.18 | 3 | 95 | 0 | 27 |
-| openai_policy_adapter | 88.8% | 94.44% | 56.67% | 70.83 | 17 | 94 | 1 | 13 |
-| anthropic_policy_adapter | 82.4% | 65.38% | 56.67% | 60.71 | 17 | 86 | 9 | 13 |
-| azure_plus_guardllm | 96.8% | 93.33% | 93.33% | 93.33 | 28 | 93 | 2 | 2 |
+| guardllm | 9.79% | 92.86% | 2.32% | 4.53 | 26 | 93 | 2 | 1094 |
+| no_defense | 7.82% | 0.0% | 0.0% | 0.0 | 0 | 95 | 0 | 1120 |
+| regex_rule_based | 8.15% | 100.0% | 0.36% | 0.72 | 4 | 95 | 0 | 1116 |
+| open_source_deberta | 11.85% | 71.3% | 7.32% | 13.28 | 82 | 62 | 33 | 1038 |
+| azure_prompt_shields | 9.63% | 100.0% | 1.96% | 3.84 | 22 | 95 | 0 | 1098 |
+| openai_policy_adapter | 38.27% | 99.47% | 33.21% | 49.79 | 372 | 93 | 2 | 748 |
+| anthropic_policy_adapter | 28.97% | 97.07% | 23.66% | 38.05 | 265 | 87 | 8 | 855 |
+| azure_plus_guardllm | 11.52% | 95.92% | 4.2% | 8.05 | 47 | 93 | 2 | 1073 |
 
 | strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |
 |---|---:|---:|---:|
-| guardllm | 0.17 | 0.76 | 1.23 |
+| guardllm | 0.03 | 0.08 | 0.98 |
 | no_defense | 0.0 | 0.0 | 0.0 |
-| regex_rule_based | 0.01 | 0.03 | 0.22 |
-| open_source_deberta | 34.39 | 52.72 | 188.68 |
-| azure_prompt_shields | 208.05 | 231.76 | 325.96 |
-| openai_policy_adapter | 740.4 | 1227.5 | 1839.68 |
-| anthropic_policy_adapter | 632.71 | 784.82 | 1358.36 |
-| azure_plus_guardllm | 208.22 | 232.52 | 327.19 |
+| regex_rule_based | 0.0 | 0.01 | 0.18 |
+| open_source_deberta | 23.48 | 45.97 | 692.0 |
+| azure_prompt_shields | 286.95 | 550.68 | 4978.92 |
+| openai_policy_adapter | 687.92 | 1159.07 | 2480.23 |
+| anthropic_policy_adapter | 686.36 | 1024.03 | 3893.35 |
+| azure_plus_guardllm | 286.98 | 550.76 | 4979.9 |
 
 Cost proxy:
-- Azure Prompt Shields calls: `125`
+- Azure Prompt Shields calls: `1215`
 - Bedrock ApplyGuardrail calls: `0`
 - Bedrock wordPolicyUnits: `0`
 
 ## Non-Text Comparison
 
-- Record count: `120`
+- Record count: `1210`
 - Casbin available: `True`
 - Pydantic available: `True`
-| strategy | passed | total | pass rate |
+| strategy | passed | total | micro pass rate | macro-by-kind |
 |---|---:|---:|---:|
-| guardllm_non_text | 120 | 120 | 100.0% |
-| no_defense_non_text | 9 | 120 | 7.5% |
-| schema_jsonschema | 11 | 120 | 9.17% |
-| policy_opa | 97 | 120 | 80.83% |
-| casbin_rbac | 109 | 120 | 90.83% |
-| strict_schema_stack | 119 | 120 | 99.17% |
-| redis_rate_limit | 15 | 120 | 12.5% |
-| non_text_stack | 101 | 120 | 84.17% |
+| guardllm_non_text | 1210 | 1210 | 100.0% | 100.0% |
+| no_defense_non_text | 9 | 1210 | 0.74% | 13.03% |
+| schema_jsonschema | 11 | 1210 | 0.91% | 17.2% |
+| policy_opa | 1187 | 1210 | 98.1% | 41.32% |
+| casbin_rbac | 1199 | 1210 | 99.09% | 74.65% |
+| strict_schema_stack | 1209 | 1210 | 99.92% | 98.61% |
+| redis_rate_limit | 15 | 1210 | 1.24% | 29.7% |
+| non_text_stack | 1191 | 1210 | 98.43% | 53.82% |
+
+Excluding `source_gate`:
+
+| strategy | passed | total | micro pass rate | macro-by-kind |
+|---|---:|---:|---:|---:|
+| guardllm_non_text | 41 | 41 | 100.0% | 100.0% |
+| no_defense_non_text | 8 | 41 | 19.51% | 14.88% |
+| schema_jsonschema | 10 | 41 | 24.39% | 19.64% |
+| policy_opa | 18 | 41 | 43.9% | 32.94% |
+| casbin_rbac | 30 | 41 | 73.17% | 71.03% |
+| strict_schema_stack | 40 | 41 | 97.56% | 98.41% |
+| redis_rate_limit | 14 | 41 | 34.15% | 33.93% |
+| non_text_stack | 22 | 41 | 53.66% | 47.22% |
 
 | non-text kind | strategy | passed | total | pass rate |
 |---|---|---:|---:|---:|
@@ -122,14 +140,14 @@ Cost proxy:
 | rate_limit | strict_schema_stack | 4 | 4 | 100.0% |
 | rate_limit | redis_rate_limit | 4 | 4 | 100.0% |
 | rate_limit | non_text_stack | 4 | 4 | 100.0% |
-| source_gate | guardllm_non_text | 79 | 79 | 100.0% |
-| source_gate | no_defense_non_text | 1 | 79 | 1.27% |
-| source_gate | schema_jsonschema | 1 | 79 | 1.27% |
-| source_gate | policy_opa | 79 | 79 | 100.0% |
-| source_gate | casbin_rbac | 79 | 79 | 100.0% |
-| source_gate | strict_schema_stack | 79 | 79 | 100.0% |
-| source_gate | redis_rate_limit | 1 | 79 | 1.27% |
-| source_gate | non_text_stack | 79 | 79 | 100.0% |
+| source_gate | guardllm_non_text | 1169 | 1169 | 100.0% |
+| source_gate | no_defense_non_text | 1 | 1169 | 0.09% |
+| source_gate | schema_jsonschema | 1 | 1169 | 0.09% |
+| source_gate | policy_opa | 1169 | 1169 | 100.0% |
+| source_gate | casbin_rbac | 1169 | 1169 | 100.0% |
+| source_gate | strict_schema_stack | 1169 | 1169 | 100.0% |
+| source_gate | redis_rate_limit | 1 | 1169 | 0.09% |
+| source_gate | non_text_stack | 1169 | 1169 | 100.0% |
 | tool_gate | guardllm_non_text | 9 | 9 | 100.0% |
 | tool_gate | no_defense_non_text | 3 | 9 | 33.33% |
 | tool_gate | schema_jsonschema | 3 | 9 | 33.33% |
@@ -166,7 +184,7 @@ Cost proxy:
 | open_source_deberta | 50.0% | 0.0% | 0.0% | 0.0 | 0 | 3 | 2 | 1 |
 | azure_prompt_shields | 66.67% | 0.0% | 0.0% | 0.0 | 0 | 4 | 1 | 1 |
 | openai_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
-| anthropic_policy_adapter | 33.33% | 0.0% | 0.0% | 0.0 | 0 | 2 | 3 | 1 |
+| anthropic_policy_adapter | 66.67% | 33.33% | 100.0% | 50.0 | 1 | 3 | 2 | 0 |
 | azure_plus_guardllm | 83.33% | 50.0% | 100.0% | 66.67 | 1 | 4 | 1 | 0 |
 
 ## Official Reference (Pinned Sources)
@@ -175,3 +193,8 @@ Cost proxy:
 - `pint` @ `0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8`: {"negative_labels": 6, "positive_labels": 2, "rows": 8}
 - `bipia` @ `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`: {"known_ideal": 24, "rows": 50, "unknown_ideal": 26}
 - `agentdojo` @ `462c88ddf596cb745882702f9999c8aeb5fe467f`: {"channels": {"calendar": 7, "drive": 4, "email": 5, "other": 0}, "rows": 16}
+- `jailbreakbench` @ `886acc352a31533ffbcf4ef22c744658688086fc`: {"rows": 100}
+- `harmbench` @ `8e1604d1171fe8a48d8febecd22f600e462bdcdd`: {"rows": 320}
+- `injecagent` @ `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`: {"rows": 30}
+- `mcpbench` @ `5f397445370e6cb44dfdfc5680a48f128a75d349`: {"rows": 600}
+- `mcp_bench` @ `7a8eaeae83a842a2949080acc5473f65e1569daf`: {"rows": 40}

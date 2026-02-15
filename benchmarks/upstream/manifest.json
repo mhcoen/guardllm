@@ -26,6 +26,51 @@
       "source_export": "src/agentdojo/data/suites/workspace/injection_vectors.yaml",
       "imported_raw_records": 16,
       "mapped_cases": 26
+    },
+    {
+      "suite": "jailbreakbench",
+      "repo": "https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors",
+      "ref": "886acc352a31533ffbcf4ef22c744658688086fc",
+      "snapshot_dir": "benchmarks/upstream/jailbreakbench/v886acc35",
+      "source_export": "data/harmful-behaviors.csv",
+      "imported_raw_records": 100,
+      "mapped_cases": 200
+    },
+    {
+      "suite": "harmbench",
+      "repo": "https://github.com/centerforaisafety/HarmBench",
+      "ref": "8e1604d1171fe8a48d8febecd22f600e462bdcdd",
+      "snapshot_dir": "benchmarks/upstream/harmbench/v8e1604d1",
+      "source_export": "data/behavior_datasets/harmbench_behaviors_text_test.csv",
+      "imported_raw_records": 320,
+      "mapped_cases": 640
+    },
+    {
+      "suite": "injecagent",
+      "repo": "https://github.com/uiuc-kang-lab/InjecAgent",
+      "ref": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+      "snapshot_dir": "benchmarks/upstream/injecagent/vf19c9f2c",
+      "source_export": "data/attacker_cases_dh.jsonl",
+      "imported_raw_records": 30,
+      "mapped_cases": 60
+    },
+    {
+      "suite": "mcpbench",
+      "repo": "https://github.com/modelscope/MCPBench",
+      "ref": "5f397445370e6cb44dfdfc5680a48f128a75d349",
+      "snapshot_dir": "benchmarks/upstream/mcpbench/v5f397445",
+      "source_export": "langProBe/WebSearch/data/websearch_600.jsonl",
+      "imported_raw_records": 600,
+      "mapped_cases": 1200
+    },
+    {
+      "suite": "mcp_bench",
+      "repo": "https://github.com/Accenture/mcp-bench",
+      "ref": "7a8eaeae83a842a2949080acc5473f65e1569daf",
+      "snapshot_dir": "benchmarks/upstream/mcp_bench/v7a8eaeae",
+      "source_export": "mcp_servers/medcalc/MedCalcBench/dataset/test_data_short.csv",
+      "imported_raw_records": 40,
+      "mapped_cases": 80
     }
   ]
 }

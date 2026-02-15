@@ -668,9 +668,38 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             total = item["total"]
             item["pass_rate"] = round((item["passed"] / total) * 100, 2) if total else 0.0
 
+    strategy_names = list(strategies.keys())
+    no_source_gate: dict[str, dict[str, float | int]] = {
+        name: {"passed": 0, "total": 0, "pass_rate": 0.0} for name in strategy_names
+    }
+    macro_by_kind: dict[str, float] = {}
+    macro_by_kind_no_source_gate: dict[str, float] = {}
+    all_kind_names = sorted(by_kind.keys())
+    no_source_kind_names = [k for k in all_kind_names if k != "source_gate"]
+    for name in strategy_names:
+        vals = [float(by_kind[k][name]["pass_rate"]) for k in all_kind_names if name in by_kind[k]]
+        macro_by_kind[name] = round(sum(vals) / len(vals), 2) if vals else 0.0
+        vals_no_source = [float(by_kind[k][name]["pass_rate"]) for k in no_source_kind_names if name in by_kind[k]]
+        macro_by_kind_no_source_gate[name] = round(sum(vals_no_source) / len(vals_no_source), 2) if vals_no_source else 0.0
+
+    for kind, strat_stats in by_kind.items():
+        if kind == "source_gate":
+            continue
+        for name, item in strat_stats.items():
+            entry = no_source_gate[name]
+            entry["passed"] = int(entry["passed"]) + int(item["passed"])
+            entry["total"] = int(entry["total"]) + int(item["total"])
+    for name, entry in no_source_gate.items():
+        total = int(entry["total"])
+        passed = int(entry["passed"])
+        entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+
     return {
         "count": len(non_text_cases),
         "strategies": strategies,
+        "strategies_no_source_gate": no_source_gate,
+        "macro_by_kind": macro_by_kind,
+        "macro_by_kind_no_source_gate": macro_by_kind_no_source_gate,
         "by_kind": by_kind,
         "errors": non_text_errors,
         "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
@@ -1333,11 +1362,22 @@ def write_markdown(
         lines.append(f"- Pydantic available: `{deps.get('pydantic_available', False)}`")
     for k, v in non_text_only.get("errors", {}).items():
         lines.append(f"- {k} error: `{v}`")
-    lines.append("| strategy | passed | total | pass rate |")
+    lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
     lines.append("|---|---:|---:|---:|")
+    macro = non_text_only.get("macro_by_kind", {})
     for name, stats in non_text_only.get("strategies", {}).items():
         lines.append(
-            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% |"
+            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro.get(name, 0.0)}% |"
+        )
+    lines.append("")
+    lines.append("Excluding `source_gate`:")
+    lines.append("")
+    lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
+    lines.append("|---|---:|---:|---:|---:|")
+    macro_no_source = non_text_only.get("macro_by_kind_no_source_gate", {})
+    for name, stats in non_text_only.get("strategies_no_source_gate", {}).items():
+        lines.append(
+            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro_no_source.get(name, 0.0)}% |"
         )
     by_kind = non_text_only.get("by_kind", {})
     if by_kind:
@@ -1501,6 +1541,9 @@ def main() -> int:
         )
     print("non-text:")
     for name, stats in non_text_only.get("strategies", {}).items():
+        print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
+    print("non-text (excluding source_gate):")
+    for name, stats in non_text_only.get("strategies_no_source_gate", {}).items():
         print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
     return 0
 

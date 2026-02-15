@@ -89,8 +89,13 @@ def load_records(path: Path) -> list[dict[str, Any]]:
 
 
 def first_present(record: dict[str, Any], keys: list[str]) -> str:
+    lower_map = {str(k).lower(): k for k in record.keys()}
     for key in keys:
         value = record.get(key)
+        if value is None:
+            alt = lower_map.get(str(key).lower())
+            if alt is not None:
+                value = record.get(alt)
         if value is None:
             continue
         text = str(value).strip()
@@ -374,7 +379,17 @@ def map_cases_for_suite(
     if suite == "injecagent":
         text = _best_text(
             record,
-            ["prompt", "instruction", "text", "input", "attack", "query", "content"],
+            [
+                "prompt",
+                "instruction",
+                "attacker instruction",
+                "attacker_instruction",
+                "text",
+                "input",
+                "attack",
+                "query",
+                "content",
+            ],
         )
         if not text:
             return []
@@ -423,7 +438,7 @@ def map_cases_for_suite(
     if suite in {"mcpbench", "mcp_bench"}:
         text = _best_text(
             record,
-            ["prompt", "instruction", "text", "input", "description", "attack", "query"],
+            ["prompt", "instruction", "text", "input", "description", "attack", "query", "question"],
         )
         if not text:
             text = first_present(record, ["record_key", "id", "name", "sample_id"])

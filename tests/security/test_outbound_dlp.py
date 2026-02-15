@@ -7,7 +7,7 @@ from guardllm.security.outbound_dlp import (
     _scan_secrets,
     _shannon_entropy,
 )
-from guardllm.security.types import SecurityContext, TrustLevel
+from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
 @pytest.fixture
@@ -232,4 +232,16 @@ class TestOutboundDLP:
             trust_level=TrustLevel.UNTRUSTED,
         )
         result = dlp.check("normal text no secrets", ctx)
+        assert result.allowed is True
+
+    def test_custom_lcs_threshold_allows_overlap(self, dlp):
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="server-1",
+            policy=PolicyConfig(dlp_verbatim_lcs_min=500, dlp_ngram_overlap_min=1.1),
+        )
+        untrusted = "x" * 200
+        dlp.ingest_untrusted(untrusted)
+        result = dlp.check(untrusted, ctx)
         assert result.allowed is True

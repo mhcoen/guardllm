@@ -198,6 +198,10 @@ class TestSecurityContext:
         assert isinstance(ctx.policy, PolicyConfig)
         assert ctx.policy.tool_allowlist == {}
         assert ctx.policy.enable_destructive is False
+        assert ctx.policy.dlp_verbatim_lcs_min == 100
+        assert ctx.policy.dlp_ngram_overlap_min == 0.40
+        assert ctx.policy.provenance_verbatim_lcs_min == 50
+        assert ctx.policy.provenance_ngram_overlap_min == 0.30
 
     def test_default_confirmation_handler(self):
         """Default confirmation_handler is None."""

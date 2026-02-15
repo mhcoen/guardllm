@@ -338,6 +338,10 @@ Fields:
 - `rate_limits: dict[str, Any] = {}`
 - `argument_limits: dict[str, Any] = {}`
 - `escalation_gate_enabled: bool = True`
+- `dlp_verbatim_lcs_min: int = 100`
+- `dlp_ngram_overlap_min: float = 0.40`
+- `provenance_verbatim_lcs_min: int = 50`
+- `provenance_ngram_overlap_min: float = 0.30`
 
 ### Protocol Class: `ConfirmationHandler`
 

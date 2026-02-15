@@ -80,6 +80,11 @@ class PolicyConfig:
     rate_limits: Dict[str, Any] = field(default_factory=dict)
     argument_limits: Dict[str, Any] = field(default_factory=dict)
     escalation_gate_enabled: bool = True
+    # Tunable overlap thresholds (defaults preserve current behavior)
+    dlp_verbatim_lcs_min: int = 100
+    dlp_ngram_overlap_min: float = 0.40
+    provenance_verbatim_lcs_min: int = 50
+    provenance_ngram_overlap_min: float = 0.30
 
 
 class ConfirmationHandler:

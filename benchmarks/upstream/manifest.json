@@ -71,6 +71,15 @@
       "source_export": "mcp_servers/medcalc/MedCalcBench/dataset/test_data_short.csv",
       "imported_raw_records": 40,
       "mapped_cases": 320
+    },
+    {
+      "suite": "wainjectbench",
+      "repo": "https://github.com/Norrrrrrr-lyn/WAInjectBench",
+      "ref": "4a5b7a5d4e393983d7105aed3485014b7206d205",
+      "snapshot_dir": "benchmarks/upstream/wainjectbench/v4a5b7a5d",
+      "source_export": "wainjectbench_export.jsonl",
+      "imported_raw_records": 3698,
+      "mapped_cases": 3698
     }
   ]
 }

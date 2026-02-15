@@ -34,6 +34,7 @@ DEFAULT_REPOS = {
     "injecagent": "https://github.com/uiuc-kang-lab/InjecAgent",
     "mcpbench": "https://github.com/modelscope/MCPBench",
     "mcp_bench": "https://github.com/Accenture/mcp-bench",
+    "wainjectbench": "https://github.com/Norrrrrrr-lyn/WAInjectBench",
 }
 
 SUPPORTED_SUITES = sorted(DEFAULT_REPOS.keys())
@@ -618,6 +619,30 @@ def map_cases_for_suite(
             }
         )
         return rows
+
+    if suite == "wainjectbench":
+        text = _best_text(record, ["text", "prompt", "input", "instruction", "query", "content"])
+        if not text:
+            return []
+        case_id = f"upstream_wainjectbench_{snapshot_tag}_{record_index:04d}"
+        label = _as_bool(record.get("label", record.get("is_attack", record.get("malicious"))))
+        if label is None:
+            source = first_present(record, ["source_split", "split", "source_file"]).lower()
+            label = "malicious" in source or source.startswith("mal_")
+        return [
+            {
+                "id": case_id,
+                "suite": "upstream_wainjectbench",
+                "kind": "inbound_sanitize",
+                "source_type": "web_content",
+                "content_type": "plaintext",
+                "input": text,
+                "expect_contains": [snippet(text)],
+                "expect_isolated": True,
+                "meta_upstream_label": bool(label),
+                "meta_upstream_category": first_present(record, ["source_split", "attack_type", "split"]) or "unknown",
+            }
+        ]
 
     raise ValueError(f"Unsupported suite: {suite}")
 

@@ -143,6 +143,27 @@ Non-text benchmark (`5230` records):
 
 Non-text (excluding `source_gate`, `4061` records): `guardllm_non_text` = `4061/4061` (`100%`).
 
+Scope-aware non-text interpretation (evaluate specialized tools on relevant kinds):
+
+| Strategy | Passed (Relevant) | Relevant | In-Scope Pass Rate | Scope |
+|---|---:|---:|---:|---|
+| guardllm_non_text | 5230 | 5230 | 100.0% | all 8 non-text kinds |
+| strict_schema_stack | 5228 | 5230 | 99.96% | all 8 non-text kinds |
+| casbin_rbac | 4547 | 4550 | 99.93% | auth/access kinds (`action_gate`, `binding_replay`, `source_gate`, `tool_gate`, `tool_gate_auth`, `validation`) |
+| policy_opa | 2523 | 2526 | 99.88% | policy kinds (`action_gate`, `source_gate`, `tool_gate`) |
+| redis_rate_limit | 672 | 674 | 99.70% | `rate_limit` only |
+| non_text_stack | 3199 | 5230 | 61.17% | all 8 non-text kinds |
+
+This is the key architectural point: `non_text_stack` combines strong specialized tools but still reaches only `61.17%` end-to-end because composition alone does not provide shared lifecycle context.
+
+Concretely, GuardLLM participates in the full data lifecycle:
+- Ingest and label: inbound content is evaluated and assigned security context/labels (source trust, isolation state, policy context).
+- Authorize with context: downstream decisions (`action_gate`, `tool_gate`, `tool_gate_auth`) are made using those labels, not as isolated one-off checks.
+- Preserve integrity over time: replay/binding integrity (`binding_replay`) is checked against request context and prior authorization state.
+- Enforce output/process constraints: validation and outbound controls apply based on the same carried context.
+
+Why this matters in the benchmark: `non_text_stack` is strong on isolated checks (`action_gate` `99.71%`, `rate_limit` `99.7%`, `source_gate` `100%`) but collapses where lifecycle linkage is required (`binding_replay` `0.3%`, `tool_gate_auth` `0.0%`, `validation` `0.0%`). The differentiation is not only breadth; it is end-to-end lifecycle-aware security decisions across the pipeline.
+
 Full benchmark details:
 - [benchmarks/README.md](benchmarks/README.md)
 - [benchmarks/README.md#dataset-licensing-and-redistribution](benchmarks/README.md#dataset-licensing-and-redistribution)

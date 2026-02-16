@@ -121,6 +121,8 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 
 ## Benchmark Highlights
 
+GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, and Azure Prompt Shields.
+
 Text benchmark (prompt-injection detection, `3823` records):
 
 | Strategy | F1 | Precision | Recall | Avg Latency |

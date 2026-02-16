@@ -1,8 +1,6 @@
 # GuardLLM
 
-LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications: label at ingress, carry context through authorization and integrity checks, and enforce constraints at output. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than ML-based alternatives.
-
-GuardLLM is model-agnostic: it adds application-layer protections that remain important for state-of-the-art models and are often essential for the many models that ship with limited built-in safety controls.
+LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications with a shared security context that follows content from ingress through authorization, integrity checks, and output enforcement. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than ML-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
 ## How GuardLLM Works
 

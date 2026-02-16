@@ -31,7 +31,7 @@ def git_sha_short(default: str = "unknown") -> str:
 
 
 def make_run_id(prefix: str) -> str:
-    ts = _dt.datetime.now(_dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{prefix}-{ts}-{git_sha_short()}"
 
 

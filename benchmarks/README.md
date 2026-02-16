@@ -43,14 +43,14 @@ Current text comparison (`benchmarks/results/comparison.json`, injection scope):
 | GuardLLM | 93.17% | 85.46 | 99.10% | 75.12% | 0.07ms |
 | OpenAI (`gpt-4.1-mini`) | 84.99% | 61.79 | 96.47% | 45.45% | 615.68ms |
 | Anthropic (`claude-3-5-haiku-latest`) | 81.27% | 49.29 | 89.00% | 34.08% | 662.14ms |
-| Azure Prompt Shields | 76.80% | 23.60 | 97.86% | 13.42% | 209.34ms |
 | Bedrock Guardrails (`HIGH`) | 78.50% | 32.62 | 100.0% | 19.49% | 748.27ms |
+| Azure Prompt Shields | 76.80% | 23.60 | 97.86% | 13.42% | 209.34ms |
 | Regex Rule Baseline | 73.37% | 0.58 | 100.0% | 0.29% | 0.01ms |
 | No Defense | 73.29% | 0.00 | 0.0% | 0.0% | 0.00ms |
 
-Provider rows (OpenAI/Anthropic/Azure) come from provider-enabled runs on the same injection scope (`3823` records).
+All rows in this table are evaluated on the same `3823`-record corpus (`1021` attacks, `2802` benign).
 `comparison.json` / `comparison.md` are single-snapshot artifacts: re-running with different flags overwrites strategy rows for the latest run; they are not cumulative across runs.
-`No Defense` is the null baseline (always effectively benign/no-attack). Its non-trivial accuracy is driven by class imbalance (`2802/3823` benign vs `1021/3823` attacks); use recall/F1 to evaluate attack detection quality.
+`No Defense` is an allow-all baseline that effectively predicts benign for every input. Because the set is imbalanced, accuracy alone can look deceptively high; use recall/F1 as primary attack-detection metrics.
 
 Current non-text comparison (`benchmarks/results/comparison.json`):
 - Non-text total: `5230`

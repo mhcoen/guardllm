@@ -29,6 +29,15 @@ from urllib import error, request
 from _bootstrap import ROOT  # noqa: F401
 from guardllm import Guard
 from guardllm.security.prompt_injection_detector import detect_prompt_injection
+from output_layout import (
+    CACHE_ROOT,
+    DATASETS_ROOT,
+    ensure_cache_dir,
+    ensure_run_dir,
+    git_sha_short,
+    make_run_id,
+    write_latest_pointer,
+)
 
 from compare_mitigations import (  # noqa: E402
     AZURE_SIGNAL_CHOICES,
@@ -39,11 +48,9 @@ from compare_mitigations import (  # noqa: E402
     _context_for_source,
     build_text_records,
 )
-from run_benchmarks import RESULTS_DIR, load_cases
+from run_benchmarks import load_cases
 
-ROC_JSON = RESULTS_DIR / "roc_pr_experiments.json"
-ROC_MD = RESULTS_DIR / "roc_pr_experiments.md"
-SCORE_CACHE = RESULTS_DIR / "roc_score_cache.jsonl"
+SCORE_CACHE = CACHE_ROOT / "roc_score_cache.jsonl"
 CACHE_FLUSH_EVERY = 1
 STATUS_INTERVAL_SECONDS = 120.0
 
@@ -159,6 +166,13 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _repo_rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except Exception:
+        return str(path)
+
+
 def _load_jsonl_cache(path: Path) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     if not path.exists():
@@ -271,6 +285,16 @@ def _threshold_candidates(scores: list[float]) -> list[float]:
     return uniq
 
 
+def _threshold_grid(step: float) -> list[float]:
+    if step <= 0 or step > 1:
+        return [1.0, 0.0]
+    points = int(round(1.0 / step))
+    vals = [max(0.0, min(1.0, 1.0 - i * step)) for i in range(points + 1)]
+    if vals[-1] != 0.0:
+        vals.append(0.0)
+    return vals
+
+
 def _point_at_threshold(labels: list[bool], scores: list[float], t: float) -> PointEval:
     preds = [s >= t for s in scores]
     return _point_from_preds(labels, preds, t)
@@ -286,8 +310,14 @@ def _trapezoid_auc(xs: list[float], ys: list[float]) -> float:
     return max(0.0, area)
 
 
-def _curve_from_scores(labels: list[bool], scores: list[float]) -> CurveEval:
-    points: list[PointEval] = [_point_at_threshold(labels, scores, t) for t in _threshold_candidates(scores)]
+def _curve_from_scores(
+    labels: list[bool],
+    scores: list[float],
+    *,
+    thresholds: list[float] | None = None,
+) -> CurveEval:
+    cands = thresholds if thresholds is not None else _threshold_candidates(scores)
+    points: list[PointEval] = [_point_at_threshold(labels, scores, t) for t in cands]
 
     roc_sorted = sorted(points, key=lambda p: (p.fpr, p.recall))
     roc_x = [p.fpr for p in roc_sorted]
@@ -339,7 +369,7 @@ def _choose_threshold_for_budget(
 
     return {
         "threshold": best.threshold,
-        "meets_budget": bool(passing),
+        "meets_budget_dev": bool(passing),
         "budget": {
             "fp_per_1k_neg_max": fp_per_1k_budget,
             "precision_min": precision_budget,
@@ -363,6 +393,29 @@ def _point_to_dict(p: PointEval) -> dict[str, Any]:
         "f1": round(p.f1, 6),
         "fpr": round(p.fpr, 6),
         "fp_per_1k_neg": round(p.fp_per_1k_neg, 6),
+    }
+
+
+def _wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float]:
+    if total <= 0:
+        return [0.0, 1.0]
+    phat = successes / total
+    denom = 1.0 + (z * z) / total
+    center = (phat + (z * z) / (2.0 * total)) / denom
+    margin = (z / denom) * math.sqrt((phat * (1.0 - phat) / total) + ((z * z) / (4.0 * total * total)))
+    lo = max(0.0, center - margin)
+    hi = min(1.0, center + margin)
+    return [round(lo, 6), round(hi, 6)]
+
+
+def _metric_intervals(p: PointEval) -> dict[str, list[float]]:
+    pr_den = p.tp + p.fp
+    rec_den = p.tp + p.fn
+    fp_den = p.fp + p.tn
+    return {
+        "precision_ci95": _wilson_interval(p.tp, pr_den),
+        "recall_ci95": _wilson_interval(p.tp, rec_den),
+        "fpr_ci95": _wilson_interval(p.fp, fp_den),
     }
 
 
@@ -514,7 +567,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
         per_record=rows,
         config={
             **config,
-            "cache_path": str(SCORE_CACHE),
+            "cache_path": _repo_rel(SCORE_CACHE),
             "cache_hits": cache_hits,
             "cache_writes": cache_writes,
         },
@@ -574,7 +627,7 @@ def _score_regex(records: list[TextRecord]) -> MethodScores:
         per_record=rows,
         config={
             **config,
-            "cache_path": str(SCORE_CACHE),
+            "cache_path": _repo_rel(SCORE_CACHE),
             "cache_hits": cache_hits,
             "cache_writes": cache_writes,
         },
@@ -631,7 +684,7 @@ def _score_no_defense(records: list[TextRecord]) -> MethodScores:
         per_record=rows,
         config={
             **config,
-            "cache_path": str(SCORE_CACHE),
+            "cache_path": _repo_rel(SCORE_CACHE),
             "cache_hits": cache_hits,
             "cache_writes": cache_writes,
         },
@@ -831,7 +884,7 @@ def _score_openai_tool(
             "system_prompt_hash": prompt_hash,
             "tool_schema_hash": schema_hash,
             "tool": "record_detection",
-            "cache_path": str(SCORE_CACHE),
+            "cache_path": _repo_rel(SCORE_CACHE),
             "cache_hits": cache_hits,
             "cache_writes": cache_writes,
         },
@@ -969,7 +1022,7 @@ def _score_anthropic_tool(
             "system_prompt_hash": prompt_hash,
             "tool_schema_hash": schema_hash,
             "tool": "record_detection",
-            "cache_path": str(SCORE_CACHE),
+            "cache_path": _repo_rel(SCORE_CACHE),
             "cache_hits": cache_hits,
             "cache_writes": cache_writes,
         },
@@ -1067,7 +1120,7 @@ def _score_azure_points(records: list[TextRecord], endpoint: str, key: str, prog
                 config={
                     "signal": signal,
                     **shared_config,
-                    "cache_path": str(SCORE_CACHE),
+                    "cache_path": _repo_rel(SCORE_CACHE),
                     "cache_hits": cache_hits,
                     "cache_writes": cache_writes,
                 },
@@ -1122,7 +1175,7 @@ def _budget_from_arg(value: str) -> float:
     return v
 
 
-def _write_markdown(payload: dict[str, Any]) -> None:
+def _write_markdown(payload: dict[str, Any], out_path: Path) -> None:
     lines: list[str] = []
     lines.append("# ROC/PR Experiments")
     lines.append("")
@@ -1133,6 +1186,7 @@ def _write_markdown(payload: dict[str, Any]) -> None:
     lines.append(f"- split seed: `{payload['split']['seed']}`")
     lines.append(f"- dev records: `{payload['split']['dev_count']}`")
     lines.append(f"- test records: `{payload['split']['test_count']}`")
+    lines.append(f"- run id: `{payload.get('run_id', 'unknown')}`")
     if payload.get("method_errors"):
         lines.append("- method errors:")
         for name, message in sorted(payload["method_errors"].items()):
@@ -1151,33 +1205,89 @@ def _write_markdown(payload: dict[str, Any]) -> None:
             f"| {m['name']} | {str(bool(m.get('tunable'))).lower()} | {m.get('curve_source', 'n/a')} | "
             f"{'' if roc_auc is None else roc_auc} | {'' if pr_auc is None else pr_auc} |"
         )
+    lines.append("")
+    lines.append("Default operating point semantics:")
+    for m in payload.get("methods", []):
+        lines.append(f"- `{m['name']}`: {m.get('default_point_test_semantics', 'n/a')}")
 
     lines.append("")
     lines.append("## Recall At FP Budgets (test)")
     lines.append("")
-    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | meets_budget |")
-    lines.append("|---|---|---:|---:|---:|---:|---:|")
+    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | recall_ci95 | precision_ci95 | fpr_ci95 | meets_budget_dev | meets_budget_test |")
+    lines.append("|---|---|---:|---:|---:|---:|---|---|---|---:|---:|")
     for m in payload.get("methods", []):
         for op in m.get("selected_operating_points", []):
             test = op.get("test_metrics", {})
+            iv = op.get("test_intervals", {})
             budget = op.get("budget", {})
             budget_label = ""
             if budget.get("fp_per_1k_neg_max") is not None:
                 budget_label = f"fp/1k<={budget['fp_per_1k_neg_max']}"
             elif budget.get("precision_min") is not None:
                 budget_label = f"precision>={_percent(budget['precision_min'])}%"
+            recall_ci = iv.get("recall_ci95", [])
+            precision_ci = iv.get("precision_ci95", [])
+            fpr_ci = iv.get("fpr_ci95", [])
             lines.append(
                 f"| {m['name']} | {budget_label} | {op.get('threshold')} | "
                 f"{_percent(float(test.get('recall', 0.0)))}% | {_percent(float(test.get('precision', 0.0)))}% | "
-                f"{round(float(test.get('fp_per_1k_neg', 0.0)), 4)} | {str(bool(op.get('meets_budget'))).lower()} |"
+                f"{round(float(test.get('fp_per_1k_neg', 0.0)), 4)} | "
+                f"{recall_ci} | {precision_ci} | {fpr_ci} | {str(bool(op.get('meets_budget_dev'))).lower()} | "
+                f"{str(bool(op.get('meets_budget_test'))).lower()} |"
             )
 
-    ROC_MD.write_text("\n".join(lines) + "\n")
+    out_path.write_text("\n".join(lines) + "\n")
+
+
+def _write_results_summary(payload: dict[str, Any], out_path: Path) -> None:
+    lines: list[str] = []
+    lines.append("# ROC/PR Results Summary")
+    lines.append("")
+    lines.append(f"- run id: `{payload.get('run_id', 'unknown')}`")
+    lines.append(f"- dataset hash: `{payload.get('dataset', {}).get('dataset_hash', 'unknown')}`")
+    lines.append(f"- split seed: `{payload.get('split', {}).get('seed', 'unknown')}`")
+    lines.append(
+        f"- split sizes: dev `{payload.get('split', {}).get('dev_count', 'unknown')}`, "
+        f"test `{payload.get('split', {}).get('test_count', 'unknown')}`"
+    )
+    lines.append("")
+    lines.append("## Default Test Operating Points")
+    lines.append("")
+    lines.append("| method | recall | precision | fp_per_1k_neg |")
+    lines.append("|---|---:|---:|---:|")
+    for m in payload.get("methods", []):
+        p = m.get("default_point_test", {})
+        lines.append(
+            f"| {m['name']} | {_percent(float(p.get('recall', 0.0)))}% | "
+            f"{_percent(float(p.get('precision', 0.0)))}% | {round(float(p.get('fp_per_1k_neg', 0.0)), 4)} |"
+        )
+    lines.append("")
+    lines.append("## Budgeted Points (Test)")
+    lines.append("")
+    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | meets_budget_dev | meets_budget_test |")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|")
+    for m in payload.get("methods", []):
+        for op in m.get("selected_operating_points", []):
+            budget = op.get("budget", {})
+            label = ""
+            if budget.get("fp_per_1k_neg_max") is not None:
+                label = f"fp/1k<={budget['fp_per_1k_neg_max']}"
+            elif budget.get("precision_min") is not None:
+                label = f"precision>={_percent(float(budget['precision_min']))}%"
+            test = op.get("test_metrics", {})
+            lines.append(
+                f"| {m['name']} | {label} | {op.get('threshold')} | {_percent(float(test.get('recall', 0.0)))}% | "
+                f"{_percent(float(test.get('precision', 0.0)))}% | {round(float(test.get('fp_per_1k_neg', 0.0)), 4)} | "
+                f"{str(bool(op.get('meets_budget_dev'))).lower()} | {str(bool(op.get('meets_budget_test'))).lower()} |"
+            )
+    out_path.write_text("\n".join(lines) + "\n")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None)
+    parser.add_argument("--dataset-id", default=None, help="Use prebuilt dataset at benchmarks/datasets/<dataset_id>/cases.jsonl")
+    parser.add_argument("--dataset-root", default=str(DATASETS_ROOT), help="Dataset root directory (default: benchmarks/datasets)")
     parser.add_argument("--text-scope", choices=["injection", "all"], default="injection")
     parser.add_argument("--split-seed", type=int, default=1337)
     parser.add_argument("--dev-fraction", type=float, default=0.30)
@@ -1190,6 +1300,12 @@ def main() -> int:
     )
     parser.add_argument("--fp-budget-per-1k", type=_budget_from_arg, action="append", default=[1.0, 5.0])
     parser.add_argument("--precision-budget", type=float, action="append", default=[])
+    parser.add_argument(
+        "--guardllm-curve-step",
+        type=float,
+        default=0.001,
+        help="GuardLLM curve threshold step for dense ROC/PR sampling (default 0.001).",
+    )
 
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY"))
     parser.add_argument("--openai-model", default="gpt-4.1-mini")
@@ -1197,7 +1313,9 @@ def main() -> int:
     parser.add_argument("--anthropic-model", default="claude-3-5-haiku-latest")
     parser.add_argument("--azure-endpoint", default=None)
     parser.add_argument("--azure-key", default=None)
+    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
     args = parser.parse_args()
+    ensure_cache_dir()
     progress_seconds = STATUS_INTERVAL_SECONDS
     if float(args.progress_seconds) != STATUS_INTERVAL_SECONDS:
         print(
@@ -1206,7 +1324,8 @@ def main() -> int:
             flush=True,
         )
 
-    cases = load_cases(args.suite)
+    dataset_root = Path(args.dataset_root)
+    cases = load_cases(args.suite, dataset_id=args.dataset_id, dataset_root=dataset_root)
     records = build_text_records(cases, text_scope=args.text_scope)
     if not records:
         print("No text records available after filtering.")
@@ -1298,29 +1417,37 @@ def main() -> int:
             dev_labels, dev_scores = _labels_and_scores(dev_rows)
             test_labels, test_scores = _labels_and_scores(test_rows)
 
-            curve_rows = method.per_record if method.name == "guardllm" else dev_rows
-            curve_labels, curve_scores = _labels_and_scores(curve_rows)
-            curves = _curve_from_scores(curve_labels, curve_scores)
+            curve_labels, curve_scores = _labels_and_scores(dev_rows)
+            curve_thresholds: list[float] | None = None
+            if method.name == "guardllm":
+                curve_thresholds = _threshold_grid(float(args.guardllm_curve_step))
+            curves = _curve_from_scores(curve_labels, curve_scores, thresholds=curve_thresholds)
 
             selected_ops: list[dict[str, Any]] = []
             for budget in fp_budgets:
                 picked = _choose_threshold_for_budget(dev_labels, dev_scores, fp_per_1k_budget=budget)
                 t = float(picked["threshold"])
                 test_eval = _point_at_threshold(test_labels, test_scores, t)
+                meets_test = bool(test_eval.fp_per_1k_neg <= budget)
                 selected_ops.append(
                     {
                         **picked,
                         "test_metrics": _point_to_dict(test_eval),
+                        "test_intervals": _metric_intervals(test_eval),
+                        "meets_budget_test": meets_test,
                     }
                 )
             for precision_min in precision_budgets:
                 picked = _choose_threshold_for_budget(dev_labels, dev_scores, precision_budget=precision_min)
                 t = float(picked["threshold"])
                 test_eval = _point_at_threshold(test_labels, test_scores, t)
+                meets_test = bool(test_eval.precision >= precision_min)
                 selected_ops.append(
                     {
                         **picked,
                         "test_metrics": _point_to_dict(test_eval),
+                        "test_intervals": _metric_intervals(test_eval),
+                        "meets_budget_test": meets_test,
                     }
                 )
 
@@ -1331,7 +1458,7 @@ def main() -> int:
                     "tunable": True,
                     "score_name": method.score_name,
                     "score_scale": method.score_scale,
-                    "curve_source": "full" if method.name == "guardllm" else "dev",
+                    "curve_source": "dev",
                     "curves": {
                         "roc_auc": curves.roc_auc,
                         "pr_auc": curves.pr_auc,
@@ -1340,6 +1467,8 @@ def main() -> int:
                         "precision_empty_pred_convention": curves.precision_empty_pred_convention,
                     },
                     "default_point_test": _point_to_dict(default_point),
+                    "default_point_test_intervals": _metric_intervals(default_point),
+                    "default_point_test_semantics": "Default threshold or default decision rule evaluated on test split.",
                     "selected_operating_points": selected_ops,
                     "latency_ms": _latency_summary(method.latencies_ms),
                     "config": method.config,
@@ -1356,18 +1485,23 @@ def main() -> int:
                 {
                     "name": method.name,
                     "tunable": False,
-                    "curve_source": "single_point",
+                    "curve_source": "dev",
+                    "curve_note": "single operating point (non-tunable method)",
                     "curves": None,
                     "default_point_test": _point_to_dict(point),
                     "selected_operating_points": [
                         {
                             "threshold": None,
-                            "meets_budget": (point.fp_per_1k_neg <= b),
+                            "meets_budget_dev": (point.fp_per_1k_neg <= b),
+                            "meets_budget_test": (point.fp_per_1k_neg <= b),
                             "budget": {"fp_per_1k_neg_max": b, "precision_min": None},
                             "test_metrics": _point_to_dict(point),
+                            "test_intervals": _metric_intervals(point),
                         }
                         for b in fp_budgets
                     ],
+                    "default_point_test_intervals": _metric_intervals(point),
+                    "default_point_test_semantics": "Single operating point (no tunable score) evaluated on test split.",
                     "latency_ms": _latency_summary(method.latencies_ms),
                     "config": method.config,
                     "audit": {
@@ -1376,10 +1510,14 @@ def main() -> int:
                 }
             )
 
+    run_id = str(args.run_id) if args.run_id else make_run_id("rocpr")
     payload = {
         "generated_at": int(time.time()),
+        "run_id": run_id,
+        "git_sha_short": git_sha_short(),
         "suite_filter": args.suite,
         "dataset": {
+            "dataset_id": args.dataset_id,
             "record_count": len(records),
             "attack_count": sum(1 for r in records if r.label_attack),
             "benign_count": sum(1 for r in records if not r.label_attack),
@@ -1401,13 +1539,19 @@ def main() -> int:
         "methods": method_payloads,
         "method_errors": method_errors,
     }
+    run_dir = ensure_run_dir(run_id)
+    write_latest_pointer(run_id)
+    roc_json = run_dir / "roc_pr_experiments.json"
+    roc_md = run_dir / "roc_pr_experiments.md"
+    run_results_md = run_dir / "results.md"
+    roc_json.write_text(json.dumps(payload, indent=2) + "\n")
+    _write_markdown(payload, roc_md)
+    _write_results_summary(payload, run_results_md)
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    ROC_JSON.write_text(json.dumps(payload, indent=2) + "\n")
-    _write_markdown(payload)
-
-    print(f"roc/pr json: {ROC_JSON}")
-    print(f"roc/pr md:   {ROC_MD}")
+    print(f"run id: {run_id}")
+    print(f"roc/pr json: {roc_json}")
+    print(f"roc/pr md:   {roc_md}")
+    print(f"results md:  {run_results_md}")
     for m in method_payloads:
         p = m.get("default_point_test", {})
         print(

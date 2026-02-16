@@ -23,10 +23,19 @@ from typing import Any
 from urllib import error, request
 
 from guardllm import Guard
+from output_layout import (
+    CACHE_ROOT,
+    RUNS_ROOT,
+    ensure_cache_dir,
+    ensure_run_dir,
+    git_sha_short,
+    make_run_id,
+    read_latest_pointer,
+    write_latest_pointer,
+)
 from guardllm.security.source_gate import check_extraction_allowed
 from run_benchmarks import (  # noqa: F401
     BENCH_ROOT,
-    RESULTS_DIR,
     CaseResult,
     UPSTREAM_MANIFEST,
     load_cases,
@@ -36,9 +45,7 @@ from run_benchmarks import (  # noqa: F401
     _context_for_source,
 )
 
-COMPARE_JSON = RESULTS_DIR / "comparison.json"
-COMPARE_MD = RESULTS_DIR / "comparison.md"
-OPENAI_POLICY_CACHE = RESULTS_DIR / "openai_policy_adapter_cache.jsonl"
+OPENAI_POLICY_CACHE = CACHE_ROOT / "openai_policy_adapter_cache.jsonl"
 OPENAI_POLICY_PROMPT_VERSION = "v1"
 OPENAI_POLICY_PROMPT = (
     "Classify input as ATTACK or BENIGN for prompt-injection/jailbreak risk. "
@@ -110,6 +117,29 @@ def _append_jsonl_cache(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("a") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=True) + "\n")
+
+
+def _dataset_hash_for_cases(cases: list[dict[str, Any]]) -> str:
+    payload = [
+        {
+            "id": c.get("id"),
+            "suite": c.get("suite"),
+            "kind": c.get("kind"),
+            "source_type": c.get("source_type"),
+            "content_type": c.get("content_type"),
+        }
+        for c in cases
+    ]
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _repo_rel(path: Path) -> str:
+    root = BENCH_ROOT.parent
+    try:
+        return str(path.relative_to(root))
+    except Exception:
+        return str(path)
 
 
 def _bedrock_prompt_attack_detected(payload: dict[str, Any]) -> bool:
@@ -1723,7 +1753,7 @@ def run_text_only_strategies(
         },
         "resume_cache": {
             "openai_policy_adapter": {
-                "path": str(OPENAI_POLICY_CACHE),
+                "path": _repo_rel(OPENAI_POLICY_CACHE),
                 "entries": len(openai_resume_cache),
                 "hits_this_run": openai_cache_hits,
                 "writes_this_run": openai_cache_writes,
@@ -1861,6 +1891,7 @@ def write_markdown(
     non_text_only: dict[str, Any],
     text_scope: str,
     holdout_text_only: dict[str, Any] | None,
+    out_path: Path,
 ) -> None:
     lines: list[str] = []
     lines.append("# Mitigation Comparison")
@@ -2072,7 +2103,7 @@ def write_markdown(
             f"{json.dumps(src.get('stats', {}), sort_keys=True)}"
         )
 
-    COMPARE_MD.write_text("\n".join(lines) + "\n")
+    out_path.write_text("\n".join(lines) + "\n")
 
 
 def merge_prior_text_rows(
@@ -2195,7 +2226,9 @@ def main() -> int:
         default=0.0,
         help="Fail if GuardLLM text F1 (%%) is below this threshold.",
     )
+    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
     args = parser.parse_args()
+    ensure_cache_dir()
 
     cases = load_cases(args.suite)
     if not cases:
@@ -2217,9 +2250,11 @@ def main() -> int:
     text_only: dict[str, Any]
     holdout_text_only: dict[str, Any] | None = None
     previous_payload: dict[str, Any] = {}
-    if COMPARE_JSON.exists():
+    previous_run_id = read_latest_pointer()
+    previous_compare_json = (RUNS_ROOT / previous_run_id / "comparison.json") if previous_run_id else None
+    if previous_compare_json and previous_compare_json.exists():
         try:
-            previous_payload = json.loads(COMPARE_JSON.read_text())
+            previous_payload = json.loads(previous_compare_json.read_text())
         except Exception:
             previous_payload = {}
     if args.non_text_only:
@@ -2287,7 +2322,11 @@ def main() -> int:
             )
     payload = {
         "generated_at": int(time.time()),
+        "run_id": str(args.run_id) if args.run_id else make_run_id("comparison"),
+        "git_sha_short": git_sha_short(),
         "suite_filter": args.suite,
+        "dataset_hash": _dataset_hash_for_cases(cases),
+        "case_count_total": len(cases),
         "strategies": strategies,
         "table_rows": table_rows,
         "text_only": text_only,
@@ -2296,8 +2335,11 @@ def main() -> int:
         "holdout_text_only": holdout_text_only,
         "official_reference": official,
     }
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    COMPARE_JSON.write_text(json.dumps(payload, indent=2) + "\n")
+    run_id = str(payload["run_id"])
+    run_dir = ensure_run_dir(run_id)
+    compare_json = run_dir / "comparison.json"
+    compare_md = run_dir / "comparison.md"
+    compare_json.write_text(json.dumps(payload, indent=2) + "\n")
     write_markdown(
         table_rows=table_rows,
         strategies=strategies,
@@ -2306,10 +2348,13 @@ def main() -> int:
         non_text_only=non_text_only,
         text_scope=args.text_scope,
         holdout_text_only=holdout_text_only,
+        out_path=compare_md,
     )
+    write_latest_pointer(run_id)
 
-    print(f"comparison json: {COMPARE_JSON}")
-    print(f"comparison md:   {COMPARE_MD}")
+    print(f"run id: {run_id}")
+    print(f"comparison json: {compare_json}")
+    print(f"comparison md:   {compare_md}")
     print("overall:")
     for name, item in strategies.items():
         s = item["summary"]

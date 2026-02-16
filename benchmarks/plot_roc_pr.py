@@ -10,10 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
-IN_JSON = RESULTS_DIR / "roc_pr_experiments.json"
-OUT_ROC = RESULTS_DIR / "roc_curve.svg"
-OUT_PR = RESULTS_DIR / "pr_curve.svg"
+from output_layout import RUNS_ROOT, read_latest_pointer
 
 COLORS = [
     "#0b84f3",
@@ -64,12 +61,14 @@ def _draw_axes(lines: list[str], title: str, xlabel: str, ylabel: str, x0: float
 
 
 def _draw_legend(lines: list[str], labels: list[tuple[str, str]], x: float, y: float) -> None:
-    lines.append(f'<rect x="{x}" y="{y}" width="290" height="{24 + 22*len(labels)}" fill="#fff" stroke="#ddd"/>')
+    lines.append(f'<rect x="{x}" y="{y}" width="290" height="{52 + 22*len(labels)}" fill="#fff" stroke="#ddd"/>')
     lines.append(f'<text x="{x+10}" y="{y+16}" font-family="Arial" font-size="12" font-weight="bold">Methods</text>')
     for i, (name, color) in enumerate(labels):
-        yy = y + 32 + i * 20
+        yy = y + 52 + i * 20
         lines.append(f'<line x1="{x+10}" y1="{yy-4}" x2="{x+28}" y2="{yy-4}" stroke="{color}" stroke-width="3"/>')
         lines.append(f'<text x="{x+34}" y="{yy}" font-family="Arial" font-size="11">{name}</text>')
+    lines.append(f'<circle cx="{x+16}" cy="{y+34}" r="4.5" fill="#555" stroke="#fff" stroke-width="1"/>')
+    lines.append(f'<text x="{x+34}" y="{y+38}" font-family="Arial" font-size="11">Circle = default test operating point</text>')
 
 
 def _dedupe_points(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -107,7 +106,7 @@ def render_curve(
     width = 1100
     height = 760
     x0, y0, w, h = 90.0, 80.0, 800.0, 560.0
-    title = "ROC Curve" if curve_type == "roc" else "PR Curve"
+    title = "ROC Curve (dev curves)" if curve_type == "roc" else "PR Curve (dev curves)"
     xlabel = "False Positive Rate" if curve_type == "roc" else "Recall"
     ylabel = "True Positive Rate" if curve_type == "roc" else "Precision"
     lines = _svg_header(width, height)
@@ -179,9 +178,10 @@ def render_curve(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=str(IN_JSON))
-    parser.add_argument("--out-roc", default=str(OUT_ROC))
-    parser.add_argument("--out-pr", default=str(OUT_PR))
+    parser.add_argument("--run-id", default=None, help="Run id under benchmarks/runs/. Default: runs/LATEST.txt")
+    parser.add_argument("--input", default=None)
+    parser.add_argument("--out-roc", default=None)
+    parser.add_argument("--out-pr", default=None)
     parser.add_argument(
         "--include-method",
         action="append",
@@ -189,14 +189,32 @@ def main() -> int:
         help="Method name to include (repeatable). If omitted, include all methods.",
     )
     args = parser.parse_args()
+    run_id = str(args.run_id) if args.run_id else read_latest_pointer()
+    if run_id and not (RUNS_ROOT / run_id / "roc_pr_experiments.json").exists() and args.input is None:
+        # Fallback to most recently modified run containing roc_pr_experiments.json.
+        candidates = sorted(
+            [p for p in RUNS_ROOT.glob("*/roc_pr_experiments.json") if p.is_file()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if candidates:
+            run_id = candidates[0].parent.name
+    if not run_id:
+        raise SystemExit("No run id provided and benchmarks/runs/LATEST.txt is missing.")
+    run_dir = RUNS_ROOT / run_id
+    in_path = Path(args.input) if args.input else (run_dir / "roc_pr_experiments.json")
+    out_roc = Path(args.out_roc) if args.out_roc else (run_dir / "roc_curve.svg")
+    out_pr = Path(args.out_pr) if args.out_pr else (run_dir / "pr_curve.svg")
+    out_roc.parent.mkdir(parents=True, exist_ok=True)
+    out_pr.parent.mkdir(parents=True, exist_ok=True)
 
-    with Path(args.input).open() as f:
+    with in_path.open() as f:
         payload = json.load(f)
     include = set(str(x) for x in args.include_method) if args.include_method else None
-    render_curve(payload, curve_type="roc", out_path=Path(args.out_roc), include_methods=include)
-    render_curve(payload, curve_type="pr", out_path=Path(args.out_pr), include_methods=include)
-    print(f"wrote: {args.out_roc}")
-    print(f"wrote: {args.out_pr}")
+    render_curve(payload, curve_type="roc", out_path=out_roc, include_methods=include)
+    render_curve(payload, curve_type="pr", out_path=out_pr, include_methods=include)
+    print(f"wrote: {out_roc}")
+    print(f"wrote: {out_pr}")
     return 0
 
 

@@ -48,10 +48,17 @@ Thumbs.db
 benchmarks/upstream/mcp_bench/
 benchmarks/upstream/wainjectbench/
 
-# Local benchmark caches/artifacts
+# Legacy local benchmark artifacts
 benchmarks/results/openai_policy_adapter_cache.jsonl
 benchmarks/results/bedrock_guardrail_verification*.json
 benchmarks/results/bedrock_prompt_attack_*_50.json
 benchmarks/results/roc_score_cache.jsonl
 benchmarks/results/roc_vendor_score_cache.jsonl
+
+# Canonical generated benchmark outputs (regenerate on demand)
+benchmarks/cache/
+benchmarks/runs/
+benchmarks/datasets/*/
+!benchmarks/datasets/.gitkeep
 devel/
+paper/

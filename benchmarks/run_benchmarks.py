@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 import time
@@ -34,11 +35,11 @@ from guardllm.security.types import (
     SensitivityLevel,
     TrustLevel,
 )
+from output_layout import DATASETS_ROOT, RUNS_ROOT, ensure_run_dir, make_run_id, write_latest_pointer
 
 BENCH_ROOT = Path(__file__).resolve().parent
 CASES_DIR = BENCH_ROOT / "cases"
-RESULTS_DIR = BENCH_ROOT / "results"
-LATEST = RESULTS_DIR / "latest.json"
+RESULTS_DIR = RUNS_ROOT
 UPSTREAM_MANIFEST = BENCH_ROOT / "upstream" / "manifest.json"
 
 
@@ -80,7 +81,32 @@ def _context_for_source(source_type: str, content_type: ContentType, policy: Pol
     )
 
 
-def load_cases(suite: str | None) -> list[dict[str, Any]]:
+def load_cases(
+    suite: str | None,
+    *,
+    dataset_id: str | None = None,
+    dataset_root: Path | None = None,
+) -> list[dict[str, Any]]:
+    if dataset_id:
+        root = dataset_root or DATASETS_ROOT
+        dataset_path = root / dataset_id / "cases.jsonl"
+        if not dataset_path.exists():
+            raise FileNotFoundError(
+                f"dataset cases not found: {dataset_path} "
+                "(build first with benchmarks/build_dataset.py)"
+            )
+        loaded: list[dict[str, Any]] = []
+        with dataset_path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                case = json.loads(line)
+                if suite and case.get("suite") != suite:
+                    continue
+                loaded.append(case)
+        return loaded
+
     case_files = sorted(CASES_DIR.glob("*.jsonl"))
     upstream_files: list[Path] = []
     if UPSTREAM_MANIFEST.exists():
@@ -469,14 +495,42 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
     }
 
 
-def write_report(results: list[CaseResult], summary: dict[str, Any]) -> None:
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+def _dataset_hash(cases: list[dict[str, Any]]) -> str:
+    payload = [
+        {
+            "id": c.get("id"),
+            "suite": c.get("suite"),
+            "kind": c.get("kind"),
+            "source_type": c.get("source_type"),
+            "content_type": c.get("content_type"),
+        }
+        for c in cases
+    ]
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def write_report(
+    results: list[CaseResult],
+    summary: dict[str, Any],
+    *,
+    run_dir: Path,
+    run_id: str,
+    suite_filter: str | None,
+    cases: list[dict[str, Any]],
+) -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": int(time.time()),
+        "run_id": run_id,
+        "suite_filter": suite_filter,
+        "dataset_hash": _dataset_hash(cases),
         "summary": summary,
         "results": [r.__dict__ for r in results],
     }
-    LATEST.write_text(json.dumps(payload, indent=2))
+    out = run_dir / "latest.json"
+    out.write_text(json.dumps(payload, indent=2) + "\n")
+    return out
 
 
 def build_checkpoint(summary: dict[str, Any], results: list[CaseResult]) -> dict[str, Any]:
@@ -552,6 +606,8 @@ def compare_checkpoint(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
+    parser.add_argument("--dataset-id", default=None, help="Load cases from benchmarks/datasets/<dataset_id>/cases.jsonl")
+    parser.add_argument("--dataset-root", default=str(DATASETS_ROOT), help="Dataset root directory (default: benchmarks/datasets)")
     parser.add_argument(
         "--checkpoint",
         default=None,
@@ -567,16 +623,28 @@ def main() -> int:
         action="store_true",
         help="When validating checkpoint, do not fail on extra suites in run output",
     )
+    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
     args = parser.parse_args()
 
-    cases = load_cases(args.suite)
+    dataset_root = Path(args.dataset_root)
+    cases = load_cases(args.suite, dataset_id=args.dataset_id, dataset_root=dataset_root)
     if not cases:
         print("No benchmark cases found.")
         return 1
 
     results = [run_case(c) for c in cases]
     summary = summarize(results)
-    write_report(results, summary)
+    run_id = str(args.run_id) if args.run_id else make_run_id("core")
+    run_dir = ensure_run_dir(run_id)
+    write_latest_pointer(run_id)
+    report_path = write_report(
+        results,
+        summary,
+        run_dir=run_dir,
+        run_id=run_id,
+        suite_filter=args.suite,
+        cases=cases,
+    )
 
     print("guardllm benchmark results")
     print("total:", summary["total"], "passed:", summary["passed"], "failed:", summary["failed"], f"pass_rate={summary['pass_rate']}%")
@@ -610,11 +678,12 @@ def main() -> int:
             for msg in mismatches:
                 print(f"  - {msg}")
             print(f"checkpoint: {checkpoint_path}")
-            print(f"report: {LATEST}")
+            print(f"report: {report_path}")
             return 1
         print(f"\ncheckpoint validation: PASS ({checkpoint_path})")
 
-    print(f"\nreport: {LATEST}")
+    print(f"\nrun id: {run_id}")
+    print(f"report: {report_path}")
     return 0
 
 

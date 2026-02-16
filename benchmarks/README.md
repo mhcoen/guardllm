@@ -20,67 +20,19 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 - Versioned upstream-derived fixture snapshots under `benchmarks/upstream/`.
 - Import tooling for official benchmark exports.
 - Checkpoint files for regression gating in CI.
-- A report generator writing to `benchmarks/results/latest.json`.
+- Run-scoped outputs written under `benchmarks/runs/<run_id>/`.
 
-## Latest Snapshot
+## Publication Artifacts
 
-Core regression harness (`benchmarks/results/latest.json`):
-- Overall: `6441/6448` (`99.89%`)
-- Local suites: `82/82` (`100%`)
-- Upstream suites: `6359/6366` (`99.89%`)
-
-Expanded comparison corpus (`benchmarks/results/comparison.json`):
-- Full suite: `9927/10146` (`97.84%`)
-- Text scope (injection-only): `3823` records
-- Non-text scope: `5230` records
-
-Current text comparison (`benchmarks/results/comparison.json`, injection scope):
-- Accuracy definition (text scope): `(TP + TN) / total_records` where labels are prompt-injection attack vs benign.
-- Why accuracy is not enough: this dataset is benign-heavy, so accuracy can look acceptable even with poor attack recall. Use F1 and recall as primary attack-detection quality signals.
-
-| Strategy | Accuracy | F1 | Precision | Recall | Avg Latency |
-|---|---:|---:|---:|---:|---:|
-| GuardLLM | 93.17% | 85.46 | 99.10% | 75.12% | 0.07ms |
-| OpenAI (`gpt-4.1-mini`) | 84.99% | 61.79 | 96.47% | 45.45% | 615.68ms |
-| Anthropic (`claude-3-5-haiku-latest`) | 81.27% | 49.29 | 89.00% | 34.08% | 662.14ms |
-| Bedrock Guardrails (`HIGH`) | 78.50% | 32.62 | 100.0% | 19.49% | 748.27ms |
-| Azure Prompt Shields | 76.80% | 23.60 | 97.86% | 13.42% | 209.34ms |
-| Regex Rule Baseline | 73.37% | 0.58 | 100.0% | 0.29% | 0.01ms |
-| No Defense | 73.29% | 0.00 | 0.0% | 0.0% | 0.00ms |
-
-All rows in this table are evaluated on the same `3823`-record corpus (`1021` attacks, `2802` benign).
-`comparison.json` / `comparison.md` are single-snapshot artifacts: re-running with different flags overwrites strategy rows for the latest run; they are not cumulative across runs.
-`No Defense` is an allow-all baseline that effectively predicts benign for every input. Because the set is imbalanced, accuracy alone can look deceptively high; use recall/F1 as primary attack-detection metrics.
-
-Current non-text comparison (`benchmarks/results/comparison.json`):
-- Non-text total: `5230`
-- Non-text excluding `source_gate`: `4061`
-
-| Strategy | Passed | Total | Pass Rate |
-|---|---:|---:|---:|
-| guardllm_non_text | 5230 | 5230 | 100.0% |
-| strict_schema_stack | 5228 | 5230 | 99.96% |
-| casbin_rbac | 4549 | 5230 | 86.98% |
-| non_text_stack | 3199 | 5230 | 61.17% |
-| policy_opa | 2527 | 5230 | 48.32% |
-| redis_rate_limit | 1353 | 5230 | 25.87% |
-| schema_jsonschema | 681 | 5230 | 13.02% |
-| no_defense_non_text | 679 | 5230 | 12.98% |
-
-Non-text (excluding `source_gate`) pass rates:
-- `guardllm_non_text`: `100.0%`
-- `strict_schema_stack`: `99.95%`
-- `casbin_rbac`: `83.23%`
-- `non_text_stack`: `49.99%`
-- `policy_opa`: `33.44%`
-
-Reproducibility note:
-- A few rate-limit and timing-sensitive checks can vary slightly across runs, which can shift pass counts by small margins.
+- Protocol and metric definitions: `benchmarks/methodology.md`
+- Dataset rebuild and provenance flow: `benchmarks/DATASET_REPRO.md`
+- Auditor checklist: `benchmarks/VERIFICATION.md`
+- Canonical summary tables/figures: `benchmarks/results.md`
 
 ## Run
 
 ```bash
-python benchmarks/run_benchmarks.py
+python benchmarks/run_benchmarks.py --run-id core-local
 ```
 
 Run a single suite:
@@ -101,10 +53,18 @@ Write/update a checkpoint from current results:
 python benchmarks/run_benchmarks.py --write-checkpoint benchmarks/checkpoints/official-baseline.json
 ```
 
+Run outputs are written to `benchmarks/runs/<run_id>/latest.json` and `benchmarks/runs/LATEST.txt` is updated.
+
+Build canonical dataset package:
+
+```bash
+python benchmarks/build_dataset.py --dataset-id canonical-v1
+```
+
 Generate mitigation comparison tables:
 
 ```bash
-python benchmarks/compare_mitigations.py
+python benchmarks/compare_mitigations.py --run-id comparison-local
 ```
 
 Include Azure Prompt Shields and Bedrock Guardrails:
@@ -120,13 +80,13 @@ python benchmarks/compare_mitigations.py \
 ```
 
 Outputs:
-- `benchmarks/results/comparison.json`
-- `benchmarks/results/comparison.md`
+- `benchmarks/runs/<run_id>/comparison.json`
+- `benchmarks/runs/<run_id>/comparison.md`
 
 Run ROC/PR and operating-point experiments (dev/test split, threshold selection on dev, frozen test eval):
 
 ```bash
-python benchmarks/roc_pr_experiments.py
+python benchmarks/roc_pr_experiments.py --run-id rocpr-local
 ```
 
 Optional vendor runs with tool-based structured outputs:
@@ -140,12 +100,14 @@ python benchmarks/roc_pr_experiments.py \
 ```
 
 ROC/PR outputs:
-- `benchmarks/results/roc_pr_experiments.json`
-- `benchmarks/results/roc_pr_experiments.md`
+- `benchmarks/runs/<run_id>/roc_pr_experiments.json`
+- `benchmarks/runs/<run_id>/roc_pr_experiments.md`
+- optional figures: `benchmarks/runs/<run_id>/roc_curve.svg`, `benchmarks/runs/<run_id>/pr_curve.svg`
 
 Runtime behavior for `roc_pr_experiments.py`:
-- Per-record scoring is cache-backed and resumable across reruns via `benchmarks/results/roc_score_cache.jsonl`.
+- Per-record scoring is cache-backed and resumable across reruns via `benchmarks/cache/roc_score_cache.jsonl`.
 - Long-running scorers print status/progress every 2 minutes.
+- `benchmarks/runs/LATEST.txt` is updated to the latest run id.
 
 Current comparison strategies:
 - `guardllm`: full GuardLLM controls

@@ -11,7 +11,7 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 3. **Preserve integrity over time**: request binding and anti-replay checks prevent reuse of stale or tampered tool calls.
 4. **Enforce output and process constraints using the same context**: outbound DLP, provenance copy controls, and error sanitization use the same trust labels.
 
-This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context. Composing them into a stack (`non_text_stack` in [benchmarks/results.md](benchmarks/results.md)) reaches around 61% on non-text controls; GuardLLM reaches 100% because downstream decisions continuously track the same security labels established at ingress.
+This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context. Composing them into a stack (`non_text_stack` in [benchmarks/results/comparison.md](benchmarks/results/comparison.md)) reaches 61% on non-text controls; GuardLLM reaches 100% because downstream decisions continuously track the same security labels established at ingress.
 
 ## Features
 
@@ -137,16 +137,16 @@ Text benchmark (prompt-injection detection, `3823` records):
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 
-Non-text controls: `5230/5230` (`100%`) across 8 security kinds.
+Non-text controls: `5230/5230` (`100%`) across 8 security kinds. Full scope-aware comparison and methodology: [benchmarks/results/comparison.md](benchmarks/results/comparison.md).
 
-Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
+Full benchmark details: [benchmarks/README.md](benchmarks/README.md) | [benchmarks/results/comparison.json](benchmarks/results/comparison.json)
 
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md)
 - **Architecture & API**: [Security Architecture](docs/security.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/)
-- **Operations**: [Production Checklist](docs/production_checklist.md) | [Troubleshooting](docs/troubleshooting.md) | [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
+- **Operations**: [Production Checklist](docs/production_checklist.md) | [Troubleshooting](docs/troubleshooting.md) | [Benchmarks](benchmarks/README.md)
 
 ## Development
 

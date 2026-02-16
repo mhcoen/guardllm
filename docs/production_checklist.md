@@ -43,7 +43,7 @@ Use this checklist before deploying guardllm-backed flows.
 
 - Run benchmark suite in CI: `python benchmarks/run_benchmarks.py`.
 - Block releases on benchmark regressions.
-- Keep `benchmarks/results/latest.json` current for release notes.
+- Keep canonical run summaries current in `benchmarks/results.md` with source artifacts under `benchmarks/runs/<run_id>/`.
 
 ## 8. Operational Runbooks
 

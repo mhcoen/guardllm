@@ -46,7 +46,7 @@ Recommended:
 
 1. Benchmark baseline: `python benchmarks/run_benchmarks.py`
 2. Apply one policy change.
-3. Re-run benchmarks and compare `benchmarks/results/latest.json`.
+3. Re-run benchmarks and compare `benchmarks/runs/<run_id>/latest.json` (or resolve latest from `benchmarks/runs/LATEST.txt`).
 4. Add/adjust suite cases for your domain.
 5. Deploy with audit logging enabled.
 

@@ -1,0 +1,745 @@
+diff --git a/benchmarks/compare_mitigations.py b/benchmarks/compare_mitigations.py
+index 7a3e80a..1db015d 100644
+--- a/benchmarks/compare_mitigations.py
++++ b/benchmarks/compare_mitigations.py
+@@ -23,10 +23,19 @@ from typing import Any
+ from urllib import error, request
+ 
+ from guardllm import Guard
++from output_layout import (
++    CACHE_ROOT,
++    RUNS_ROOT,
++    ensure_cache_dir,
++    ensure_run_dir,
++    git_sha_short,
++    make_run_id,
++    read_latest_pointer,
++    write_latest_pointer,
++)
+ from guardllm.security.source_gate import check_extraction_allowed
+ from run_benchmarks import (  # noqa: F401
+     BENCH_ROOT,
+-    RESULTS_DIR,
+     CaseResult,
+     UPSTREAM_MANIFEST,
+     load_cases,
+@@ -36,9 +45,7 @@ from run_benchmarks import (  # noqa: F401
+     _context_for_source,
+ )
+ 
+-COMPARE_JSON = RESULTS_DIR / "comparison.json"
+-COMPARE_MD = RESULTS_DIR / "comparison.md"
+-OPENAI_POLICY_CACHE = RESULTS_DIR / "openai_policy_adapter_cache.jsonl"
++OPENAI_POLICY_CACHE = CACHE_ROOT / "openai_policy_adapter_cache.jsonl"
+ OPENAI_POLICY_PROMPT_VERSION = "v1"
+ OPENAI_POLICY_PROMPT = (
+     "Classify input as ATTACK or BENIGN for prompt-injection/jailbreak risk. "
+@@ -112,6 +119,29 @@ def _append_jsonl_cache(path: Path, rows: list[dict[str, Any]]) -> None:
+             f.write(json.dumps(row, ensure_ascii=True) + "\n")
+ 
+ 
++def _dataset_hash_for_cases(cases: list[dict[str, Any]]) -> str:
++    payload = [
++        {
++            "id": c.get("id"),
++            "suite": c.get("suite"),
++            "kind": c.get("kind"),
++            "source_type": c.get("source_type"),
++            "content_type": c.get("content_type"),
++        }
++        for c in cases
++    ]
++    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
++    return hashlib.sha256(encoded).hexdigest()
++
++
++def _repo_rel(path: Path) -> str:
++    root = BENCH_ROOT.parent
++    try:
++        return str(path.relative_to(root))
++    except Exception:
++        return str(path)
++
++
+ def _bedrock_prompt_attack_detected(payload: dict[str, Any]) -> bool:
+     filters = _bedrock_prompt_attack_filters(payload)
+     return any(bool(item.get("detected", False)) for item in filters)
+@@ -1723,7 +1753,7 @@ def run_text_only_strategies(
+         },
+         "resume_cache": {
+             "openai_policy_adapter": {
+-                "path": str(OPENAI_POLICY_CACHE),
++                "path": _repo_rel(OPENAI_POLICY_CACHE),
+                 "entries": len(openai_resume_cache),
+                 "hits_this_run": openai_cache_hits,
+                 "writes_this_run": openai_cache_writes,
+@@ -1861,6 +1891,7 @@ def write_markdown(
+     non_text_only: dict[str, Any],
+     text_scope: str,
+     holdout_text_only: dict[str, Any] | None,
++    out_path: Path,
+ ) -> None:
+     lines: list[str] = []
+     lines.append("# Mitigation Comparison")
+@@ -2072,7 +2103,7 @@ def write_markdown(
+             f"{json.dumps(src.get('stats', {}), sort_keys=True)}"
+         )
+ 
+-    COMPARE_MD.write_text("\n".join(lines) + "\n")
++    out_path.write_text("\n".join(lines) + "\n")
+ 
+ 
+ def merge_prior_text_rows(
+@@ -2195,7 +2226,9 @@ def main() -> int:
+         default=0.0,
+         help="Fail if GuardLLM text F1 (%%) is below this threshold.",
+     )
++    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+     args = parser.parse_args()
++    ensure_cache_dir()
+ 
+     cases = load_cases(args.suite)
+     if not cases:
+@@ -2217,9 +2250,11 @@ def main() -> int:
+     text_only: dict[str, Any]
+     holdout_text_only: dict[str, Any] | None = None
+     previous_payload: dict[str, Any] = {}
+-    if COMPARE_JSON.exists():
++    previous_run_id = read_latest_pointer()
++    previous_compare_json = (RUNS_ROOT / previous_run_id / "comparison.json") if previous_run_id else None
++    if previous_compare_json and previous_compare_json.exists():
+         try:
+-            previous_payload = json.loads(COMPARE_JSON.read_text())
++            previous_payload = json.loads(previous_compare_json.read_text())
+         except Exception:
+             previous_payload = {}
+     if args.non_text_only:
+@@ -2287,7 +2322,11 @@ def main() -> int:
+             )
+     payload = {
+         "generated_at": int(time.time()),
++        "run_id": str(args.run_id) if args.run_id else make_run_id("comparison"),
++        "git_sha_short": git_sha_short(),
+         "suite_filter": args.suite,
++        "dataset_hash": _dataset_hash_for_cases(cases),
++        "case_count_total": len(cases),
+         "strategies": strategies,
+         "table_rows": table_rows,
+         "text_only": text_only,
+@@ -2296,8 +2335,11 @@ def main() -> int:
+         "holdout_text_only": holdout_text_only,
+         "official_reference": official,
+     }
+-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+-    COMPARE_JSON.write_text(json.dumps(payload, indent=2) + "\n")
++    run_id = str(payload["run_id"])
++    run_dir = ensure_run_dir(run_id)
++    compare_json = run_dir / "comparison.json"
++    compare_md = run_dir / "comparison.md"
++    compare_json.write_text(json.dumps(payload, indent=2) + "\n")
+     write_markdown(
+         table_rows=table_rows,
+         strategies=strategies,
+@@ -2306,10 +2348,13 @@ def main() -> int:
+         non_text_only=non_text_only,
+         text_scope=args.text_scope,
+         holdout_text_only=holdout_text_only,
++        out_path=compare_md,
+     )
++    write_latest_pointer(run_id)
+ 
+-    print(f"comparison json: {COMPARE_JSON}")
+-    print(f"comparison md:   {COMPARE_MD}")
++    print(f"run id: {run_id}")
++    print(f"comparison json: {compare_json}")
++    print(f"comparison md:   {compare_md}")
+     print("overall:")
+     for name, item in strategies.items():
+         s = item["summary"]
+diff --git a/benchmarks/plot_roc_pr.py b/benchmarks/plot_roc_pr.py
+index 31b2cde..6a978eb 100644
+--- a/benchmarks/plot_roc_pr.py
++++ b/benchmarks/plot_roc_pr.py
+@@ -10,10 +10,7 @@ import json
+ from pathlib import Path
+ from typing import Any
+ 
+-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+-IN_JSON = RESULTS_DIR / "roc_pr_experiments.json"
+-OUT_ROC = RESULTS_DIR / "roc_curve.svg"
+-OUT_PR = RESULTS_DIR / "pr_curve.svg"
++from output_layout import RUNS_ROOT, read_latest_pointer
+ 
+ COLORS = [
+     "#0b84f3",
+@@ -64,12 +61,14 @@ def _draw_axes(lines: list[str], title: str, xlabel: str, ylabel: str, x0: float
+ 
+ 
+ def _draw_legend(lines: list[str], labels: list[tuple[str, str]], x: float, y: float) -> None:
+-    lines.append(f'<rect x="{x}" y="{y}" width="290" height="{24 + 22*len(labels)}" fill="#fff" stroke="#ddd"/>')
++    lines.append(f'<rect x="{x}" y="{y}" width="290" height="{52 + 22*len(labels)}" fill="#fff" stroke="#ddd"/>')
+     lines.append(f'<text x="{x+10}" y="{y+16}" font-family="Arial" font-size="12" font-weight="bold">Methods</text>')
+     for i, (name, color) in enumerate(labels):
+-        yy = y + 32 + i * 20
++        yy = y + 52 + i * 20
+         lines.append(f'<line x1="{x+10}" y1="{yy-4}" x2="{x+28}" y2="{yy-4}" stroke="{color}" stroke-width="3"/>')
+         lines.append(f'<text x="{x+34}" y="{yy}" font-family="Arial" font-size="11">{name}</text>')
++    lines.append(f'<circle cx="{x+16}" cy="{y+34}" r="4.5" fill="#555" stroke="#fff" stroke-width="1"/>')
++    lines.append(f'<text x="{x+34}" y="{y+38}" font-family="Arial" font-size="11">Circle = default test operating point</text>')
+ 
+ 
+ def _dedupe_points(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+@@ -107,7 +106,7 @@ def render_curve(
+     width = 1100
+     height = 760
+     x0, y0, w, h = 90.0, 80.0, 800.0, 560.0
+-    title = "ROC Curve" if curve_type == "roc" else "PR Curve"
++    title = "ROC Curve (dev curves)" if curve_type == "roc" else "PR Curve (dev curves)"
+     xlabel = "False Positive Rate" if curve_type == "roc" else "Recall"
+     ylabel = "True Positive Rate" if curve_type == "roc" else "Precision"
+     lines = _svg_header(width, height)
+@@ -179,9 +178,10 @@ def render_curve(
+ 
+ def main() -> int:
+     parser = argparse.ArgumentParser()
+-    parser.add_argument("--input", default=str(IN_JSON))
+-    parser.add_argument("--out-roc", default=str(OUT_ROC))
+-    parser.add_argument("--out-pr", default=str(OUT_PR))
++    parser.add_argument("--run-id", default=None, help="Run id under benchmarks/runs/. Default: runs/LATEST.txt")
++    parser.add_argument("--input", default=None)
++    parser.add_argument("--out-roc", default=None)
++    parser.add_argument("--out-pr", default=None)
+     parser.add_argument(
+         "--include-method",
+         action="append",
+@@ -189,14 +189,32 @@ def main() -> int:
+         help="Method name to include (repeatable). If omitted, include all methods.",
+     )
+     args = parser.parse_args()
+-
+-    with Path(args.input).open() as f:
++    run_id = str(args.run_id) if args.run_id else read_latest_pointer()
++    if run_id and not (RUNS_ROOT / run_id / "roc_pr_experiments.json").exists() and args.input is None:
++        # Fallback to most recently modified run containing roc_pr_experiments.json.
++        candidates = sorted(
++            [p for p in RUNS_ROOT.glob("*/roc_pr_experiments.json") if p.is_file()],
++            key=lambda p: p.stat().st_mtime,
++            reverse=True,
++        )
++        if candidates:
++            run_id = candidates[0].parent.name
++    if not run_id:
++        raise SystemExit("No run id provided and benchmarks/runs/LATEST.txt is missing.")
++    run_dir = RUNS_ROOT / run_id
++    in_path = Path(args.input) if args.input else (run_dir / "roc_pr_experiments.json")
++    out_roc = Path(args.out_roc) if args.out_roc else (run_dir / "roc_curve.svg")
++    out_pr = Path(args.out_pr) if args.out_pr else (run_dir / "pr_curve.svg")
++    out_roc.parent.mkdir(parents=True, exist_ok=True)
++    out_pr.parent.mkdir(parents=True, exist_ok=True)
++
++    with in_path.open() as f:
+         payload = json.load(f)
+     include = set(str(x) for x in args.include_method) if args.include_method else None
+-    render_curve(payload, curve_type="roc", out_path=Path(args.out_roc), include_methods=include)
+-    render_curve(payload, curve_type="pr", out_path=Path(args.out_pr), include_methods=include)
+-    print(f"wrote: {args.out_roc}")
+-    print(f"wrote: {args.out_pr}")
++    render_curve(payload, curve_type="roc", out_path=out_roc, include_methods=include)
++    render_curve(payload, curve_type="pr", out_path=out_pr, include_methods=include)
++    print(f"wrote: {out_roc}")
++    print(f"wrote: {out_pr}")
+     return 0
+ 
+ 
+diff --git a/benchmarks/roc_pr_experiments.py b/benchmarks/roc_pr_experiments.py
+index 5754664..7aca69b 100644
+--- a/benchmarks/roc_pr_experiments.py
++++ b/benchmarks/roc_pr_experiments.py
+@@ -29,6 +29,14 @@ from urllib import error, request
+ from _bootstrap import ROOT  # noqa: F401
+ from guardllm import Guard
+ from guardllm.security.prompt_injection_detector import detect_prompt_injection
++from output_layout import (
++    CACHE_ROOT,
++    ensure_cache_dir,
++    ensure_run_dir,
++    git_sha_short,
++    make_run_id,
++    write_latest_pointer,
++)
+ 
+ from compare_mitigations import (  # noqa: E402
+     AZURE_SIGNAL_CHOICES,
+@@ -39,11 +47,9 @@ from compare_mitigations import (  # noqa: E402
+     _context_for_source,
+     build_text_records,
+ )
+-from run_benchmarks import RESULTS_DIR, load_cases
++from run_benchmarks import load_cases
+ 
+-ROC_JSON = RESULTS_DIR / "roc_pr_experiments.json"
+-ROC_MD = RESULTS_DIR / "roc_pr_experiments.md"
+-SCORE_CACHE = RESULTS_DIR / "roc_score_cache.jsonl"
++SCORE_CACHE = CACHE_ROOT / "roc_score_cache.jsonl"
+ CACHE_FLUSH_EVERY = 1
+ STATUS_INTERVAL_SECONDS = 120.0
+ 
+@@ -159,6 +165,13 @@ def _sha256_text(value: str) -> str:
+     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+ 
+ 
++def _repo_rel(path: Path) -> str:
++    try:
++        return str(path.relative_to(ROOT))
++    except Exception:
++        return str(path)
++
++
+ def _load_jsonl_cache(path: Path) -> dict[str, dict[str, Any]]:
+     out: dict[str, dict[str, Any]] = {}
+     if not path.exists():
+@@ -271,6 +284,16 @@ def _threshold_candidates(scores: list[float]) -> list[float]:
+     return uniq
+ 
+ 
++def _threshold_grid(step: float) -> list[float]:
++    if step <= 0 or step > 1:
++        return [1.0, 0.0]
++    points = int(round(1.0 / step))
++    vals = [max(0.0, min(1.0, 1.0 - i * step)) for i in range(points + 1)]
++    if vals[-1] != 0.0:
++        vals.append(0.0)
++    return vals
++
++
+ def _point_at_threshold(labels: list[bool], scores: list[float], t: float) -> PointEval:
+     preds = [s >= t for s in scores]
+     return _point_from_preds(labels, preds, t)
+@@ -286,8 +309,14 @@ def _trapezoid_auc(xs: list[float], ys: list[float]) -> float:
+     return max(0.0, area)
+ 
+ 
+-def _curve_from_scores(labels: list[bool], scores: list[float]) -> CurveEval:
+-    points: list[PointEval] = [_point_at_threshold(labels, scores, t) for t in _threshold_candidates(scores)]
++def _curve_from_scores(
++    labels: list[bool],
++    scores: list[float],
++    *,
++    thresholds: list[float] | None = None,
++) -> CurveEval:
++    cands = thresholds if thresholds is not None else _threshold_candidates(scores)
++    points: list[PointEval] = [_point_at_threshold(labels, scores, t) for t in cands]
+ 
+     roc_sorted = sorted(points, key=lambda p: (p.fpr, p.recall))
+     roc_x = [p.fpr for p in roc_sorted]
+@@ -339,7 +368,7 @@ def _choose_threshold_for_budget(
+ 
+     return {
+         "threshold": best.threshold,
+-        "meets_budget": bool(passing),
++        "meets_budget_dev": bool(passing),
+         "budget": {
+             "fp_per_1k_neg_max": fp_per_1k_budget,
+             "precision_min": precision_budget,
+@@ -366,6 +395,29 @@ def _point_to_dict(p: PointEval) -> dict[str, Any]:
+     }
+ 
+ 
++def _wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float]:
++    if total <= 0:
++        return [0.0, 1.0]
++    phat = successes / total
++    denom = 1.0 + (z * z) / total
++    center = (phat + (z * z) / (2.0 * total)) / denom
++    margin = (z / denom) * math.sqrt((phat * (1.0 - phat) / total) + ((z * z) / (4.0 * total * total)))
++    lo = max(0.0, center - margin)
++    hi = min(1.0, center + margin)
++    return [round(lo, 6), round(hi, 6)]
++
++
++def _metric_intervals(p: PointEval) -> dict[str, list[float]]:
++    pr_den = p.tp + p.fp
++    rec_den = p.tp + p.fn
++    fp_den = p.fp + p.tn
++    return {
++        "precision_ci95": _wilson_interval(p.tp, pr_den),
++        "recall_ci95": _wilson_interval(p.tp, rec_den),
++        "fpr_ci95": _wilson_interval(p.fp, fp_den),
++    }
++
++
+ def _stratified_split_indices(
+     records: list[TextRecord],
+     seed: int,
+@@ -514,7 +566,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
+         per_record=rows,
+         config={
+             **config,
+-            "cache_path": str(SCORE_CACHE),
++            "cache_path": _repo_rel(SCORE_CACHE),
+             "cache_hits": cache_hits,
+             "cache_writes": cache_writes,
+         },
+@@ -574,7 +626,7 @@ def _score_regex(records: list[TextRecord]) -> MethodScores:
+         per_record=rows,
+         config={
+             **config,
+-            "cache_path": str(SCORE_CACHE),
++            "cache_path": _repo_rel(SCORE_CACHE),
+             "cache_hits": cache_hits,
+             "cache_writes": cache_writes,
+         },
+@@ -631,7 +683,7 @@ def _score_no_defense(records: list[TextRecord]) -> MethodScores:
+         per_record=rows,
+         config={
+             **config,
+-            "cache_path": str(SCORE_CACHE),
++            "cache_path": _repo_rel(SCORE_CACHE),
+             "cache_hits": cache_hits,
+             "cache_writes": cache_writes,
+         },
+@@ -831,7 +883,7 @@ def _score_openai_tool(
+             "system_prompt_hash": prompt_hash,
+             "tool_schema_hash": schema_hash,
+             "tool": "record_detection",
+-            "cache_path": str(SCORE_CACHE),
++            "cache_path": _repo_rel(SCORE_CACHE),
+             "cache_hits": cache_hits,
+             "cache_writes": cache_writes,
+         },
+@@ -969,7 +1021,7 @@ def _score_anthropic_tool(
+             "system_prompt_hash": prompt_hash,
+             "tool_schema_hash": schema_hash,
+             "tool": "record_detection",
+-            "cache_path": str(SCORE_CACHE),
++            "cache_path": _repo_rel(SCORE_CACHE),
+             "cache_hits": cache_hits,
+             "cache_writes": cache_writes,
+         },
+@@ -1067,7 +1119,7 @@ def _score_azure_points(records: list[TextRecord], endpoint: str, key: str, prog
+                 config={
+                     "signal": signal,
+                     **shared_config,
+-                    "cache_path": str(SCORE_CACHE),
++                    "cache_path": _repo_rel(SCORE_CACHE),
+                     "cache_hits": cache_hits,
+                     "cache_writes": cache_writes,
+                 },
+@@ -1122,7 +1174,7 @@ def _budget_from_arg(value: str) -> float:
+     return v
+ 
+ 
+-def _write_markdown(payload: dict[str, Any]) -> None:
++def _write_markdown(payload: dict[str, Any], out_path: Path) -> None:
+     lines: list[str] = []
+     lines.append("# ROC/PR Experiments")
+     lines.append("")
+@@ -1133,6 +1185,7 @@ def _write_markdown(payload: dict[str, Any]) -> None:
+     lines.append(f"- split seed: `{payload['split']['seed']}`")
+     lines.append(f"- dev records: `{payload['split']['dev_count']}`")
+     lines.append(f"- test records: `{payload['split']['test_count']}`")
++    lines.append(f"- run id: `{payload.get('run_id', 'unknown')}`")
+     if payload.get("method_errors"):
+         lines.append("- method errors:")
+         for name, message in sorted(payload["method_errors"].items()):
+@@ -1151,28 +1204,38 @@ def _write_markdown(payload: dict[str, Any]) -> None:
+             f"| {m['name']} | {str(bool(m.get('tunable'))).lower()} | {m.get('curve_source', 'n/a')} | "
+             f"{'' if roc_auc is None else roc_auc} | {'' if pr_auc is None else pr_auc} |"
+         )
++    lines.append("")
++    lines.append("Default operating point semantics:")
++    for m in payload.get("methods", []):
++        lines.append(f"- `{m['name']}`: {m.get('default_point_test_semantics', 'n/a')}")
+ 
+     lines.append("")
+     lines.append("## Recall At FP Budgets (test)")
+     lines.append("")
+-    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | meets_budget |")
+-    lines.append("|---|---|---:|---:|---:|---:|---:|")
++    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | recall_ci95 | precision_ci95 | fpr_ci95 | meets_budget_dev | meets_budget_test |")
++    lines.append("|---|---|---:|---:|---:|---:|---|---|---|---:|---:|")
+     for m in payload.get("methods", []):
+         for op in m.get("selected_operating_points", []):
+             test = op.get("test_metrics", {})
++            iv = op.get("test_intervals", {})
+             budget = op.get("budget", {})
+             budget_label = ""
+             if budget.get("fp_per_1k_neg_max") is not None:
+                 budget_label = f"fp/1k<={budget['fp_per_1k_neg_max']}"
+             elif budget.get("precision_min") is not None:
+                 budget_label = f"precision>={_percent(budget['precision_min'])}%"
++            recall_ci = iv.get("recall_ci95", [])
++            precision_ci = iv.get("precision_ci95", [])
++            fpr_ci = iv.get("fpr_ci95", [])
+             lines.append(
+                 f"| {m['name']} | {budget_label} | {op.get('threshold')} | "
+                 f"{_percent(float(test.get('recall', 0.0)))}% | {_percent(float(test.get('precision', 0.0)))}% | "
+-                f"{round(float(test.get('fp_per_1k_neg', 0.0)), 4)} | {str(bool(op.get('meets_budget'))).lower()} |"
++                f"{round(float(test.get('fp_per_1k_neg', 0.0)), 4)} | "
++                f"{recall_ci} | {precision_ci} | {fpr_ci} | {str(bool(op.get('meets_budget_dev'))).lower()} | "
++                f"{str(bool(op.get('meets_budget_test'))).lower()} |"
+             )
+ 
+-    ROC_MD.write_text("\n".join(lines) + "\n")
++    out_path.write_text("\n".join(lines) + "\n")
+ 
+ 
+ def main() -> int:
+@@ -1190,6 +1253,12 @@ def main() -> int:
+     )
+     parser.add_argument("--fp-budget-per-1k", type=_budget_from_arg, action="append", default=[1.0, 5.0])
+     parser.add_argument("--precision-budget", type=float, action="append", default=[])
++    parser.add_argument(
++        "--guardllm-curve-step",
++        type=float,
++        default=0.001,
++        help="GuardLLM curve threshold step for dense ROC/PR sampling (default 0.001).",
++    )
+ 
+     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY"))
+     parser.add_argument("--openai-model", default="gpt-4.1-mini")
+@@ -1197,7 +1266,9 @@ def main() -> int:
+     parser.add_argument("--anthropic-model", default="claude-3-5-haiku-latest")
+     parser.add_argument("--azure-endpoint", default=None)
+     parser.add_argument("--azure-key", default=None)
++    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+     args = parser.parse_args()
++    ensure_cache_dir()
+     progress_seconds = STATUS_INTERVAL_SECONDS
+     if float(args.progress_seconds) != STATUS_INTERVAL_SECONDS:
+         print(
+@@ -1298,29 +1369,37 @@ def main() -> int:
+             dev_labels, dev_scores = _labels_and_scores(dev_rows)
+             test_labels, test_scores = _labels_and_scores(test_rows)
+ 
+-            curve_rows = method.per_record if method.name == "guardllm" else dev_rows
+-            curve_labels, curve_scores = _labels_and_scores(curve_rows)
+-            curves = _curve_from_scores(curve_labels, curve_scores)
++            curve_labels, curve_scores = _labels_and_scores(dev_rows)
++            curve_thresholds: list[float] | None = None
++            if method.name == "guardllm":
++                curve_thresholds = _threshold_grid(float(args.guardllm_curve_step))
++            curves = _curve_from_scores(curve_labels, curve_scores, thresholds=curve_thresholds)
+ 
+             selected_ops: list[dict[str, Any]] = []
+             for budget in fp_budgets:
+                 picked = _choose_threshold_for_budget(dev_labels, dev_scores, fp_per_1k_budget=budget)
+                 t = float(picked["threshold"])
+                 test_eval = _point_at_threshold(test_labels, test_scores, t)
++                meets_test = bool(test_eval.fp_per_1k_neg <= budget)
+                 selected_ops.append(
+                     {
+                         **picked,
+                         "test_metrics": _point_to_dict(test_eval),
++                        "test_intervals": _metric_intervals(test_eval),
++                        "meets_budget_test": meets_test,
+                     }
+                 )
+             for precision_min in precision_budgets:
+                 picked = _choose_threshold_for_budget(dev_labels, dev_scores, precision_budget=precision_min)
+                 t = float(picked["threshold"])
+                 test_eval = _point_at_threshold(test_labels, test_scores, t)
++                meets_test = bool(test_eval.precision >= precision_min)
+                 selected_ops.append(
+                     {
+                         **picked,
+                         "test_metrics": _point_to_dict(test_eval),
++                        "test_intervals": _metric_intervals(test_eval),
++                        "meets_budget_test": meets_test,
+                     }
+                 )
+ 
+@@ -1331,7 +1410,7 @@ def main() -> int:
+                     "tunable": True,
+                     "score_name": method.score_name,
+                     "score_scale": method.score_scale,
+-                    "curve_source": "full" if method.name == "guardllm" else "dev",
++                    "curve_source": "dev",
+                     "curves": {
+                         "roc_auc": curves.roc_auc,
+                         "pr_auc": curves.pr_auc,
+@@ -1340,6 +1419,8 @@ def main() -> int:
+                         "precision_empty_pred_convention": curves.precision_empty_pred_convention,
+                     },
+                     "default_point_test": _point_to_dict(default_point),
++                    "default_point_test_intervals": _metric_intervals(default_point),
++                    "default_point_test_semantics": "Default threshold or default decision rule evaluated on test split.",
+                     "selected_operating_points": selected_ops,
+                     "latency_ms": _latency_summary(method.latencies_ms),
+                     "config": method.config,
+@@ -1356,18 +1437,23 @@ def main() -> int:
+                 {
+                     "name": method.name,
+                     "tunable": False,
+-                    "curve_source": "single_point",
++                    "curve_source": "dev",
++                    "curve_note": "single operating point (non-tunable method)",
+                     "curves": None,
+                     "default_point_test": _point_to_dict(point),
+                     "selected_operating_points": [
+                         {
+                             "threshold": None,
+-                            "meets_budget": (point.fp_per_1k_neg <= b),
++                            "meets_budget_dev": (point.fp_per_1k_neg <= b),
++                            "meets_budget_test": (point.fp_per_1k_neg <= b),
+                             "budget": {"fp_per_1k_neg_max": b, "precision_min": None},
+                             "test_metrics": _point_to_dict(point),
++                            "test_intervals": _metric_intervals(point),
+                         }
+                         for b in fp_budgets
+                     ],
++                    "default_point_test_intervals": _metric_intervals(point),
++                    "default_point_test_semantics": "Single operating point (no tunable score) evaluated on test split.",
+                     "latency_ms": _latency_summary(method.latencies_ms),
+                     "config": method.config,
+                     "audit": {
+@@ -1376,8 +1462,11 @@ def main() -> int:
+                 }
+             )
+ 
++    run_id = str(args.run_id) if args.run_id else make_run_id("rocpr")
+     payload = {
+         "generated_at": int(time.time()),
++        "run_id": run_id,
++        "git_sha_short": git_sha_short(),
+         "suite_filter": args.suite,
+         "dataset": {
+             "record_count": len(records),
+@@ -1401,13 +1490,16 @@ def main() -> int:
+         "methods": method_payloads,
+         "method_errors": method_errors,
+     }
+-
+-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+-    ROC_JSON.write_text(json.dumps(payload, indent=2) + "\n")
+-    _write_markdown(payload)
+-
+-    print(f"roc/pr json: {ROC_JSON}")
+-    print(f"roc/pr md:   {ROC_MD}")
++    run_dir = ensure_run_dir(run_id)
++    write_latest_pointer(run_id)
++    roc_json = run_dir / "roc_pr_experiments.json"
++    roc_md = run_dir / "roc_pr_experiments.md"
++    roc_json.write_text(json.dumps(payload, indent=2) + "\n")
++    _write_markdown(payload, roc_md)
++
++    print(f"run id: {run_id}")
++    print(f"roc/pr json: {roc_json}")
++    print(f"roc/pr md:   {roc_md}")
+     for m in method_payloads:
+         p = m.get("default_point_test", {})
+         print(
+diff --git a/benchmarks/run_benchmarks.py b/benchmarks/run_benchmarks.py
+index 05fabd9..280cc7f 100644
+--- a/benchmarks/run_benchmarks.py
++++ b/benchmarks/run_benchmarks.py
+@@ -9,6 +9,7 @@ from __future__ import annotations
+ 
+ import argparse
+ import asyncio
++import hashlib
+ import json
+ import sys
+ import time
+@@ -34,11 +35,11 @@ from guardllm.security.types import (
+     SensitivityLevel,
+     TrustLevel,
+ )
++from output_layout import RUNS_ROOT, ensure_run_dir, make_run_id, write_latest_pointer
+ 
+ BENCH_ROOT = Path(__file__).resolve().parent
+ CASES_DIR = BENCH_ROOT / "cases"
+-RESULTS_DIR = BENCH_ROOT / "results"
+-LATEST = RESULTS_DIR / "latest.json"
++RESULTS_DIR = RUNS_ROOT
+ UPSTREAM_MANIFEST = BENCH_ROOT / "upstream" / "manifest.json"
+ 
+ 
+@@ -469,14 +470,42 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
+     }
+ 
+ 
+-def write_report(results: list[CaseResult], summary: dict[str, Any]) -> None:
+-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
++def _dataset_hash(cases: list[dict[str, Any]]) -> str:
++    payload = [
++        {
++            "id": c.get("id"),
++            "suite": c.get("suite"),
++            "kind": c.get("kind"),
++            "source_type": c.get("source_type"),
++            "content_type": c.get("content_type"),
++        }
++        for c in cases
++    ]
++    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
++    return hashlib.sha256(raw).hexdigest()
++
++
++def write_report(
++    results: list[CaseResult],
++    summary: dict[str, Any],
++    *,
++    run_dir: Path,
++    run_id: str,
++    suite_filter: str | None,
++    cases: list[dict[str, Any]],
++) -> Path:
++    run_dir.mkdir(parents=True, exist_ok=True)
+     payload = {
+         "generated_at": int(time.time()),
++        "run_id": run_id,
++        "suite_filter": suite_filter,
++        "dataset_hash": _dataset_hash(cases),
+         "summary": summary,
+         "results": [r.__dict__ for r in results],
+     }
+-    LATEST.write_text(json.dumps(payload, indent=2))
++    out = run_dir / "latest.json"
++    out.write_text(json.dumps(payload, indent=2) + "\n")
++    return out
+ 
+ 
+ def build_checkpoint(summary: dict[str, Any], results: list[CaseResult]) -> dict[str, Any]:
+@@ -567,6 +596,7 @@ def main() -> int:
+         action="store_true",
+         help="When validating checkpoint, do not fail on extra suites in run output",
+     )
++    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+     args = parser.parse_args()
+ 
+     cases = load_cases(args.suite)
+@@ -576,7 +606,17 @@ def main() -> int:
+ 
+     results = [run_case(c) for c in cases]
+     summary = summarize(results)
+-    write_report(results, summary)
++    run_id = str(args.run_id) if args.run_id else make_run_id("core")
++    run_dir = ensure_run_dir(run_id)
++    write_latest_pointer(run_id)
++    report_path = write_report(
++        results,
++        summary,
++        run_dir=run_dir,
++        run_id=run_id,
++        suite_filter=args.suite,
++        cases=cases,
++    )
+ 
+     print("guardllm benchmark results")
+     print("total:", summary["total"], "passed:", summary["passed"], "failed:", summary["failed"], f"pass_rate={summary['pass_rate']}%")
+@@ -610,11 +650,12 @@ def main() -> int:
+             for msg in mismatches:
+                 print(f"  - {msg}")
+             print(f"checkpoint: {checkpoint_path}")
+-            print(f"report: {LATEST}")
++            print(f"report: {report_path}")
+             return 1
+         print(f"\ncheckpoint validation: PASS ({checkpoint_path})")
+ 
+-    print(f"\nreport: {LATEST}")
++    print(f"\nrun id: {run_id}")
++    print(f"report: {report_path}")
+     return 0
+ 
+ 

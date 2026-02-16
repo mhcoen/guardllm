@@ -39,7 +39,7 @@ Fixes:
 ## Benchmark case failures after code changes
 
 1. Run: `python benchmarks/run_benchmarks.py`
-2. Inspect: `benchmarks/results/latest.json`
+2. Inspect: `benchmarks/runs/<run_id>/latest.json` (or run id in `benchmarks/runs/LATEST.txt`)
 3. Use failing case IDs to reproduce in unit tests.
 
 ## FAQ

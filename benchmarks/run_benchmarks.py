@@ -31,6 +31,7 @@ from guardllm.security.types import (
     ContentType,
     PolicyConfig,
     SecurityContext,
+    SensitivityLevel,
     TrustLevel,
 )
 
@@ -378,6 +379,49 @@ def run_binding_replay(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
+    guard = Guard()
+    policy = PolicyConfig(**case.get("policy", {}))
+
+    # Ingest sensitive content (trusted, sensitive)
+    sensitive_ctx = SecurityContext(
+        mode="client",
+        source_type="internal",
+        source_id="private-channel",
+        trust_level=TrustLevel.TRUSTED,
+        sensitivity=SensitivityLevel.SENSITIVE,
+        policy=policy,
+    )
+    guard.process_inbound(case["sensitive"], sensitive_ctx)
+
+    # Optionally ingest untrusted content (sets contamination flag)
+    untrusted_text = case.get("untrusted")
+    if untrusted_text is not None:
+        untrusted_ctx = SecurityContext(
+            mode="client",
+            source_type="web_content",
+            source_id="public-channel",
+            trust_level=TrustLevel.UNTRUSTED,
+            policy=policy,
+        )
+        guard.process_inbound(untrusted_text, untrusted_ctx)
+
+    # Check outbound
+    out_ctx = SecurityContext(
+        mode="client",
+        source_type="mcp_server",
+        source_id="email-tool",
+        policy=policy,
+    )
+    result = guard.check_outbound(case["outbound"], out_ctx)
+    passed = result.allowed is case["expect_allowed"]
+    if "expect_contamination" in case:
+        if result.contamination_triggered is not case["expect_contamination"]:
+            passed = False
+    details = f"allowed={result.allowed} contamination={result.contamination_triggered} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
 def run_case(case: dict[str, Any]) -> CaseResult:
     kind = case["kind"]
     if kind == "inbound_sanitize":
@@ -402,6 +446,8 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return run_rate_limit(case)
     if kind == "action_gate":
         return asyncio.run(run_action_gate(case))
+    if kind == "contaminated_exfil":
+        return run_contaminated_exfil(case)
     return CaseResult(case.get("id", "unknown"), case.get("suite", "unknown"), kind, False, f"unsupported kind: {kind}")
 
 

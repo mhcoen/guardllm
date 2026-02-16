@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from guardllm.security.types import ContentType, PolicyConfig, SecurityContext, TrustLevel
+from guardllm.security.types import (
+    ContentType,
+    PolicyConfig,
+    SecurityContext,
+    SensitivityLevel,
+    TrustLevel,
+)
 
 
 def mcp_server_response(
@@ -66,6 +72,23 @@ def web_query_result(
         source_type="web_content",
         source_id=source_id,
         trust_level=TrustLevel.UNTRUSTED,
+        content_type=content_type,
+        policy=policy or PolicyConfig(),
+    )
+
+
+def internal_sensitive(
+    source_id: str = "internal",
+    content_type: ContentType = ContentType.PLAINTEXT,
+    policy: PolicyConfig | None = None,
+) -> SecurityContext:
+    """Context for trusted but sensitive internal content (API keys, PII, etc.)."""
+    return SecurityContext(
+        mode="client",
+        source_type="internal",
+        source_id=source_id,
+        trust_level=TrustLevel.TRUSTED,
+        sensitivity=SensitivityLevel.SENSITIVE,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )

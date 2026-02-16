@@ -2,6 +2,7 @@
 
 from guardllm.security.pipeline import SecurityPipeline
 from guardllm.security.profiles import (
+    internal_sensitive,
     mcp_client_request,
     mcp_server_response,
     untrusted_document,
@@ -13,6 +14,7 @@ from guardllm.security.types import (
     ContentType,
     PolicyConfig,
     SecurityContext,
+    SensitivityLevel,
     TrustLevel,
 )
 
@@ -23,7 +25,9 @@ __all__ = [
     "PolicyConfig",
     "SecurityContext",
     "SecurityPipeline",
+    "SensitivityLevel",
     "TrustLevel",
+    "internal_sensitive",
     "mcp_client_request",
     "mcp_server_response",
     "untrusted_document",

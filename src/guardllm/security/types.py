@@ -29,6 +29,12 @@ class ContentType(Enum):
     STRUCTURED = "structured"
 
 
+class SensitivityLevel(Enum):
+    PUBLIC = "public"
+    INTERNAL = "internal"
+    SENSITIVE = "sensitive"
+
+
 # ---------------------------------------------------------------------------
 # Authorization
 # ---------------------------------------------------------------------------
@@ -80,6 +86,7 @@ class PolicyConfig:
     rate_limits: Dict[str, Any] = field(default_factory=dict)
     argument_limits: Dict[str, Any] = field(default_factory=dict)
     escalation_gate_enabled: bool = True
+    contaminated_action: str = "block"
     # Tunable overlap thresholds (defaults preserve current behavior)
     dlp_verbatim_lcs_min: int = 100
     dlp_ngram_overlap_min: float = 0.40
@@ -102,6 +109,7 @@ class SecurityContext:
     source_type: str               # "mcp_server", "mcp_client", "cli_user"
     source_id: str                 # server_id or client_id
     trust_level: TrustLevel = TrustLevel.UNTRUSTED
+    sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     content_type: ContentType = ContentType.PLAINTEXT
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     confirmation_handler: Optional[ConfirmationHandler] = None
@@ -155,6 +163,7 @@ class OutboundResult:
     overlap_pct: float = 0.0
     secrets_found: List[str] = field(default_factory=list)
     provenance_blocked: bool = False
+    contamination_triggered: bool = False
 
 
 @dataclass

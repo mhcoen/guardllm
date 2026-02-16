@@ -30,6 +30,7 @@ class ProvenancedSpan:
     source_type: str          # "mcp_server", "mcp_client", "cli_user", "assistant"
     source_id: str            # Specific source identifier
     trust_level: str          # "trusted", "semi_trusted", "untrusted"
+    sensitivity: str = "public"  # "public", "internal", "sensitive"
     topic_of_origin: Optional[str] = None  # For cross-topic leak detection
 
 
@@ -57,6 +58,7 @@ class ProvenanceTracker:
         *,
         lcs_threshold: int = 50,
         ngram_threshold: float = 0.30,
+        contaminated: bool = False,
     ) -> tuple[bool, str]:
         """Check if outbound content violates no-copy policy.
 
@@ -65,13 +67,21 @@ class ProvenanceTracker:
         if has_quoting_directive:
             return (True, "quoting directive")
 
-        untrusted = [s for s in self._spans if s.trust_level == "untrusted"]
-        if not untrusted:
+        # Select spans to check: always untrusted, plus sensitive when contaminated
+        check_spans: list[tuple[ProvenancedSpan, str]] = [
+            (s, "untrusted") for s in self._spans if s.trust_level == "untrusted"
+        ]
+        if contaminated:
+            check_spans.extend(
+                (s, "sensitive") for s in self._spans if s.sensitivity == "sensitive"
+            )
+
+        if not check_spans:
             return (True, "clean")
 
         normalized_content = normalize_for_overlap(content)
 
-        for span in untrusted:
+        for span, label in check_spans:
             normalized_span = normalize_for_overlap(span.text)
             if not normalized_span:
                 continue
@@ -81,7 +91,7 @@ class ProvenanceTracker:
             if lcs_len >= lcs_threshold:
                 return (
                     False,
-                    f"Verbatim overlap ({lcs_len} chars) with untrusted "
+                    f"Verbatim overlap ({lcs_len} chars) with {label} "
                     f"content from {span.source_type}:{span.source_id}",
                 )
 
@@ -90,7 +100,7 @@ class ProvenanceTracker:
             if overlap >= ngram_threshold:
                 return (
                     False,
-                    f"N-gram overlap ({overlap:.0%}) with untrusted "
+                    f"N-gram overlap ({overlap:.0%}) with {label} "
                     f"content from {span.source_type}:{span.source_id}",
                 )
 

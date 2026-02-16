@@ -22,6 +22,7 @@ from guardllm.security.types import (
     PolicyConfig,
     ProcessedContent,
     SecurityContext,
+    SensitivityLevel,
     TrustLevel,
 )
 from guardllm.security.validation import ValidationResult, validate_arguments
@@ -151,6 +152,24 @@ class Guard:
             content_type=content_type,
             policy=policy,
         )
+
+    @staticmethod
+    def context_internal_sensitive(
+        *,
+        source_id: str = "internal",
+        content_type: ContentType = ContentType.PLAINTEXT,
+        policy: Optional[PolicyConfig] = None,
+    ) -> SecurityContext:
+        return profiles.internal_sensitive(
+            source_id=source_id,
+            content_type=content_type,
+            policy=policy,
+        )
+
+    def reset(self) -> None:
+        """Reset pipeline and action gate for a new session."""
+        self._pipeline.reset()
+        self._action_gate = ActionGate()
 
     def process_inbound(self, content: str, context: SecurityContext) -> ProcessedContent:
         """Sanitize and isolate inbound content."""

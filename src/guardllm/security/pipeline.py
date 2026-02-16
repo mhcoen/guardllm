@@ -29,6 +29,7 @@ from guardllm.security.types import (
     OutboundResult,
     ProcessedContent,
     SecurityContext,
+    SensitivityLevel,
     TrustLevel,
 )
 
@@ -53,9 +54,22 @@ class SecurityPipeline:
         self._policy = PolicyEngine()
         self._rate_limiter = RateLimiter()
         self._audit_logger = audit_logger
+        self._context_contaminated: bool = False
         self._canary: Optional[str] = None
         if canary_session_id:
             self._canary = generate_canary(canary_session_id)
+
+    @property
+    def context_contaminated(self) -> bool:
+        """True once untrusted content has entered this session."""
+        return self._context_contaminated
+
+    def reset(self) -> None:
+        """Reset pipeline state for a new session."""
+        self._context_contaminated = False
+        self._provenance = ProvenanceTracker()
+        self._dlp = OutboundDLP()
+        self._rate_limiter = RateLimiter()
 
     def process_inbound(
         self,
@@ -104,6 +118,11 @@ class SecurityPipeline:
         # Ingest into DLP buffer for later outbound checks
         if ctx.trust_level in (TrustLevel.UNTRUSTED, TrustLevel.SEMI_TRUSTED):
             self._dlp.ingest_untrusted(content)
+            self._context_contaminated = True
+
+        # Ingest sensitive content into DLP for contaminated-context checks
+        if ctx.sensitivity == SensitivityLevel.SENSITIVE:
+            self._dlp.ingest_sensitive(content)
 
         # Add provenance span
         self._provenance.add_span(ProvenancedSpan(
@@ -111,6 +130,7 @@ class SecurityPipeline:
             source_type=ctx.source_type,
             source_id=ctx.source_id,
             trust_level=ctx.trust_level.value,
+            sensitivity=ctx.sensitivity.value,
         ))
 
         # Canary detection on inbound (exfiltration attempt)
@@ -149,8 +169,16 @@ class SecurityPipeline:
         Server mode: tool responses.
         """
         # L6: DLP scan (coarse pre-filter, higher thresholds)
-        dlp_result = self._dlp.check(content, ctx, has_quoting_directive)
+        dlp_result = self._dlp.check(
+            content, ctx, has_quoting_directive,
+            contaminated=self._context_contaminated,
+        )
         if not dlp_result.allowed:
+            if (
+                dlp_result.contamination_triggered
+                and ctx.policy.contaminated_action == "confirm"
+            ):
+                dlp_result.reason = f"Confirmation required: {dlp_result.reason}"
             return dlp_result
 
         # L7: Provenance check
@@ -159,12 +187,20 @@ class SecurityPipeline:
             has_quoting_directive,
             lcs_threshold=int(getattr(ctx.policy, "provenance_verbatim_lcs_min", 50)),
             ngram_threshold=float(getattr(ctx.policy, "provenance_ngram_overlap_min", 0.30)),
+            contaminated=self._context_contaminated,
         )
         if not prov_allowed:
+            contamination_triggered = (
+                "sensitive" in prov_reason and self._context_contaminated
+            )
+            reason = prov_reason
+            if contamination_triggered and ctx.policy.contaminated_action == "confirm":
+                reason = f"Confirmation required: {prov_reason}"
             return OutboundResult(
                 allowed=False,
-                reason=prov_reason,
+                reason=reason,
                 provenance_blocked=True,
+                contamination_triggered=contamination_triggered,
             )
 
         # L8: Rate limit check

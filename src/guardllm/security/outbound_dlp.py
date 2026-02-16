@@ -89,6 +89,7 @@ class OutboundDLP:
 
     def __init__(self, buffer_max: int = 50) -> None:
         self._buffer: Deque[str] = deque(maxlen=buffer_max)
+        self._sensitive_buffer: Deque[str] = deque(maxlen=buffer_max)
 
     def ingest_untrusted(self, content: str) -> None:
         """Normalize and buffer untrusted content for later DLP checks."""
@@ -96,11 +97,19 @@ class OutboundDLP:
         if normalized:
             self._buffer.append(normalized)
 
+    def ingest_sensitive(self, content: str) -> None:
+        """Normalize and buffer sensitive content for contaminated-context checks."""
+        normalized = normalize_for_overlap(content)
+        if normalized:
+            self._sensitive_buffer.append(normalized)
+
     def check(
         self,
         content: str,
         ctx: SecurityContext,
         has_quoting_directive: bool = False,
+        *,
+        contaminated: bool = False,
     ) -> OutboundResult:
         """Check outbound content for exfiltration indicators.
 
@@ -150,5 +159,29 @@ class OutboundDLP:
                            f"ingested untrusted content",
                     overlap_pct=overlap,
                 )
+
+        # Contaminated-context check: when untrusted content has entered the
+        # session, also check outbound against the sensitive buffer.
+        if contaminated and not has_quoting_directive:
+            for buffered in self._sensitive_buffer:
+                lcs_len = compute_lcs_length(normalized_content, buffered)
+                if lcs_len >= lcs_threshold:
+                    return OutboundResult(
+                        allowed=False,
+                        reason=f"Verbatim overlap ({lcs_len} chars) with "
+                               f"ingested sensitive content",
+                        overlap_pct=0.0,
+                        contamination_triggered=True,
+                    )
+
+                overlap = compute_ngram_overlap(normalized_content, buffered, n=5)
+                if overlap >= ngram_threshold:
+                    return OutboundResult(
+                        allowed=False,
+                        reason=f"N-gram overlap ({overlap:.0%}) with "
+                               f"ingested sensitive content",
+                        overlap_pct=overlap,
+                        contamination_triggered=True,
+                    )
 
         return OutboundResult(allowed=True, reason="clean")

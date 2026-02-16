@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "expected_summary": {
-    "total": 6448,
-    "passed": 6441,
+    "total": 6519,
+    "passed": 6512,
     "failed": 7,
     "pass_rate": 99.89,
     "by_suite": {
@@ -13,6 +13,10 @@
       "bipia_style": {
         "total": 14,
         "passed": 14
+      },
+      "cross_boundary_exfil_style": {
+        "total": 71,
+        "passed": 71
       },
       "garak_style": {
         "total": 5,

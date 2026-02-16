@@ -169,6 +169,7 @@ Collaborators are welcome, especially for new vulnerability classes, benchmark c
 ## Author
 
 **Michael H. Coen**
+
 Email: mhcoen@gmail.com | mhcoen@alum.mit.edu
 GitHub: [@mhcoen](https://github.com/mhcoen)
 License: [MIT](LICENSE)

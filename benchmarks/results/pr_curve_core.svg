@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="760" viewBox="0 0 1100 760">
+<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+<text x="90.0" y="34" font-family="Arial" font-size="24" font-weight="bold">PR Curve</text>
+<rect x="90.0" y="80.0" width="800.0" height="560.0" fill="#fafafa" stroke="#dddddd"/>
+<line x1="90.0" y1="80.0" x2="90.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="80.0" x2="890.0" y2="80.0" stroke="#eeeeee" />
+<text x="80.0" y="658.0" font-family="Arial" font-size="11" fill="#555">0.0</text>
+<text x="60.0" y="644.0" font-family="Arial" font-size="11" fill="#555">0.0</text>
+<line x1="250.0" y1="80.0" x2="250.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="192.0" x2="890.0" y2="192.0" stroke="#eeeeee" />
+<text x="240.0" y="658.0" font-family="Arial" font-size="11" fill="#555">0.2</text>
+<text x="60.0" y="532.0" font-family="Arial" font-size="11" fill="#555">0.2</text>
+<line x1="410.0" y1="80.0" x2="410.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="304.0" x2="890.0" y2="304.0" stroke="#eeeeee" />
+<text x="400.0" y="658.0" font-family="Arial" font-size="11" fill="#555">0.4</text>
+<text x="60.0" y="420.0" font-family="Arial" font-size="11" fill="#555">0.4</text>
+<line x1="570.0" y1="80.0" x2="570.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="416.0" x2="890.0" y2="416.0" stroke="#eeeeee" />
+<text x="560.0" y="658.0" font-family="Arial" font-size="11" fill="#555">0.6</text>
+<text x="60.0" y="308.0" font-family="Arial" font-size="11" fill="#555">0.6</text>
+<line x1="730.0" y1="80.0" x2="730.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="528.0" x2="890.0" y2="528.0" stroke="#eeeeee" />
+<text x="720.0" y="658.0" font-family="Arial" font-size="11" fill="#555">0.8</text>
+<text x="60.0" y="196.0" font-family="Arial" font-size="11" fill="#555">0.8</text>
+<line x1="890.0" y1="80.0" x2="890.0" y2="640.0" stroke="#eeeeee" />
+<line x1="90.0" y1="640.0" x2="890.0" y2="640.0" stroke="#eeeeee" />
+<text x="880.0" y="658.0" font-family="Arial" font-size="11" fill="#555">1.0</text>
+<text x="60.0" y="84.0" font-family="Arial" font-size="11" fill="#555">1.0</text>
+<line x1="90.0" y1="640.0" x2="890.0" y2="640.0" stroke="#333"/>
+<line x1="90.0" y1="80.0" x2="90.0" y2="640.0" stroke="#333"/>
+<text x="445.0" y="678.0" font-family="Arial" font-size="14">Recall</text>
+<text x="35.0" y="360.0" font-family="Arial" font-size="13" transform="rotate(-90 35.0 360.0)">Precision</text>
+<polyline points="114.29,80.00 118.99,80.00 120.56,80.00 171.49,80.00 482.56,80.00 493.53,80.00 560.91,80.00 560.91,80.93 581.28,80.93 581.28,80.89 670.61,80.89 670.61,80.75 672.17,80.75 672.17,80.75 890.00,80.75 890.00,490.44" fill="none" stroke="#0b84f3" stroke-width="3" />
+<circle cx="114.29" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="118.99" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="120.56" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="171.49" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="482.56" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="493.53" cy="80.00" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="560.91" cy="80.93" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="581.28" cy="80.89" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="670.61" cy="80.75" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="672.17" cy="80.75" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="890.00" cy="490.44" r="2.8" fill="#0b84f3" opacity="0.85" />
+<circle cx="697.46" cy="86.14" r="4.5" fill="#0b84f3" stroke="#fff" stroke-width="1"/>
+<circle cx="697.46" cy="86.14" r="8.5" fill="none" stroke="#0b84f3" opacity="0.25" />
+<polyline points="90.00,80.00 195.26,80.00 199.47,80.00 426.84,80.00 426.84,93.66 431.05,93.66 431.05,93.49 439.47,93.49 439.47,111.82 477.37,111.82 477.37,134.90 477.37,129.90 506.84,129.90 506.84,185.57 890.00,185.57 890.00,488.00" fill="none" stroke="#f39c12" stroke-width="3" />
+<circle cx="90.00" cy="80.00" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="195.26" cy="80.00" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="199.47" cy="80.00" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="426.84" cy="93.66" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="431.05" cy="93.49" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="439.47" cy="111.82" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="477.37" cy="129.90" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="477.37" cy="134.90" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="506.84" cy="185.57" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="890.00" cy="488.00" r="2.8" fill="#f39c12" opacity="0.85" />
+<circle cx="473.15" cy="104.23" r="4.5" fill="#f39c12" stroke="#fff" stroke-width="1"/>
+<circle cx="473.15" cy="104.23" r="8.5" fill="none" stroke="#f39c12" opacity="0.25" />
+<polyline points="90.00,80.00 119.47,80.00 266.84,80.00 266.84,105.45 292.11,105.45 292.11,112.94 414.21,112.94 414.21,138.60 414.21,126.67 490.00,126.67 490.00,227.60 490.00,224.37 490.00,217.78 519.47,217.78 519.47,269.09 591.05,269.09 591.05,279.78 637.37,279.78 637.37,296.60 713.16,296.60 713.16,342.94 721.58,342.94 721.58,409.23 890.00,409.23 890.00,488.00" fill="none" stroke="#27ae60" stroke-width="3" />
+<circle cx="90.00" cy="80.00" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="119.47" cy="80.00" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="266.84" cy="105.45" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="292.11" cy="112.94" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="414.21" cy="126.67" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="414.21" cy="138.60" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="490.00" cy="217.78" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="490.00" cy="224.37" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="490.00" cy="227.60" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="519.47" cy="269.09" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="591.05" cy="279.78" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="637.37" cy="296.60" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="713.16" cy="342.94" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="721.58" cy="409.23" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="890.00" cy="488.00" r="2.8" fill="#27ae60" opacity="0.85" />
+<circle cx="580.01" cy="218.34" r="4.5" fill="#27ae60" stroke="#fff" stroke-width="1"/>
+<circle cx="580.01" cy="218.34" r="8.5" fill="none" stroke="#27ae60" opacity="0.25" />
+<rect x="910" y="90" width="290" height="90" fill="#fff" stroke="#ddd"/>
+<text x="920" y="106" font-family="Arial" font-size="12" font-weight="bold">Methods</text>
+<line x1="920" y1="118" x2="938" y2="118" stroke="#0b84f3" stroke-width="3"/>
+<text x="944" y="122" font-family="Arial" font-size="11">guardllm (11 pts)</text>
+<line x1="920" y1="138" x2="938" y2="138" stroke="#f39c12" stroke-width="3"/>
+<text x="944" y="142" font-family="Arial" font-size="11">openai_tool_policy (10 pts)</text>
+<line x1="920" y1="158" x2="938" y2="158" stroke="#27ae60" stroke-width="3"/>
+<text x="944" y="162" font-family="Arial" font-size="11">anthropic_tool_policy (15 pts)</text>
+</svg>

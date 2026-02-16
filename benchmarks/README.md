@@ -123,6 +123,30 @@ Outputs:
 - `benchmarks/results/comparison.json`
 - `benchmarks/results/comparison.md`
 
+Run ROC/PR and operating-point experiments (dev/test split, threshold selection on dev, frozen test eval):
+
+```bash
+python benchmarks/roc_pr_experiments.py
+```
+
+Optional vendor runs with tool-based structured outputs:
+
+```bash
+python benchmarks/roc_pr_experiments.py \
+  --openai-api-key "$OPENAI_API_KEY" \
+  --openai-model "gpt-4.1-mini" \
+  --anthropic-api-key "$ANTHROPIC_API_KEY" \
+  --anthropic-model "claude-3-5-haiku-latest"
+```
+
+ROC/PR outputs:
+- `benchmarks/results/roc_pr_experiments.json`
+- `benchmarks/results/roc_pr_experiments.md`
+
+Runtime behavior for `roc_pr_experiments.py`:
+- Per-record scoring is cache-backed and resumable across reruns via `benchmarks/results/roc_score_cache.jsonl`.
+- Long-running scorers print status/progress every 2 minutes.
+
 Current comparison strategies:
 - `guardllm`: full GuardLLM controls
 - `isolation_only`: inbound isolation-only baseline

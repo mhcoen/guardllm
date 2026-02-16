@@ -52,3 +52,6 @@ benchmarks/upstream/wainjectbench/
 benchmarks/results/openai_policy_adapter_cache.jsonl
 benchmarks/results/bedrock_guardrail_verification*.json
 benchmarks/results/bedrock_prompt_attack_*_50.json
+benchmarks/results/roc_score_cache.jsonl
+benchmarks/results/roc_vendor_score_cache.jsonl
+devel/

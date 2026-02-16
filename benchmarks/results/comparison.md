@@ -47,16 +47,14 @@ Note: full-suite benign correctness includes non-text and out-of-scope cases; it
 - Included suites in text scope: `bipia_style, garak_style, owasp_llm_top10_style, pint_style, promptfoo_redteam_style, rag_poisoning_style, secrets_exfil_style, unicode_evasion_style, upstream_agentdojo, upstream_bipia, upstream_pint, upstream_wainjectbench`
 - Record count: `3823`
 - GuardLLM text reused: `False`
-- Azure Prompt Shields enabled: `False`
-- Bedrock Guardrails enabled: `True`
 - Bedrock detection signal: `assessment contentPolicy PROMPT_ATTACK detected==true (inputStrength=HIGH)`
-- Open-source classifier enabled: `False`
-- OpenAI policy adapter enabled: `False`
-- Anthropic policy adapter enabled: `False`
 
 | strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | guardllm | 93.17% | 99.1% | 75.12% | 85.46 | 767 | 2795 | 7 | 254 |
+| open_source_deberta | 81.45% | 80.47% | 40.35% | 53.75 | 412 | 2702 | 100 | 609 |
+| openai_policy_adapter | 84.99% | 96.47% | 45.45% | 61.79 | 464 | 2785 | 17 | 557 |
+| anthropic_policy_adapter | 81.27% | 89.0% | 34.08% | 49.29 | 348 | 2759 | 43 | 673 |
 | no_defense | 73.29% | 0.0% | 0.0% | 0.0 | 0 | 2802 | 0 | 1021 |
 | regex_rule_based | 73.37% | 100.0% | 0.29% | 0.58 | 3 | 2802 | 0 | 1018 |
 | bedrock_guardrails (HIGH) | 78.5% | 100.0% | 19.49% | 32.62 | 199 | 2802 | 0 | 822 |
@@ -64,6 +62,9 @@ Note: full-suite benign correctness includes non-text and out-of-scope cases; it
 | strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |
 |---|---:|---:|---:|
 | guardllm | 0.07 | 0.2 | 2.46 |
+| open_source_deberta | 27.1 | 45.97 | 692.0 |
+| openai_policy_adapter | 615.68 | 1159.07 | 2480.23 |
+| anthropic_policy_adapter | 662.14 | 1024.03 | 3893.35 |
 | no_defense | 0.0 | 0.0 | 0.01 |
 | regex_rule_based | 0.01 | 0.02 | 0.19 |
 | bedrock_guardrails (HIGH) | 748.27 | 850.79 | 1644.63 |

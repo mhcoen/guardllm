@@ -1918,9 +1918,9 @@ def write_markdown(
         f"- Record count: `{text_only.get('record_count', 0)}`"
     )
     lines.append(f"- GuardLLM text reused: `{text_only.get('guardllm_reused', False)}`")
-    lines.append(f"- Azure Prompt Shields enabled: `{text_only.get('azure_prompt_shields_enabled', False)}`")
+    text_strategies = text_only.get("strategies", {})
     azure_signal = text_only.get("azure_signal_definition")
-    if text_only.get("azure_prompt_shields_enabled", False) and isinstance(azure_signal, dict):
+    if "azure_prompt_shields" in text_strategies and isinstance(azure_signal, dict):
         if azure_signal.get("azure_prompt_shields"):
             lines.append(
                 f"- Azure detection signal: `{azure_signal['azure_prompt_shields']}`"
@@ -1931,9 +1931,8 @@ def write_markdown(
             )
     if text_only.get("azure_error"):
         lines.append(f"- Azure Prompt Shields error: `{text_only['azure_error']}`")
-    lines.append(f"- Bedrock Guardrails enabled: `{text_only.get('bedrock_guardrails_enabled', False)}`")
     bedrock_signal = text_only.get("bedrock_signal_definition")
-    if isinstance(bedrock_signal, dict):
+    if any(name.startswith("bedrock_guardrails") for name in text_strategies) and isinstance(bedrock_signal, dict):
         if bedrock_signal.get("bedrock_guardrails"):
             lines.append(
                 f"- Bedrock detection signal: `{bedrock_signal['bedrock_guardrails']}`"
@@ -1944,25 +1943,22 @@ def write_markdown(
             )
     if text_only.get("bedrock_error"):
         lines.append(f"- Bedrock Guardrails error: `{text_only['bedrock_error']}`")
-    lines.append(f"- Open-source classifier enabled: `{text_only.get('open_source_enabled', False)}`")
-    if text_only.get("open_source_enabled", False) and text_only.get("open_source_model_id"):
+    if "open_source_deberta" in text_strategies and text_only.get("open_source_model_id"):
         lines.append(f"- Open-source model: `{text_only['open_source_model_id']}`")
     if text_only.get("open_source_error"):
         lines.append(f"- Open-source error: `{text_only['open_source_error']}`")
-    lines.append(f"- OpenAI policy adapter enabled: `{text_only.get('openai_enabled', False)}`")
-    if text_only.get("openai_enabled", False) and text_only.get("openai_model"):
+    if "openai_policy_adapter" in text_strategies and text_only.get("openai_model"):
         lines.append(f"- OpenAI model: `{text_only['openai_model']}`")
     if text_only.get("openai_error"):
         lines.append(f"- OpenAI error: `{text_only['openai_error']}`")
-    lines.append(f"- Anthropic policy adapter enabled: `{text_only.get('anthropic_enabled', False)}`")
-    if text_only.get("anthropic_enabled", False) and text_only.get("anthropic_model"):
+    if "anthropic_policy_adapter" in text_strategies and text_only.get("anthropic_model"):
         lines.append(f"- Anthropic model: `{text_only['anthropic_model']}`")
     if text_only.get("anthropic_error"):
         lines.append(f"- Anthropic error: `{text_only['anthropic_error']}`")
     lines.append("")
     lines.append("| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |")
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
-    for name, stats in text_only.get("strategies", {}).items():
+    for name, stats in text_strategies.items():
         lines.append(
             f"| {name} | {stats['accuracy']}% | {stats['precision']}% | {stats['recall']}% | "
             f"{stats['f1']} | {stats['tp']} | {stats['tn']} | {stats['fp']} | {stats['fn']} |"
@@ -2079,6 +2075,58 @@ def write_markdown(
     COMPARE_MD.write_text("\n".join(lines) + "\n")
 
 
+def merge_prior_text_rows(
+    current_text_only: dict[str, Any],
+    previous_payload: dict[str, Any],
+    *,
+    text_scope: str,
+) -> dict[str, Any]:
+    """Preserve prior provider rows when current run omits those adapters."""
+    if not previous_payload:
+        return current_text_only
+    previous_text = previous_payload.get("text_only")
+    if not isinstance(previous_text, dict):
+        return current_text_only
+    if previous_payload.get("text_scope") != text_scope:
+        return current_text_only
+    if int(previous_text.get("record_count", -1)) != int(current_text_only.get("record_count", -2)):
+        return current_text_only
+
+    current_strategies = current_text_only.setdefault("strategies", {})
+    previous_strategies = previous_text.get("strategies", {})
+    if not isinstance(current_strategies, dict) or not isinstance(previous_strategies, dict):
+        return current_text_only
+
+    preserve_names = (
+        "bedrock_guardrails",
+        "bedrock_guardrails (HIGH)",
+        "open_source_deberta",
+        "openai_policy_adapter",
+        "anthropic_policy_adapter",
+        "azure_prompt_shields",
+        "azure_plus_guardllm",
+    )
+    for name in preserve_names:
+        if name not in current_strategies and name in previous_strategies:
+            current_strategies[name] = previous_strategies[name]
+
+    current_latency = current_text_only.setdefault("latency_ms", {})
+    previous_latency = previous_text.get("latency_ms", {})
+    if isinstance(current_latency, dict) and isinstance(previous_latency, dict):
+        for name in preserve_names:
+            if name not in current_latency and name in previous_latency:
+                current_latency[name] = previous_latency[name]
+
+    current_predictions = current_text_only.setdefault("predictions", {})
+    previous_predictions = previous_text.get("predictions", {})
+    if isinstance(current_predictions, dict) and isinstance(previous_predictions, dict):
+        for name in preserve_names:
+            if name not in current_predictions and name in previous_predictions:
+                current_predictions[name] = previous_predictions[name]
+
+    return current_text_only
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
@@ -2168,20 +2216,19 @@ def main() -> int:
     non_text_only = run_non_text_strategies(cases)
     text_only: dict[str, Any]
     holdout_text_only: dict[str, Any] | None = None
+    previous_payload: dict[str, Any] = {}
+    if COMPARE_JSON.exists():
+        try:
+            previous_payload = json.loads(COMPARE_JSON.read_text())
+        except Exception:
+            previous_payload = {}
     if args.non_text_only:
-        previous_payload: dict[str, Any] = {}
-        if COMPARE_JSON.exists():
-            try:
-                previous_payload = json.loads(COMPARE_JSON.read_text())
-            except Exception:
-                previous_payload = {}
         text_only = previous_payload.get("text_only", {"record_count": 0, "strategies": {}})
         holdout_text_only = previous_payload.get("holdout_text_only")
     else:
         guardllm_reuse: dict[str, Any] | None = None
-        if args.reuse_guardllm_text and COMPARE_JSON.exists():
+        if args.reuse_guardllm_text and previous_payload:
             try:
-                previous_payload = json.loads(COMPARE_JSON.read_text())
                 previous_text = previous_payload.get("text_only", {})
                 previous_predictions = previous_text.get("predictions", {})
                 guard_rows = previous_predictions.get("guardllm")
@@ -2208,9 +2255,14 @@ def main() -> int:
             openai_api_key=args.openai_api_key,
             openai_model=args.openai_model,
             anthropic_api_key=args.anthropic_api_key,
-            anthropic_model=args.anthropic_model,
-            guardllm_reuse=guardllm_reuse,
-            progress_seconds=args.progress_seconds,
+                anthropic_model=args.anthropic_model,
+                guardllm_reuse=guardllm_reuse,
+                progress_seconds=args.progress_seconds,
+            )
+        text_only = merge_prior_text_rows(
+            current_text_only=text_only,
+            previous_payload=previous_payload,
+            text_scope=args.text_scope,
         )
         holdout_cases = [] if args.skip_holdout_text else load_legacy_upstream_cases()
         if holdout_cases:

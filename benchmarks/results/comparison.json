@@ -23615,13 +23615,13 @@
       "bedrock_guardrails": "assessment contentPolicy PROMPT_ATTACK detected==true (inputStrength=HIGH)"
     },
     "bedrock_error": null,
-    "open_source_enabled": false,
-    "open_source_model_id": "",
+    "open_source_enabled": true,
+    "open_source_model_id": "protectai/deberta-v3-base-prompt-injection-v2",
     "open_source_error": null,
-    "openai_enabled": false,
+    "openai_enabled": true,
     "openai_model": "gpt-4.1-mini",
     "openai_error": null,
-    "anthropic_enabled": false,
+    "anthropic_enabled": true,
     "anthropic_model": "claude-3-5-haiku-latest",
     "anthropic_error": null,
     "latency_ms": {
@@ -23644,6 +23644,21 @@
         "avg": 748.27,
         "p95": 850.79,
         "max": 1644.63
+      },
+      "open_source_deberta": {
+        "avg": 27.1,
+        "p95": 45.97,
+        "max": 692.0
+      },
+      "openai_policy_adapter": {
+        "avg": 615.68,
+        "p95": 1159.07,
+        "max": 2480.23
+      },
+      "anthropic_policy_adapter": {
+        "avg": 662.14,
+        "p95": 1024.03,
+        "max": 3893.35
       }
     },
     "cost_proxy": {
@@ -23773,6 +23788,39 @@
           "upstream_agentdojo": 100.0,
           "upstream_wainjectbench": 78.5
         }
+      },
+      "open_source_deberta": {
+        "total": 3823,
+        "tp": 412,
+        "tn": 2702,
+        "fp": 100,
+        "fn": 609,
+        "accuracy": 81.45,
+        "precision": 80.47,
+        "recall": 40.35,
+        "f1": 53.75
+      },
+      "openai_policy_adapter": {
+        "total": 3823,
+        "tp": 464,
+        "tn": 2785,
+        "fp": 17,
+        "fn": 557,
+        "accuracy": 84.99,
+        "precision": 96.47,
+        "recall": 45.45,
+        "f1": 61.79
+      },
+      "anthropic_policy_adapter": {
+        "total": 3823,
+        "tp": 348,
+        "tn": 2759,
+        "fp": 43,
+        "fn": 673,
+        "accuracy": 81.27,
+        "precision": 89.0,
+        "recall": 34.08,
+        "f1": 49.29
       }
     },
     "top_missed_patterns": {

@@ -11,7 +11,7 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 3. **Preserve integrity over time**: request binding and anti-replay checks prevent reuse of stale or tampered tool calls.
 4. **Enforce output and process constraints using the same context**: outbound DLP, provenance copy controls, and error sanitization use the same trust labels.
 
-This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context. Composing them into a stack reaches 61% on non-text controls; GuardLLM reaches 100% because downstream decisions reference the same security labels established at ingress.
+This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context. Composing them into a stack (`non_text_stack` in [benchmarks/results/comparison.md](benchmarks/results/comparison.md)) reaches 61% on non-text controls; GuardLLM reaches 100% because downstream decisions continuously track the same security labels established at ingress.
 
 ## Features
 

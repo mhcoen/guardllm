@@ -190,7 +190,7 @@ class LlamaGuard4Classifier:
                 **inputs,
                 do_sample=False,
                 max_new_tokens=self.max_new_tokens,
-                cache_implementation="dynamic",
+                use_cache=False,
             )
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
 

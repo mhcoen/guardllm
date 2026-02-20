@@ -287,6 +287,8 @@ def main() -> int:
                         help="Emit progress updates every N seconds (0 disables).")
     parser.add_argument("--limit", type=int, default=0,
                         help="Limit to first N records (0 = all, useful for dev).")
+    parser.add_argument("--dataset-id", default=None,
+                        help="Use a pre-built dataset (e.g. canonical-v1) instead of discovering case files.")
     args = parser.parse_args()
 
     ensure_cache_dir()
@@ -298,7 +300,7 @@ def main() -> int:
         cache_dir = ROOT / cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    cases = load_cases(args.suite)
+    cases = load_cases(args.suite, dataset_id=args.dataset_id) if args.dataset_id else load_cases(args.suite)
     if not cases:
         print("No benchmark cases found.")
         return 1

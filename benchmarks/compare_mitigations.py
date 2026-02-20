@@ -2106,6 +2106,91 @@ def write_markdown(
     out_path.write_text("\n".join(lines) + "\n")
 
 
+def _merge_llama_guard_results(
+    text_only: dict[str, Any],
+    results_path: str,
+    text_records: list[TextRecord],
+) -> dict[str, Any]:
+    """Merge Llama Guard 4 eval results into the text-only comparison block."""
+    p = Path(results_path)
+    if not p.is_absolute():
+        from _bootstrap import ROOT as _ROOT
+        p = _ROOT / p
+    lg_data = json.loads(p.read_text())
+
+    lg_predictions = lg_data.get("predictions", [])
+    lg_record_count = lg_data.get("record_count", len(lg_predictions))
+    current_count = int(text_only.get("record_count", 0))
+    if lg_record_count != current_count:
+        raise RuntimeError(
+            f"Llama Guard 4 record count ({lg_record_count}) does not match "
+            f"current text-only record count ({current_count})."
+        )
+
+    # Build prediction rows in the standard format
+    lg_by_id = {str(r["id"]): r for r in lg_predictions}
+    rows: list[dict[str, Any]] = []
+    for record in text_records:
+        lg_row = lg_by_id.get(record.id)
+        if lg_row is None:
+            raise RuntimeError(f"Llama Guard 4 results missing record id: {record.id}")
+        rows.append({
+            "id": record.id,
+            "suite": record.suite,
+            "kind": record.kind,
+            "label_attack": record.label_attack,
+            "pred_attack": bool(lg_row["pred_attack"]),
+        })
+
+    # Compute metrics (same pattern as run_text_only_strategies)
+    tp = tn = fp = fn = 0
+    by_suite: dict[str, dict[str, int]] = {}
+    for row in rows:
+        label = bool(row["label_attack"])
+        pred = bool(row["pred_attack"])
+        if label and pred:
+            tp += 1
+        elif (not label) and (not pred):
+            tn += 1
+        elif (not label) and pred:
+            fp += 1
+        else:
+            fn += 1
+        suite_stats = by_suite.setdefault(row["suite"], {"total": 0, "correct": 0})
+        suite_stats["total"] += 1
+        suite_stats["correct"] += 1 if label == pred else 0
+
+    total = len(rows)
+    accuracy = round(((tp + tn) / total) * 100, 2) if total else 0.0
+    precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0
+    recall = round((tp / (tp + fn)) * 100, 2) if (tp + fn) else 0.0
+    f1_score = round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
+    by_suite_accuracy = {
+        s: round((v["correct"] / v["total"]) * 100, 2) if v["total"] else 0.0
+        for s, v in by_suite.items()
+    }
+
+    text_only.setdefault("strategies", {})["llama_guard_4"] = {
+        "total": total,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1_score,
+        "by_suite_accuracy": by_suite_accuracy,
+    }
+    text_only.setdefault("predictions", {})["llama_guard_4"] = rows
+
+    lg_latency = lg_data.get("latency_ms")
+    if isinstance(lg_latency, dict) and lg_latency:
+        text_only.setdefault("latency_ms", {})["llama_guard_4"] = lg_latency
+
+    return text_only
+
+
 def merge_prior_text_rows(
     current_text_only: dict[str, Any],
     previous_payload: dict[str, Any],
@@ -2136,6 +2221,7 @@ def merge_prior_text_rows(
         "anthropic_policy_adapter",
         "azure_prompt_shields",
         "azure_plus_guardllm",
+        "llama_guard_4",
     )
     for name in preserve_names:
         if name not in current_strategies and name in previous_strategies:
@@ -2227,6 +2313,11 @@ def main() -> int:
         help="Fail if GuardLLM text F1 (%%) is below this threshold.",
     )
     parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+    parser.add_argument(
+        "--llama-guard-results",
+        default=None,
+        help="Path to Llama Guard 4 results.json to merge into text-only comparison.",
+    )
     args = parser.parse_args()
     ensure_cache_dir()
 
@@ -2294,6 +2385,8 @@ def main() -> int:
                 guardllm_reuse=guardllm_reuse,
                 progress_seconds=args.progress_seconds,
             )
+        if args.llama_guard_results:
+            text_only = _merge_llama_guard_results(text_only, args.llama_guard_results, text_records)
         text_only = merge_prior_text_rows(
             current_text_only=text_only,
             previous_payload=previous_payload,

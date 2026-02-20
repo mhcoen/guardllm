@@ -1986,6 +1986,12 @@ def write_markdown(
         lines.append(f"- Anthropic model: `{text_only['anthropic_model']}`")
     if text_only.get("anthropic_error"):
         lines.append(f"- Anthropic error: `{text_only['anthropic_error']}`")
+    if "llama_guard_4" in text_strategies:
+        lines.append(
+            "- Note: `llama_guard_4` was run locally on an A100 GPU with 80GB of RAM"
+            " and incurred no network penalties in invocation."
+            " All other API-based strategies include network round-trip latency."
+        )
     lines.append("")
     lines.append("| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |")
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -2351,6 +2357,9 @@ def main() -> int:
     if args.non_text_only:
         text_only = previous_payload.get("text_only", {"record_count": 0, "strategies": {}})
         holdout_text_only = previous_payload.get("holdout_text_only")
+        if args.llama_guard_results:
+            text_records = build_text_records(cases, text_scope=args.text_scope)
+            text_only = _merge_llama_guard_results(text_only, args.llama_guard_results, text_records)
     else:
         guardllm_reuse: dict[str, Any] | None = None
         if args.reuse_guardllm_text and previous_payload:

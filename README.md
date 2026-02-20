@@ -121,7 +121,7 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 
 ## Benchmark Highlights
 
-GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, and Azure Prompt Shields.
+GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
 
 Text benchmark (prompt-injection detection, `3823` records):
 
@@ -129,11 +129,15 @@ Text benchmark (prompt-injection detection, `3823` records):
 |---|---:|---:|---:|---:|
 | GuardLLM | 85.46 | 99.10% | 75.12% | 0.07ms |
 | OpenAI (`gpt-4.1-mini`) | 61.79 | 96.47% | 45.45% | 615.68ms |
+| ProtectAI DeBERTa | 53.75 | 80.47% | 40.35% | 27.10ms |
 | Anthropic (`claude-3-5-haiku-latest`) | 49.29 | 89.00% | 34.08% | 662.14ms |
 | Bedrock Guardrails (`HIGH`) | 32.62 | 100.0% | 19.49% | 748.27ms |
+| Llama Guard 4 (`12B`)* | 29.50 | 59.70% | 19.59% | 178.50ms |
 | Azure Prompt Shields | 23.60 | 97.86% | 13.42% | 209.34ms |
 | Regex Rule Baseline | 0.58 | 100.0% | 0.29% | 0.00ms |
 | No Defense | 0.00 | 0.0% | 0.0% | 0.00ms |
+
+\* Llama Guard 4 was run locally on an A100 GPU with 80GB of RAM and incurred no network penalties in invocation.
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 

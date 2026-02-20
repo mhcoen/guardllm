@@ -47,6 +47,8 @@ Thumbs.db
 # Restricted upstream benchmark fixtures (do not redistribute in-repo)
 benchmarks/upstream/mcp_bench/
 benchmarks/upstream/wainjectbench/
+benchmarks/upstream_sources/
+benchmarks/hold/
 
 # Legacy local benchmark artifacts
 benchmarks/results/openai_policy_adapter_cache.jsonl

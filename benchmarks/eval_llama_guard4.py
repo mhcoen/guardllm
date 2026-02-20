@@ -132,12 +132,14 @@ class LlamaGuard4Classifier:
         }
         torch_dtype = dtype_map.get(self.dtype, torch.bfloat16)
 
-        kwargs: dict[str, Any] = {"device_map": "cuda", "torch_dtype": torch_dtype}
+        model_kwargs: dict[str, Any] = {"device_map": "cuda", "dtype": torch_dtype}
+        proc_kwargs: dict[str, Any] = {}
         if self.hf_revision_requested:
-            kwargs["revision"] = self.hf_revision_requested
+            model_kwargs["revision"] = self.hf_revision_requested
+            proc_kwargs["revision"] = self.hf_revision_requested
 
-        self._processor = AutoProcessor.from_pretrained(self.model_id, **kwargs)
-        self._model = Llama4ForConditionalGeneration.from_pretrained(self.model_id, **kwargs)
+        self._processor = AutoProcessor.from_pretrained(self.model_id, **proc_kwargs)
+        self._model = Llama4ForConditionalGeneration.from_pretrained(self.model_id, **model_kwargs)
         self._model.eval()
         self._torch = torch
 

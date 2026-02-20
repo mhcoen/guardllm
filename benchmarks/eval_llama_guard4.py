@@ -140,6 +140,14 @@ class LlamaGuard4Classifier:
 
         self._processor = AutoProcessor.from_pretrained(self.model_id, **proc_kwargs)
         self._model = Llama4ForConditionalGeneration.from_pretrained(self.model_id, **model_kwargs)
+
+        # Llama Guard 4 is pruned from Llama 4 Scout which uses chunked attention,
+        # but the Guard config may omit attention_chunk_size. Patch it if missing.
+        cfg = self._model.config
+        text_cfg = getattr(cfg, "text_config", cfg)
+        if not getattr(text_cfg, "attention_chunk_size", None):
+            text_cfg.attention_chunk_size = 8192
+
         self._model.eval()
         self._torch = torch
 
@@ -190,7 +198,6 @@ class LlamaGuard4Classifier:
                 **inputs,
                 do_sample=False,
                 max_new_tokens=self.max_new_tokens,
-                use_cache=False,
             )
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
 

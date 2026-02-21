@@ -405,9 +405,21 @@ def run_binding_replay(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def _trust_level(name: str) -> TrustLevel:
+    return {"trusted": TrustLevel.TRUSTED, "semi_trusted": TrustLevel.SEMI_TRUSTED, "untrusted": TrustLevel.UNTRUSTED}[name]
+
+
+def _sensitivity_level(name: str) -> SensitivityLevel:
+    return {"public": SensitivityLevel.PUBLIC, "none": SensitivityLevel.PUBLIC, "internal": SensitivityLevel.INTERNAL, "sensitive": SensitivityLevel.SENSITIVE}[name]
+
+
 def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
     guard = Guard()
     policy = PolicyConfig(**case.get("policy", {}))
+
+    # Multi-turn steps format
+    if "steps" in case:
+        return _run_contaminated_exfil_steps(guard, policy, case)
 
     # Ingest sensitive content (trusted, sensitive)
     sensitive_ctx = SecurityContext(
@@ -445,6 +457,46 @@ def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
         if result.contamination_triggered is not case["expect_contamination"]:
             passed = False
     details = f"allowed={result.allowed} contamination={result.contamination_triggered} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
+def _run_contaminated_exfil_steps(guard: Guard, policy: PolicyConfig, case: dict[str, Any]) -> CaseResult:
+    passed = True
+    details_parts: list[str] = []
+    for i, step in enumerate(case["steps"]):
+        action = step["action"]
+        if action == "ingest":
+            trust = _trust_level(step.get("trust", "trusted"))
+            sensitivity = _sensitivity_level(step.get("sensitivity", "public"))
+            source_type = "internal" if trust == TrustLevel.TRUSTED else "web_content"
+            source_id = "private-channel" if trust == TrustLevel.TRUSTED else "public-channel"
+            ctx = SecurityContext(
+                mode="client",
+                source_type=source_type,
+                source_id=source_id,
+                trust_level=trust,
+                sensitivity=sensitivity,
+                policy=policy,
+            )
+            guard.process_inbound(step["text"], ctx)
+        elif action == "check_outbound":
+            out_ctx = SecurityContext(
+                mode="client",
+                source_type="mcp_server",
+                source_id="email-tool",
+                policy=policy,
+            )
+            result = guard.check_outbound(step["text"], out_ctx)
+            step_ok = result.allowed is step["expect_allowed"]
+            if "expect_contamination" in step:
+                if result.contamination_triggered is not step["expect_contamination"]:
+                    step_ok = False
+            if not step_ok:
+                passed = False
+            details_parts.append(
+                f"step[{i}]: allowed={result.allowed} contamination={result.contamination_triggered}"
+            )
+    details = "; ".join(details_parts) if details_parts else "no check_outbound steps"
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 

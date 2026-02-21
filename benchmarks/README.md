@@ -176,6 +176,7 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `secrets_exfil_style`
 - `multistep_agent_attack_style`
 - `unicode_evasion_style`
+- `cross_boundary_exfil_style` (471 cases: contaminated-context exfiltration with encoding variants including reversed text, spelled-out characters, base64, partial overlap, near-miss, and multi-turn scenarios)
 - `upstream_pint`
 - `upstream_bipia`
 - `upstream_agentdojo`

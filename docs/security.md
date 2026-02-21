@@ -12,8 +12,8 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L3 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
 | L4 | Canary Detection | Session canary generation/detection to flag leakage/exfiltration | `guardllm.security.canary` |
 | L5 | Tool Firewall | Authorize tools by policy + explicit authorization events | `guardllm.security.policy_engine` |
-| L6 | Outbound DLP | Block high-overlap egress and secret-like patterns | `guardllm.security.outbound_dlp` |
-| L7 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries | `guardllm.security.provenance` |
+| L6 | Outbound DLP | Block high-overlap egress, secret-like patterns, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
+| L7 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
 | L8 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
 | L9 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
 | L10 | OAuth Scope Progression | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
@@ -63,8 +63,8 @@ Tool-call path:
 3. Optional request binding verification (L9)
 
 Outbound path:
-1. DLP overlap/secret checks (L6)
-2. Provenance reuse guard (L7)
+1. DLP overlap/secret checks (L6), including deobfuscated variants (reversed text, spelled-out characters)
+2. Provenance reuse guard (L7), including deobfuscated variants
 3. Rate limiting (L8)
 4. Canary leakage detection (L4)
 
@@ -103,6 +103,7 @@ These source types integrate directly with source-gate and provenance behavior.
 - Hidden-instruction prompt injection in HTML/text payloads
 - Unicode obfuscation attacks (zero-width/bidi controls)
 - Exfiltration by copying untrusted spans into outbound content
+- Obfuscated exfiltration via reversed text or spelled-out characters (e.g. `s-t-r-i-p-e`)
 - Replay/deferred tool execution after conversation state changes
 - Over-privileged tool invocation and destructive action abuse
 

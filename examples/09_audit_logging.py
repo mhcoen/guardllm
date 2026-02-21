@@ -35,8 +35,8 @@ def main() -> None:
         )
     )
 
-    print("[l11] outbound allowed:", outbound.allowed, "|", outbound.reason)
-    print("[l11] recent events:")
+    print("[audit] outbound allowed:", outbound.allowed, "|", outbound.reason)
+    print("[audit] recent events:")
     for event in audit.get_events(limit=10):
         print("  -", event["event_type"], "|", event.get("action_summary"))
 

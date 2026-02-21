@@ -13,6 +13,8 @@ from typing import List, Optional
 from guardllm.security.normalization import (
     compute_lcs_length,
     compute_ngram_overlap,
+    deobfuscate_reversed,
+    deobfuscate_spelled,
     normalize_for_overlap,
 )
 
@@ -81,27 +83,38 @@ class ProvenanceTracker:
 
         normalized_content = normalize_for_overlap(content)
 
-        for span, label in check_spans:
-            normalized_span = normalize_for_overlap(span.text)
-            if not normalized_span:
-                continue
+        # Build deobfuscated variants for overlap checks
+        content_variants = [normalized_content]
+        reversed_norm = normalize_for_overlap(deobfuscate_reversed(content))
+        if reversed_norm != normalized_content:
+            content_variants.append(reversed_norm)
+        spelled_norm = normalize_for_overlap(deobfuscate_spelled(content))
+        if spelled_norm != normalized_content:
+            content_variants.append(spelled_norm)
 
-            # LCS check: configurable (default >= 50 chars) is a block
-            lcs_len = compute_lcs_length(normalized_content, normalized_span)
-            if lcs_len >= lcs_threshold:
-                return (
-                    False,
-                    f"Verbatim overlap ({lcs_len} chars) with {label} "
-                    f"content from {span.source_type}:{span.source_id}",
-                )
+        for variant in content_variants:
+            deob = " (deobfuscated)" if variant is not normalized_content else ""
+            for span, label in check_spans:
+                normalized_span = normalize_for_overlap(span.text)
+                if not normalized_span:
+                    continue
 
-            # N-gram overlap check: configurable (default >= 30%) is a block
-            overlap = compute_ngram_overlap(normalized_content, normalized_span, n=5)
-            if overlap >= ngram_threshold:
-                return (
-                    False,
-                    f"N-gram overlap ({overlap:.0%}) with {label} "
-                    f"content from {span.source_type}:{span.source_id}",
-                )
+                # LCS check: configurable (default >= 50 chars) is a block
+                lcs_len = compute_lcs_length(variant, normalized_span)
+                if lcs_len >= lcs_threshold:
+                    return (
+                        False,
+                        f"Verbatim overlap ({lcs_len} chars){deob} with {label} "
+                        f"content from {span.source_type}:{span.source_id}",
+                    )
+
+                # N-gram overlap check: configurable (default >= 30%) is a block
+                overlap = compute_ngram_overlap(variant, normalized_span, n=5)
+                if overlap >= ngram_threshold:
+                    return (
+                        False,
+                        f"N-gram overlap ({overlap:.0%}){deob} with {label} "
+                        f"content from {span.source_type}:{span.source_id}",
+                    )
 
         return (True, "clean")

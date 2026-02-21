@@ -124,3 +124,30 @@ def compute_ngram_overlap(a: str, b: str, n: int = 5) -> float:
         return 0.0
     overlap = b_grams & a_grams
     return len(overlap) / len(b_grams)
+
+
+# ---------------------------------------------------------------------------
+# Deobfuscation helpers (reversed text, spelled-out characters)
+# ---------------------------------------------------------------------------
+
+
+def deobfuscate_reversed(text: str) -> str:
+    """Reverse the entire string to detect reversed-text exfiltration."""
+    return text[::-1]
+
+
+_SPELLED_SEPARATORS = ['-', ' ', '.', ',', '|', '/', ':', ';']
+
+
+def deobfuscate_spelled(text: str) -> str:
+    """Collapse spelled-out sequences like 's-t-r-i-p-e' to 'stripe'.
+
+    For each common separator, finds runs of single non-separator characters
+    separated by that delimiter (minimum 4 characters) and collapses them.
+    """
+    for sep in _SPELLED_SEPARATORS:
+        esc = re.escape(sep)
+        char = f'[^{esc}\\s]' if sep != ' ' else r'\S'
+        pattern = re.compile(f'({char}){esc}(?:{char}{esc}){{2,}}{char}')
+        text = pattern.sub(lambda m, s=sep: m.group(0).replace(s, ''), text)
+    return text

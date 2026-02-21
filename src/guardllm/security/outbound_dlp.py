@@ -15,6 +15,8 @@ from typing import Deque, List
 from guardllm.security.normalization import (
     compute_lcs_length,
     compute_ngram_overlap,
+    deobfuscate_reversed,
+    deobfuscate_spelled,
     normalize_for_overlap,
 )
 from guardllm.security.types import OutboundResult, SecurityContext
@@ -139,49 +141,62 @@ class OutboundDLP:
 
         normalized_content = normalize_for_overlap(content)
 
-        for buffered in self._buffer:
-            # Step 2: Verbatim overlap (configurable, default LCS >= 100 chars)
-            lcs_len = compute_lcs_length(normalized_content, buffered)
-            if lcs_len >= lcs_threshold:
-                return OutboundResult(
-                    allowed=False,
-                    reason=f"Verbatim overlap ({lcs_len} chars) with "
-                           f"ingested untrusted content",
-                    overlap_pct=0.0,
-                )
+        # Build deobfuscated variants for overlap checks
+        content_variants = [normalized_content]
+        reversed_norm = normalize_for_overlap(deobfuscate_reversed(content))
+        if reversed_norm != normalized_content:
+            content_variants.append(reversed_norm)
+        spelled_norm = normalize_for_overlap(deobfuscate_spelled(content))
+        if spelled_norm != normalized_content:
+            content_variants.append(spelled_norm)
 
-            # Step 3: N-gram overlap (configurable, default >= 40%)
-            overlap = compute_ngram_overlap(normalized_content, buffered, n=5)
-            if overlap >= ngram_threshold:
-                return OutboundResult(
-                    allowed=False,
-                    reason=f"N-gram overlap ({overlap:.0%}) with "
-                           f"ingested untrusted content",
-                    overlap_pct=overlap,
-                )
+        for variant in content_variants:
+            deob = " (deobfuscated)" if variant is not normalized_content else ""
+            for buffered in self._buffer:
+                # Step 2: Verbatim overlap (configurable, default LCS >= 100 chars)
+                lcs_len = compute_lcs_length(variant, buffered)
+                if lcs_len >= lcs_threshold:
+                    return OutboundResult(
+                        allowed=False,
+                        reason=f"Verbatim overlap ({lcs_len} chars){deob} with "
+                               f"ingested untrusted content",
+                        overlap_pct=0.0,
+                    )
+
+                # Step 3: N-gram overlap (configurable, default >= 40%)
+                overlap = compute_ngram_overlap(variant, buffered, n=5)
+                if overlap >= ngram_threshold:
+                    return OutboundResult(
+                        allowed=False,
+                        reason=f"N-gram overlap ({overlap:.0%}){deob} with "
+                               f"ingested untrusted content",
+                        overlap_pct=overlap,
+                    )
 
         # Contaminated-context check: when untrusted content has entered the
         # session, also check outbound against the sensitive buffer.
         if contaminated and not has_quoting_directive:
-            for buffered in self._sensitive_buffer:
-                lcs_len = compute_lcs_length(normalized_content, buffered)
-                if lcs_len >= lcs_threshold:
-                    return OutboundResult(
-                        allowed=False,
-                        reason=f"Verbatim overlap ({lcs_len} chars) with "
-                               f"ingested sensitive content",
-                        overlap_pct=0.0,
-                        contamination_triggered=True,
-                    )
+            for variant in content_variants:
+                deob = " (deobfuscated)" if variant is not normalized_content else ""
+                for buffered in self._sensitive_buffer:
+                    lcs_len = compute_lcs_length(variant, buffered)
+                    if lcs_len >= lcs_threshold:
+                        return OutboundResult(
+                            allowed=False,
+                            reason=f"Verbatim overlap ({lcs_len} chars){deob} with "
+                                   f"ingested sensitive content",
+                            overlap_pct=0.0,
+                            contamination_triggered=True,
+                        )
 
-                overlap = compute_ngram_overlap(normalized_content, buffered, n=5)
-                if overlap >= ngram_threshold:
-                    return OutboundResult(
-                        allowed=False,
-                        reason=f"N-gram overlap ({overlap:.0%}) with "
-                               f"ingested sensitive content",
-                        overlap_pct=overlap,
-                        contamination_triggered=True,
-                    )
+                    overlap = compute_ngram_overlap(variant, buffered, n=5)
+                    if overlap >= ngram_threshold:
+                        return OutboundResult(
+                            allowed=False,
+                            reason=f"N-gram overlap ({overlap:.0%}){deob} with "
+                                   f"ingested sensitive content",
+                            overlap_pct=overlap,
+                            contamination_triggered=True,
+                        )
 
         return OutboundResult(allowed=True, reason="clean")

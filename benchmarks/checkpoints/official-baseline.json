@@ -1,11 +1,10 @@
 {
   "schema_version": 1,
   "expected_summary": {
-    "total": 6519,
-    "passed": 6512,
+    "total": 6919,
+    "passed": 6912,
     "failed": 7,
-    "pass_rate": 99.89,
-    "by_suite": {
+    "pass_rate": 99.9,    "by_suite": {
       "agentdojo_style": {
         "total": 14,
         "passed": 14
@@ -15,8 +14,8 @@
         "passed": 14
       },
       "cross_boundary_exfil_style": {
-        "total": 71,
-        "passed": 71
+        "total": 471,
+        "passed": 471
       },
       "garak_style": {
         "total": 5,

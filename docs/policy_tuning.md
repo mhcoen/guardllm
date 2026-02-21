@@ -6,7 +6,7 @@ This guide explains how to tune guardllm safety controls without disabling core 
 
 - Keep `enable_destructive=False` unless needed.
 - Keep unknown-provenance sources at `UNTRUSTED`.
-- Keep L2 confirmation enabled for high-impact actions.
+- Keep L12 confirmation enabled for high-impact actions.
 
 ## Tuning dimensions
 
@@ -20,7 +20,7 @@ Recommended:
 - allowlist read-only tools by default
 - enable destructive tools per workflow, not globally
 
-## 2) Confirmation strictness (L2)
+## 2) Confirmation strictness (L12)
 
 - For high-risk flows, use `guard_tool_call(..., require_confirmation=True)`.
 - Use `context_has_web_derived=True` when web-derived content influences the action.

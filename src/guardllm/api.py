@@ -281,7 +281,7 @@ class Guard:
         heightened_scrutiny: bool = False,
         context_has_web_derived: bool = False,
     ) -> bool:
-        """Run L2 action-gate confirmation for a proposed operation."""
+        """Run L12 action-gate confirmation for a proposed operation."""
         proposal = ActionProposal(
             tool_name=tool,
             args=args,

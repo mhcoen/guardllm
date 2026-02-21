@@ -1,7 +1,7 @@
 """Demonstrate full Guard API parity flow in one place.
 
-Covers: validation (L12.2), policy/binding (L5/L9), action gate (L2),
-audit logging (L11), and error sanitization.
+Covers: validation (L10), policy/binding (L9/L11), action gate (L12),
+audit logging, and error sanitization.
 """
 
 from __future__ import annotations

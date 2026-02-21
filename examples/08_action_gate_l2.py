@@ -1,4 +1,4 @@
-"""Demonstrate L2 action-gate confirmation for sensitive operations."""
+"""Demonstrate L12 action-gate confirmation for sensitive operations."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ class DemoHandler(ConfirmationHandler):
     SAFE_RECIPIENTS = {"alice@example.com"}
 
     async def confirm(self, tool: str, args: dict, context: dict) -> bool:
-        print("[l2] proposed tool:", tool)
-        print("[l2] summary:", context.get("summary"))
+        print("[l12] proposed tool:", tool)
+        print("[l12] summary:", context.get("summary"))
         if context.get("enhanced_confirmation"):
-            print("[l2] enhanced confirmation:", context.get("web_derived_warning"))
+            print("[l12] enhanced confirmation:", context.get("web_derived_warning"))
         recipient = args.get("to")
         decision = recipient in self.SAFE_RECIPIENTS
-        print("[l2] handler decision:", decision)
+        print("[l12] handler decision:", decision)
         return decision
 
 
@@ -41,7 +41,7 @@ async def main() -> None:
         context={"conversation_topic": "weekly update"},
     )
     ok = await gate.confirm(proposal_allowed, ctx, context_has_web_derived=True)
-    print("[l2] allowed proposal:", ok)
+    print("[l12] allowed proposal:", ok)
 
     proposal_blocked = ActionProposal(
         tool_name="gmail_send_email",
@@ -50,7 +50,7 @@ async def main() -> None:
         context={"conversation_topic": "urgent"},
     )
     blocked = await gate.confirm(proposal_blocked, ctx, context_has_web_derived=True)
-    print("[l2] blocked proposal:", blocked)
+    print("[l12] blocked proposal:", blocked)
 
 
 if __name__ == "__main__":

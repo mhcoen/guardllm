@@ -1,4 +1,4 @@
-"""Layer 3: Source gate — KG extraction trust-level filtering.
+"""Layer 2: Source gate — KG extraction trust-level filtering.
 
 Determines whether content from a given source is eligible for
 KG extraction, and whether extracted triples should be quarantined.

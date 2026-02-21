@@ -1,4 +1,4 @@
-"""Layer 9: Request binding (Part 9b).
+"""Layer 11: Request binding (Part 9b).
 
 Binds tool calls to the authorizing user message. Prevents deferred
 execution replay attacks where a tool call approved in one context is

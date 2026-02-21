@@ -8,18 +8,20 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 |---|---|---|---|
 | L0 | Input Sanitization | Strip hidden HTML, dangerous attributes/comments, invisible Unicode, and normalize content before further processing | `guardllm.security.sanitizer` |
 | L1 | Content Isolation | Wrap untrusted input in `<untrusted_content ...>` tags with source attribution | `guardllm.security.isolation` |
-| L2 | Action Gate | Optional interactive confirmation gate for sensitive actions | `guardllm.security.action_gate` |
-| L3 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
-| L4 | Canary Detection | Session canary generation/detection to flag leakage/exfiltration | `guardllm.security.canary` |
-| L5 | Tool Firewall | Authorize tools by policy + explicit authorization events | `guardllm.security.policy_engine` |
-| L6 | Outbound DLP | Block high-overlap egress, secret-like patterns, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
-| L7 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
-| L8 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
-| L9 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
-| L10 | OAuth Scope Progression | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
-| L11 | Audit Logging | Structured security event logging for analysis and incident response | `guardllm.security.audit` |
+| L2 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
+| L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
+| L4 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
+| L5 | Canary Detection | Session canary generation/detection to flag leakage/exfiltration | `guardllm.security.canary` |
+| L6 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
+| L7 | Error Sanitization | Sanitize error payloads before returning to clients | `guardllm.security.error_sanitizer` |
+| L8 | OAuth Scope Resolution | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
+| L9 | Tool Firewall | Authorize tools by policy + explicit authorization events | `guardllm.security.policy_engine` |
+| L10 | Validation | Validate tool arguments before dispatch | `guardllm.security.validation` |
+| L11 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
+| L12 | Action Gate | Optional interactive confirmation gate for sensitive actions | `guardllm.security.action_gate` |
+| - | Audit Logging | Structured security event logging for analysis and incident response (cross-cutting observer) | `guardllm.security.audit` |
 
-Note: Layer numbering intentionally matches the parent hardening model. L10 is documented for completeness but remains outside the library boundary.
+Note: Layer numbering follows pipeline execution order. L8 is documented for completeness but remains outside the library boundary.
 
 ## Guard API Coverage (Current)
 
@@ -29,18 +31,18 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 |---|---|---|
 | L0 Input Sanitization | Implemented | `process_inbound(...)` |
 | L1 Content Isolation | Implemented | `process_inbound(...)` |
-| L2 Action Gate | Implemented | `confirm_action(...)`, `guard_tool_call(..., require_confirmation=True)` |
-| L3 Source Gate | Implemented | `guardllm.security.source_gate.check_extraction_allowed(...)` |
-| L4 Canary Detection | Implemented | `Guard(canary_session_id=...)` + inbound/outbound checks |
-| L5 Tool Firewall | Implemented | `check_tool_call(...)`, `guard_tool_call(...)` |
-| L6 Outbound DLP | Implemented | `check_outbound(...)` |
-| L7 Provenance Tracking | Implemented | `process_inbound(...)`, `check_outbound(...)` |
-| L8 Rate Limiting | Implemented | `check_tool_call(...)`, `check_outbound(...)`, `guard_tool_call(...)` |
-| L9 Request Binding | Implemented | `bind_request(...)`, `check_tool_call(...)`, `guard_tool_call(...)` |
-| L10 OAuth Scope Progression | Not implemented in library | Host application responsibility |
-| L11 Audit Logging | Implemented | `Guard(audit_logger=...)` emits security events |
-| Validation (spec §12.2) | Implemented | `validate_tool_args(...)`, `guard_tool_call(validate=True)` |
-| Error Sanitization (spec §12.6) | Implemented | `sanitize_exception(...)` |
+| L2 Source Gate | Implemented | `guardllm.security.source_gate.check_extraction_allowed(...)` |
+| L3 Outbound DLP | Implemented | `check_outbound(...)` |
+| L4 Provenance Tracking | Implemented | `process_inbound(...)`, `check_outbound(...)` |
+| L5 Canary Detection | Implemented | `Guard(canary_session_id=...)` + inbound/outbound checks |
+| L6 Rate Limiting | Implemented | `check_tool_call(...)`, `check_outbound(...)`, `guard_tool_call(...)` |
+| L7 Error Sanitization | Implemented | `sanitize_exception(...)` |
+| L8 OAuth Scope Resolution | Not implemented in library | Host application responsibility |
+| L9 Tool Firewall | Implemented | `check_tool_call(...)`, `guard_tool_call(...)` |
+| L10 Validation | Implemented | `validate_tool_args(...)`, `guard_tool_call(validate=True)` |
+| L11 Request Binding | Implemented | `bind_request(...)`, `check_tool_call(...)`, `guard_tool_call(...)` |
+| L12 Action Gate | Implemented | `confirm_action(...)`, `guard_tool_call(..., require_confirmation=True)` |
+| Audit Logging | Implemented | `Guard(audit_logger=...)` emits security events |
 
 ## Unified Pipeline
 
@@ -49,27 +51,27 @@ The central orchestrator is `guardllm.security.pipeline.SecurityPipeline`, expos
 Inbound path:
 1. Sanitize untrusted input (L0)
 2. Isolate by trust level (L1)
-3. Ingest for outbound DLP comparisons (L6 data prep)
-4. Record provenance spans (L7)
-5. Check canary presence in inbound payloads (L4)
+3. Ingest for outbound DLP comparisons (L3 data prep)
+4. Record provenance spans (L4)
+5. Check canary presence in inbound payloads (L5)
 
 L0 encoded payload handling:
 - Base64 and URL-encoded segments are decoded and scored with the prompt-injection detector.
 - This avoids relying only on fixed suspicious keyword lists.
 
 Tool-call path:
-1. Tool authorization/firewall checks (L5)
-2. Rate limiting (L8)
-3. Optional request binding verification (L9)
+1. Tool authorization/firewall checks (L9)
+2. Rate limiting (L6)
+3. Optional request binding verification (L11)
 
 Outbound path:
-1. DLP overlap/secret checks (L6), including deobfuscated variants (reversed text, spelled-out characters)
-2. Provenance reuse guard (L7), including deobfuscated variants
-3. Rate limiting (L8)
-4. Canary leakage detection (L4)
+1. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters)
+2. Provenance reuse guard (L4), including deobfuscated variants
+3. Rate limiting (L6)
+4. Canary leakage detection (L5)
 
 Threshold tuning:
-- L6 and L7 overlap thresholds are configurable per context via `PolicyConfig`
+- L3 and L4 overlap thresholds are configurable per context via `PolicyConfig`
   (`dlp_verbatim_lcs_min`, `dlp_ngram_overlap_min`,
   `provenance_verbatim_lcs_min`, `provenance_ngram_overlap_min`).
 - Defaults preserve prior behavior (`100/0.40` for DLP, `50/0.30` for provenance).

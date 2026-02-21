@@ -7,7 +7,7 @@ What it demonstrates:
 1. Validate tool arguments.
 2. Require explicit authorization (`AuthorizationEvent`).
 3. Bind execution to request context (`Binding`).
-4. Require L2 confirmation before destructive execution.
+4. Require L12 confirmation before destructive execution.
 5. Run outbound checks before sending content externally.
 
 Isolation note:

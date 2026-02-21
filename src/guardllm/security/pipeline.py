@@ -154,7 +154,7 @@ class SecurityPipeline:
     ) -> OutboundResult:
         """Check content leaving the system.
 
-        Runs: L6 (DLP) -> L7 (provenance) -> L8 (rate limit) -> L4 (canary).
+        Runs: L3 (DLP) -> L4 (provenance) -> L6 (rate limit) -> L5 (canary).
 
         Ordering rationale (spec §7, §8):
         - DLP runs first as a coarse pre-filter (default LCS >= 100,
@@ -168,7 +168,7 @@ class SecurityPipeline:
         Client mode: tool arguments (e.g. email body).
         Server mode: tool responses.
         """
-        # L6: DLP scan (coarse pre-filter, higher thresholds)
+        # L3: DLP scan (coarse pre-filter, higher thresholds)
         dlp_result = self._dlp.check(
             content, ctx, has_quoting_directive,
             contaminated=self._context_contaminated,
@@ -181,7 +181,7 @@ class SecurityPipeline:
                 dlp_result.reason = f"Confirmation required: {dlp_result.reason}"
             return dlp_result
 
-        # L7: Provenance check
+        # L4: Provenance check
         prov_allowed, prov_reason = self._provenance.check_outbound(
             content,
             has_quoting_directive,
@@ -203,7 +203,7 @@ class SecurityPipeline:
                 contamination_triggered=contamination_triggered,
             )
 
-        # L8: Rate limit check
+        # L6: Rate limit check
         rate_result = self._rate_limiter.check(
             action="outbound",
             ctx=ctx,
@@ -214,7 +214,7 @@ class SecurityPipeline:
                 reason=rate_result.reason,
             )
 
-        # L4: Canary detection on outbound
+        # L5: Canary detection on outbound
         if self._canary and detect_canary(content, self._canary):
             return OutboundResult(
                 allowed=False,
@@ -234,19 +234,19 @@ class SecurityPipeline:
     ) -> GateResult:
         """Policy check before tool execution.
 
-        Runs: L5 (policy) -> L8 (rate limit) -> L9 (request binding).
+        Runs: L9 (policy) -> L6 (rate limit) -> L11 (request binding).
 
         Client mode: calling external MCP tool.
         Server mode: executing internal tool for MCP client.
         """
-        # L5: Policy engine check
+        # L9: Policy engine check
         policy_result = self._policy.check_tool_execution(
             tool, args, auth_event, ctx
         )
         if not policy_result.allowed:
             return policy_result
 
-        # L8: Rate limit
+        # L6: Rate limit
         rate_result = self._rate_limiter.check(action=tool, ctx=ctx)
         if not rate_result.allowed:
             return GateResult(
@@ -255,7 +255,7 @@ class SecurityPipeline:
                 confidence="none",
             )
 
-        # L9: Request binding verification
+        # L11: Request binding verification
         if binding is not None:
             msg_hash = message_hash or (
                 auth_event.message_hash if auth_event else ""
@@ -277,5 +277,5 @@ class SecurityPipeline:
         source_type: str,
         source_id: str = "",
     ) -> SourceGateResult:
-        """Check if KG extraction is allowed for this source (Layer 3)."""
+        """Check if KG extraction is allowed for this source (Layer 2)."""
         return check_extraction_allowed(source_type, source_id)

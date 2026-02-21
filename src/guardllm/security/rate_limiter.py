@@ -1,4 +1,4 @@
-"""Layer 8: Rate limiting and anomaly detection (Part 9).
+"""Layer 6: Rate limiting and anomaly detection (Part 9).
 
 Per-session counters with time windows. Detects anomalous patterns
 (novel recipients, rapid bursts, high volume) independent of LLM

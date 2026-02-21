@@ -1,4 +1,4 @@
-"""Layer 11: Audit logging (Part 11).
+"""Audit logging (cross-cutting observer).
 
 Structured event logging for all security-relevant actions. Default
 backend writes JSON to a file; interface allows SQLite backend later.

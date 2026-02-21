@@ -348,7 +348,7 @@ class TestOutboundOrdering:
     """Verify the outbound chain matches the documented ordering."""
 
     def test_dlp_runs_before_provenance(self, pipeline, untrusted_ctx):
-        """DLP (L6) blocks before provenance (L7) gets a chance.
+        """DLP (L3) blocks before provenance (L4) gets a chance.
 
         When DLP detects a secret, the result should come from DLP
         (secrets_found populated) not provenance (provenance_blocked=False).
@@ -361,7 +361,7 @@ class TestOutboundOrdering:
         assert result.provenance_blocked is False  # provenance didn't run
 
     def test_provenance_blocks_when_dlp_passes(self, pipeline, untrusted_ctx):
-        """Provenance (L7) catches content that DLP (L6) allows.
+        """Provenance (L4) catches content that DLP (L3) allows.
 
         Content with 50-99 char LCS passes DLP (threshold 100) but
         fails provenance (threshold 50).

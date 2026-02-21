@@ -151,7 +151,7 @@ async def main() -> None:
             )
             print("[tool] send result:", result)
 
-    print("\n=== 4) What was logged (L11) ===")
+    print("\n=== 4) What was logged (audit) ===")
     for event in audit.get_events(limit=20):
         print(" -", event["event_type"], "|", event.get("action_summary"))
 

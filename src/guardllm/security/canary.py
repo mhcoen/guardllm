@@ -1,4 +1,4 @@
-"""Layer 4: Canary token generation and detection (Part 5).
+"""Layer 5: Canary token generation and detection (Part 5).
 
 Generates deterministic canary tokens embedded in system prompts.
 If a canary appears in outbound content, the system prompt has been

@@ -19,7 +19,7 @@ Use this checklist before deploying guardllm-backed flows.
 - Enable destructive tools only where required (`PolicyConfig(enable_destructive=True)`).
 - Enforce scope-limited server policies (`capability_scopes`).
 - Require explicit authorization and request binding for write-capable tools.
-- Require L2 confirmation for high-impact actions (`guard_tool_call(..., require_confirmation=True)`).
+- Require L12 confirmation for high-impact actions (`guard_tool_call(..., require_confirmation=True)`).
 
 ## 4. Outbound Safety
 

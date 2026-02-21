@@ -1,4 +1,4 @@
-"""Demonstrate L11 audit logging for security decisions."""
+"""Demonstrate audit logging for security decisions."""
 
 from __future__ import annotations
 

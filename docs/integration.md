@@ -28,7 +28,7 @@ Scenario: your app invokes external MCP tools.
 
 Implementation note:
 - Configure `context.confirmation_handler` for manual gating callbacks.
-- Without a confirmation handler, L2 confirmation is fail-closed and returns deny.
+- Without a confirmation handler, L12 confirmation is fail-closed and returns deny.
 - Use `context_has_web_derived=True` when tool decisions are influenced by web-derived context.
 
 Benefits:

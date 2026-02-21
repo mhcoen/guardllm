@@ -22,7 +22,7 @@ What to do:
 
 ## Why are confirmations always denied?
 
-L2 is fail-closed:
+L12 is fail-closed:
 - If `confirmation_handler` is not set in `SecurityContext`, confirmation returns deny.
 
 Fix:
@@ -47,7 +47,7 @@ Fixes:
 ### Do I need to use MCP to use guardllm?
 No. guardllm hardens LLM applications generally; MCP is one common integration surface.
 
-### Can I bypass L2 manual confirmation?
+### Can I bypass L12 manual confirmation?
 Yes, by setting `require_confirmation=False` (or using `check_tool_call(...)` directly), but this reduces safety for high-impact actions.
 
 ### Should I always treat inbound content as untrusted?

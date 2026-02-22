@@ -27,3 +27,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "eval_suite: parametrized benchmark eval suite for non-injection control surfaces",
+]

@@ -30,3 +30,17 @@ What each example demonstrates:
 - `09_audit_logging.py`: record structured audit events for inbound/outbound security decisions.
 - `10_validation_and_error_sanitization.py`: validate tool args pre-dispatch and sanitize errors for safe outward responses.
 - `11_full_guard_flow.py`: run the unified Guard API flow (validation + policy + confirmation + audit + sanitized errors).
+
+## Local LLM Demo
+
+`demo_local_llm.py` runs a real LLM (Qwen2.5-3B-Instruct) through the same pipeline twice to demonstrate the full attack-and-defense cycle:
+
+1. **Without GuardLLM**: raw untrusted web content (with a hidden injection payload) is passed directly to the model alongside a sensitive CRM record. The model may follow the injection and exfiltrate the account number via a markdown link.
+2. **With GuardLLM**: the web content is sanitized (hidden div stripped, injection flagged), content is isolated with trust metadata, and the egress gate blocks outbound content that mixes sensitive data with untrusted context.
+
+```bash
+pip install transformers torch accelerate
+python examples/demo_local_llm.py
+```
+
+The model (~6 GB) downloads automatically on first run. Runs in under 5 minutes on a Mac M3 Max (128 GB) or equivalent. No API keys required.

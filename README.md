@@ -56,7 +56,12 @@ pip install guardllm
    - `python tutorials/01_web_search_sanitization.py`
    - `python tutorials/02_email_calendar_sanitization.py`
    - `python tutorials/03_safe_tool_call_pipeline.py`
-3. (Optional) Run benchmarks locally:
+3. (Optional) Run the local LLM demo to see the full attack-and-defense cycle:
+   ```bash
+   pip install transformers torch accelerate
+   python examples/demo_local_llm.py
+   ```
+4. (Optional) Run benchmarks locally:
    ```bash
    python benchmarks/run_benchmarks.py
    ```

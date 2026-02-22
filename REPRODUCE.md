@@ -15,6 +15,7 @@ pip install -e '.[dev]'
 - Reference platform: Mac M3 Max with 128 GB unified memory (all timings below are from this machine)
 - Core dependency: `beautifulsoup4>=4.12` (installed automatically)
 - No external API keys or GPU required for Tier 1 and Tier 2
+- See [README.md](README.md) for general project overview and API documentation
 
 ## Tier 1: Unit Tests and Regression Suite (no API keys, no GPU)
 
@@ -70,7 +71,29 @@ for s in m['sources']:
 "
 ```
 
-Two suites (`mcp_bench`, `wainjectbench`) have unclear upstream licensing. Their snapshots are included for research reproducibility but should not be redistributed without verifying upstream license terms. See `benchmarks/DATASET_REPRO.md` for the full acquisition and re-import protocol.
+Two suites (`mcp_bench`, `wainjectbench`) have unclear upstream licensing and are **not included** in the repository. To use them, fetch the data from the upstream repositories and import locally:
+
+```bash
+# mcp_bench (Accenture/mcp-bench @ 7a8eaeae)
+git clone https://github.com/Accenture/mcp-bench /tmp/mcp-bench
+cd /tmp/mcp-bench && git checkout 7a8eaeae
+cd /path/to/GuardLLM
+python benchmarks/import_official_exports.py \
+  --suite mcp_bench \
+  --input /tmp/mcp-bench \
+  --ref 7a8eaeae83a842a2949080acc5473f65e1569daf
+
+# wainjectbench (WAInjectBench @ 4a5b7a5d)
+git clone https://github.com/Norrrrrrr-lyn/WAInjectBench /tmp/wainjectbench
+cd /tmp/wainjectbench && git checkout 4a5b7a5d
+cd /path/to/GuardLLM
+python benchmarks/import_official_exports.py \
+  --suite wainjectbench \
+  --input /tmp/wainjectbench \
+  --ref 4a5b7a5d4e393983d7105aed3485014b7206d205
+```
+
+These suites are optional. All benchmark results, the eval suite, and the comparison tables work without them. See `benchmarks/DATASET_REPRO.md` for the full acquisition and verification protocol.
 
 ## Tier 2: Deterministic Dataset Rebuild and ROC/PR Curves (no API keys)
 
@@ -226,6 +249,17 @@ python benchmarks/eval_datafilter_gpt4o_contaminated_context.py \
   --run-id datafilter-gpt4o-cc \
   --openai-api-key "$OPENAI_API_KEY"
 ```
+
+## Local LLM Demo (no API keys, ~6 GB model download)
+
+The demo runs a real LLM (Qwen2.5-3B-Instruct) through the pipeline twice: once without GuardLLM (injection succeeds, account number exfiltrated), once with GuardLLM (hidden div stripped, injection flagged, egress gate blocks exfiltration).
+
+```bash
+pip install transformers torch accelerate
+python examples/demo_local_llm.py
+```
+
+Runtime: under 5 minutes on the reference platform (excluding first-time model download). See `examples/README.md` for details.
 
 ## Verifying Specific Paper Claims
 

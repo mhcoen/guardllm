@@ -368,5 +368,5 @@ Recommended policy for this repo:
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.
 - `compare_mitigations.py` compares `guardllm` against a `no_defense` baseline on identical cases and includes pinned export reference stats.
 - Azure category moderation is intentionally excluded from the injection benchmark; Prompt Shields integration is tracked separately.
-- Bedrock Guardrails can be compared on the text-only subset by providing a guardrail ID/version and AWS profile/region.
+- Bedrock Guardrails can be compared on the injection-detection subset by providing a guardrail ID/version and AWS profile/region.
 - The comparison report's "Official Reference" section summarizes pinned export dataset stats; it is not a direct upstream leaderboard scrape.

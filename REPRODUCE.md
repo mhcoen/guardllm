@@ -31,7 +31,7 @@ pip install -e '.[examples]'        # Local LLM demo
 
 ### Pinned dependency versions (for exact reproduction of Tier 4 baselines)
 
-The non-text baseline strategies (Tier 4) depend on optional packages. For exact reproduction of the reported numbers, pin these versions:
+The surface baseline strategies (Tier 4) depend on optional packages. For exact reproduction of the reported numbers, pin these versions:
 
 ```
 beautifulsoup4==4.14.3
@@ -269,14 +269,14 @@ This evaluates `guardllm`, `isolation_only`, `source_gate_only`, `regex_rule_bas
 
 Output: `benchmarks/runs/comparison-local/comparison.json` and `comparison.md`
 
-### Non-text control results (Table 5 claims)
+### Surface control results (Table 5 claims)
 
-The comparison report includes a non-text controls section. Key claims to verify:
-- GuardLLM: 100% on non-text controls
-- `non_text_stack` (OPA + Redis + Casbin + JSON Schema composed): ~74% on non-text controls
-- `no_defense`: ~13% on non-text controls
+The comparison report includes a surface controls section. Key claims to verify:
+- GuardLLM: 100% on surface controls
+- `surface_stack` (OPA + Redis + Casbin + JSON Schema composed): ~74% on surface controls
+- `no_defense`: ~13% on surface controls
 
-Optional non-text-stack dependencies (included in `pip install -e '.[benchmarks]'`):
+Optional surface-stack dependencies (included in `pip install -e '.[benchmarks]'`):
 
 ```bash
 # If not using the benchmarks extras group, install individually:
@@ -420,9 +420,9 @@ This is measured by the benchmark harness latency column. Run Tier 4 and check t
 
 Run Tier 4 or Tier 5. The text-scope comparison section of `comparison.md` shows F1, precision, recall, and latency for all strategies. Record count (3,823) is the `injection`-scope text projection from the canonical dataset (1,021 attacks, 2,802 benign).
 
-### Claim: 100% on non-text controls
+### Claim: 100% on surface controls
 
-Run Tier 4. The non-text comparison section shows GuardLLM at 100% across all non-text control kinds.
+Run Tier 4. The surface comparison section shows GuardLLM at 100% across all surface control kinds.
 
 ### Claim: ~10,000x faster than neural-based alternatives
 

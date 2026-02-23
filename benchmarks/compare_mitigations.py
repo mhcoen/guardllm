@@ -221,7 +221,7 @@ AZURE_SIGNAL_CHOICES = (
 )
 
 
-NON_TEXT_KINDS = {
+SURFACE_KINDS = {
     "tool_gate",
     "tool_gate_auth",
     "validation",
@@ -474,11 +474,11 @@ def _opa_eval(program: str, query: str, payload: dict[str, Any]) -> Any:
             pass
 
 
-def _is_non_text_case(case: dict[str, Any]) -> bool:
-    return str(case.get("kind")) in NON_TEXT_KINDS
+def _is_surface_case(case: dict[str, Any]) -> bool:
+    return str(case.get("kind")) in SURFACE_KINDS
 
 
-def _eval_non_text_prediction(case: dict[str, Any], pred: dict[str, Any]) -> bool:
+def _eval_surface_prediction(case: dict[str, Any], pred: dict[str, Any]) -> bool:
     kind = str(case.get("kind"))
     if kind in {"tool_gate", "tool_gate_auth", "binding_replay"}:
         return bool(pred.get("allowed")) is bool(case.get("expect_allowed"))
@@ -502,20 +502,20 @@ def _eval_non_text_prediction(case: dict[str, Any], pred: dict[str, Any]) -> boo
     return False
 
 
-def run_non_text_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
-    non_text_cases = [c for c in cases if _is_non_text_case(c)]
-    if not non_text_cases:
+def run_surface_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    surface_cases = [c for c in cases if _is_surface_case(c)]
+    if not surface_cases:
         return {"count": 0, "strategies": {}}
 
-    # Reuse historical no-defense behavior for non-text kinds.
+    # Reuse historical no-defense behavior for surface kinds.
     no_defense_predictions = {
-        c["id"]: run_case_no_defense(c).passed for c in non_text_cases
+        c["id"]: run_case_no_defense(c).passed for c in surface_cases
     }
 
     # OPA-backed policy adapter.
     opa_program = _policy_opa_program()
     redis_state_prefix = f"guardbench:{int(time.time()*1000)}"
-    non_text_errors: dict[str, str] = {}
+    surface_errors: dict[str, str] = {}
 
     casbin_enforcer = None
     try:
@@ -540,7 +540,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         for st in ("assistant_response", "user_input", "cli"):
             casbin_enforcer.add_policy("source", st, "allow")
     except Exception as exc:
-        non_text_errors["casbin_rbac"] = str(exc)
+        surface_errors["casbin_rbac"] = str(exc)
 
     try:
         import pydantic  # type: ignore # noqa: F401
@@ -548,7 +548,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         pydantic_available = True
     except Exception as exc:
         pydantic_available = False
-        non_text_errors["strict_schema_stack"] = str(exc)
+        surface_errors["strict_schema_stack"] = str(exc)
 
     def predict_schema(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
@@ -660,7 +660,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             "retry_after_positive": not final_allowed,
         }
 
-    def predict_non_text_stack(case: dict[str, Any]) -> dict[str, Any]:
+    def predict_surface_stack(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
         if kind == "validation":
             return predict_schema(case)
@@ -794,29 +794,29 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         return {}
 
     strategies = {
-        "guardllm_non_text": {"passed": 0, "total": len(non_text_cases)},
-        "no_defense_non_text": {"passed": 0, "total": len(non_text_cases)},
-        "schema_jsonschema": {"passed": 0, "total": len(non_text_cases)},
-        "policy_opa": {"passed": 0, "total": len(non_text_cases)},
-        "casbin_rbac": {"passed": 0, "total": len(non_text_cases)},
-        "strict_schema_stack": {"passed": 0, "total": len(non_text_cases)},
-        "redis_rate_limit": {"passed": 0, "total": len(non_text_cases)},
-        "non_text_stack": {"passed": 0, "total": len(non_text_cases)},
+        "guardllm_surface": {"passed": 0, "total": len(surface_cases)},
+        "no_defense_surface": {"passed": 0, "total": len(surface_cases)},
+        "schema_jsonschema": {"passed": 0, "total": len(surface_cases)},
+        "policy_opa": {"passed": 0, "total": len(surface_cases)},
+        "casbin_rbac": {"passed": 0, "total": len(surface_cases)},
+        "strict_schema_stack": {"passed": 0, "total": len(surface_cases)},
+        "redis_rate_limit": {"passed": 0, "total": len(surface_cases)},
+        "surface_stack": {"passed": 0, "total": len(surface_cases)},
     }
     by_kind: dict[str, dict[str, dict[str, int]]] = {}
 
-    for case in non_text_cases:
+    for case in surface_cases:
         cid = case["id"]
         kind = str(case.get("kind"))
         kind_entry = by_kind.setdefault(kind, {})
         if run_case(case).passed:
-            strategies["guardllm_non_text"]["passed"] += 1
-            kind_entry.setdefault("guardllm_non_text", {"passed": 0, "total": 0})["passed"] += 1
+            strategies["guardllm_surface"]["passed"] += 1
+            kind_entry.setdefault("guardllm_surface", {"passed": 0, "total": 0})["passed"] += 1
         if no_defense_predictions[cid]:
-            strategies["no_defense_non_text"]["passed"] += 1
-            kind_entry.setdefault("no_defense_non_text", {"passed": 0, "total": 0})["passed"] += 1
-        kind_entry.setdefault("guardllm_non_text", {"passed": 0, "total": 0})["total"] += 1
-        kind_entry.setdefault("no_defense_non_text", {"passed": 0, "total": 0})["total"] += 1
+            strategies["no_defense_surface"]["passed"] += 1
+            kind_entry.setdefault("no_defense_surface", {"passed": 0, "total": 0})["passed"] += 1
+        kind_entry.setdefault("guardllm_surface", {"passed": 0, "total": 0})["total"] += 1
+        kind_entry.setdefault("no_defense_surface", {"passed": 0, "total": 0})["total"] += 1
 
         for name, pred_fn in [
             ("schema_jsonschema", predict_schema),
@@ -824,12 +824,12 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             ("casbin_rbac", predict_casbin_rbac),
             ("strict_schema_stack", predict_strict_schema_stack),
             ("redis_rate_limit", predict_rate_limit_redis),
-            ("non_text_stack", predict_non_text_stack),
+            ("surface_stack", predict_surface_stack),
         ]:
             pred = pred_fn(case)
             kind_stats = kind_entry.setdefault(name, {"passed": 0, "total": 0})
             kind_stats["total"] += 1
-            if _eval_non_text_prediction(case, pred):
+            if _eval_surface_prediction(case, pred):
                 strategies[name]["passed"] += 1
                 kind_stats["passed"] += 1
 
@@ -870,13 +870,13 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
 
     return {
-        "count": len(non_text_cases),
+        "count": len(surface_cases),
         "strategies": strategies,
         "strategies_no_source_gate": no_source_gate,
         "macro_by_kind": macro_by_kind,
         "macro_by_kind_no_source_gate": macro_by_kind_no_source_gate,
         "by_kind": by_kind,
-        "errors": non_text_errors,
+        "errors": surface_errors,
         "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
     }
 
@@ -898,11 +898,11 @@ def _text_label_from_case(case: dict[str, Any]) -> bool | None:
     return False
 
 
-def build_text_records(cases: list[dict[str, Any]], text_scope: str = "injection") -> list[TextRecord]:
+def build_text_records(cases: list[dict[str, Any]], injection_scope: str = "injection") -> list[TextRecord]:
     records: list[TextRecord] = []
     for case in cases:
         suite = str(case.get("suite", "unknown"))
-        if text_scope == "injection" and suite not in TEXT_SCOPE_INCLUDED_SUITES:
+        if injection_scope == "injection" and suite not in TEXT_SCOPE_INCLUDED_SUITES:
             continue
         label = _text_label_from_case(case)
         if label is None:
@@ -1066,7 +1066,7 @@ def _azure_prompt_shields_signals(body: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-def run_text_only_strategies(
+def run_injection_strategies(
     records: list[TextRecord],
     azure_endpoint: str | None,
     azure_key: str | None,
@@ -1888,10 +1888,10 @@ def write_markdown(
     table_rows: list[dict[str, Any]],
     strategies: dict[str, dict[str, Any]],
     official: dict[str, Any],
-    text_only: dict[str, Any],
-    non_text_only: dict[str, Any],
-    text_scope: str,
-    holdout_text_only: dict[str, Any] | None,
+    injection_only: dict[str, Any],
+    surface_only: dict[str, Any],
+    injection_scope: str,
+    holdout_injection_only: dict[str, Any] | None,
     out_path: Path,
 ) -> None:
     lines: list[str] = []
@@ -1934,24 +1934,24 @@ def write_markdown(
         )
     lines.append("")
     lines.append(
-        "Note: full-suite benign correctness includes non-text and out-of-scope cases; "
-        "it is not directly comparable to text-only precision."
+        "Note: full-suite benign correctness includes surface and out-of-scope cases; "
+        "it is not directly comparable to injection precision."
     )
 
     lines.append("")
     lines.append("## Text-Only Comparison")
     lines.append("")
-    lines.append(f"- Text scope: `{text_scope}`")
-    if text_scope == "injection":
+    lines.append(f"- Text scope: `{injection_scope}`")
+    if injection_scope == "injection":
         lines.append(
             f"- Included suites in text scope: `{', '.join(sorted(TEXT_SCOPE_INCLUDED_SUITES))}`"
         )
     lines.append(
-        f"- Record count: `{text_only.get('record_count', 0)}`"
+        f"- Record count: `{injection_only.get('record_count', 0)}`"
     )
-    lines.append(f"- GuardLLM text reused: `{text_only.get('guardllm_reused', False)}`")
-    text_strategies = text_only.get("strategies", {})
-    azure_signal = text_only.get("azure_signal_definition")
+    lines.append(f"- GuardLLM text reused: `{injection_only.get('guardllm_reused', False)}`")
+    text_strategies = injection_only.get("strategies", {})
+    azure_signal = injection_only.get("azure_signal_definition")
     if "azure_prompt_shields" in text_strategies and isinstance(azure_signal, dict):
         if azure_signal.get("azure_prompt_shields"):
             lines.append(
@@ -1961,9 +1961,9 @@ def write_markdown(
             lines.append(
                 f"- Azure signal audit enabled: `{bool(azure_signal['audit_enabled'])}`"
             )
-    if text_only.get("azure_error"):
-        lines.append(f"- Azure Prompt Shields error: `{text_only['azure_error']}`")
-    bedrock_signal = text_only.get("bedrock_signal_definition")
+    if injection_only.get("azure_error"):
+        lines.append(f"- Azure Prompt Shields error: `{injection_only['azure_error']}`")
+    bedrock_signal = injection_only.get("bedrock_signal_definition")
     if any(name.startswith("bedrock_guardrails") for name in text_strategies) and isinstance(bedrock_signal, dict):
         if bedrock_signal.get("bedrock_guardrails"):
             lines.append(
@@ -1973,20 +1973,20 @@ def write_markdown(
             lines.append(
                 f"- Bedrock blocked signal: `{bedrock_signal['bedrock_guardrails_blocked']}`"
             )
-    if text_only.get("bedrock_error"):
-        lines.append(f"- Bedrock Guardrails error: `{text_only['bedrock_error']}`")
-    if "open_source_deberta" in text_strategies and text_only.get("open_source_model_id"):
-        lines.append(f"- Open-source model: `{text_only['open_source_model_id']}`")
-    if text_only.get("open_source_error"):
-        lines.append(f"- Open-source error: `{text_only['open_source_error']}`")
-    if "openai_policy_adapter" in text_strategies and text_only.get("openai_model"):
-        lines.append(f"- OpenAI model: `{text_only['openai_model']}`")
-    if text_only.get("openai_error"):
-        lines.append(f"- OpenAI error: `{text_only['openai_error']}`")
-    if "anthropic_policy_adapter" in text_strategies and text_only.get("anthropic_model"):
-        lines.append(f"- Anthropic model: `{text_only['anthropic_model']}`")
-    if text_only.get("anthropic_error"):
-        lines.append(f"- Anthropic error: `{text_only['anthropic_error']}`")
+    if injection_only.get("bedrock_error"):
+        lines.append(f"- Bedrock Guardrails error: `{injection_only['bedrock_error']}`")
+    if "open_source_deberta" in text_strategies and injection_only.get("open_source_model_id"):
+        lines.append(f"- Open-source model: `{injection_only['open_source_model_id']}`")
+    if injection_only.get("open_source_error"):
+        lines.append(f"- Open-source error: `{injection_only['open_source_error']}`")
+    if "openai_policy_adapter" in text_strategies and injection_only.get("openai_model"):
+        lines.append(f"- OpenAI model: `{injection_only['openai_model']}`")
+    if injection_only.get("openai_error"):
+        lines.append(f"- OpenAI error: `{injection_only['openai_error']}`")
+    if "anthropic_policy_adapter" in text_strategies and injection_only.get("anthropic_model"):
+        lines.append(f"- Anthropic model: `{injection_only['anthropic_model']}`")
+    if injection_only.get("anthropic_error"):
+        lines.append(f"- Anthropic error: `{injection_only['anthropic_error']}`")
     if "llama_guard_4" in text_strategies:
         lines.append(
             "- Note: `llama_guard_4` was run locally on an A100 GPU with 80GB of RAM"
@@ -2002,14 +2002,14 @@ def write_markdown(
             f"{stats['f1']} | {stats['tp']} | {stats['tn']} | {stats['fp']} | {stats['fn']} |"
         )
 
-    if text_only.get("latency_ms"):
+    if injection_only.get("latency_ms"):
         lines.append("")
         lines.append("| strategy | avg latency (ms) | p95 latency (ms) | max latency (ms) |")
         lines.append("|---|---:|---:|---:|")
-        for name, stats in text_only["latency_ms"].items():
+        for name, stats in injection_only["latency_ms"].items():
             lines.append(f"| {name} | {stats['avg']} | {stats['p95']} | {stats['max']} |")
 
-    missed = text_only.get("top_missed_patterns", {}).get("guardllm", [])
+    missed = injection_only.get("top_missed_patterns", {}).get("guardllm", [])
     if missed:
         lines.append("")
         lines.append("Top GuardLLM false-negative patterns:")
@@ -2018,8 +2018,8 @@ def write_markdown(
                 f"- `{item.get('pattern')}`: `{item.get('false_negative_count', 0)}`"
             )
 
-    if text_only.get("cost_proxy"):
-        cp = text_only["cost_proxy"]
+    if injection_only.get("cost_proxy"):
+        cp = injection_only["cost_proxy"]
         lines.append("")
         lines.append("Cost proxy:")
         lines.append(f"- Azure Prompt Shields calls: `{cp.get('azure_prompt_shields_calls', 0)}`")
@@ -2047,17 +2047,17 @@ def write_markdown(
     lines.append("")
     lines.append("## Non-Text Comparison")
     lines.append("")
-    lines.append(f"- Record count: `{non_text_only.get('count', 0)}`")
-    deps = non_text_only.get("deps", {})
+    lines.append(f"- Record count: `{surface_only.get('count', 0)}`")
+    deps = surface_only.get("deps", {})
     if deps:
         lines.append(f"- Casbin available: `{deps.get('casbin_available', False)}`")
         lines.append(f"- Pydantic available: `{deps.get('pydantic_available', False)}`")
-    for k, v in non_text_only.get("errors", {}).items():
+    for k, v in surface_only.get("errors", {}).items():
         lines.append(f"- {k} error: `{v}`")
     lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
     lines.append("|---|---:|---:|---:|---:|")
-    macro = non_text_only.get("macro_by_kind", {})
-    for name, stats in non_text_only.get("strategies", {}).items():
+    macro = surface_only.get("macro_by_kind", {})
+    for name, stats in surface_only.get("strategies", {}).items():
         lines.append(
             f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro.get(name, 0.0)}% |"
         )
@@ -2066,15 +2066,15 @@ def write_markdown(
     lines.append("")
     lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
     lines.append("|---|---:|---:|---:|---:|")
-    macro_no_source = non_text_only.get("macro_by_kind_no_source_gate", {})
-    for name, stats in non_text_only.get("strategies_no_source_gate", {}).items():
+    macro_no_source = surface_only.get("macro_by_kind_no_source_gate", {})
+    for name, stats in surface_only.get("strategies_no_source_gate", {}).items():
         lines.append(
             f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro_no_source.get(name, 0.0)}% |"
         )
-    by_kind = non_text_only.get("by_kind", {})
+    by_kind = surface_only.get("by_kind", {})
     if by_kind:
         lines.append("")
-        lines.append("| non-text kind | strategy | passed | total | pass rate |")
+        lines.append("| surface kind | strategy | passed | total | pass rate |")
         lines.append("|---|---|---:|---:|---:|")
         for kind in sorted(by_kind.keys()):
             kind_stats = by_kind[kind]
@@ -2086,13 +2086,13 @@ def write_markdown(
     lines.append("")
     lines.append("## Holdout Generalization (Legacy Upstream Snapshots)")
     lines.append("")
-    if not holdout_text_only:
+    if not holdout_injection_only:
         lines.append("- No legacy holdout snapshots found.")
     else:
-        lines.append(f"- Record count: `{holdout_text_only.get('record_count', 0)}`")
+        lines.append(f"- Record count: `{holdout_injection_only.get('record_count', 0)}`")
         lines.append("| strategy | accuracy | precision | recall | f1 | tp | tn | fp | fn |")
         lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
-        for name, stats in holdout_text_only.get("strategies", {}).items():
+        for name, stats in holdout_injection_only.get("strategies", {}).items():
             lines.append(
                 f"| {name} | {stats['accuracy']}% | {stats['precision']}% | {stats['recall']}% | "
                 f"{stats['f1']} | {stats['tp']} | {stats['tn']} | {stats['fp']} | {stats['fn']} |"
@@ -2114,11 +2114,11 @@ def write_markdown(
 
 
 def _merge_llama_guard_results(
-    text_only: dict[str, Any],
+    injection_only: dict[str, Any],
     results_path: str,
     text_records: list[TextRecord],
 ) -> dict[str, Any]:
-    """Merge Llama Guard 4 eval results into the text-only comparison block."""
+    """Merge Llama Guard 4 eval results into the injection comparison block."""
     p = Path(results_path)
     if not p.is_absolute():
         from _bootstrap import ROOT as _ROOT
@@ -2127,11 +2127,11 @@ def _merge_llama_guard_results(
 
     lg_predictions = lg_data.get("predictions", [])
     lg_record_count = lg_data.get("record_count", len(lg_predictions))
-    current_count = int(text_only.get("record_count", 0))
+    current_count = int(injection_only.get("record_count", 0))
     if lg_record_count != current_count:
         raise RuntimeError(
             f"Llama Guard 4 record count ({lg_record_count}) does not match "
-            f"current text-only record count ({current_count})."
+            f"current injection record count ({current_count})."
         )
 
     # Build prediction rows in the standard format
@@ -2149,7 +2149,7 @@ def _merge_llama_guard_results(
             "pred_attack": bool(lg_row["pred_attack"]),
         })
 
-    # Compute metrics (same pattern as run_text_only_strategies)
+    # Compute metrics (same pattern as run_injection_strategies)
     tp = tn = fp = fn = 0
     by_suite: dict[str, dict[str, int]] = {}
     for row in rows:
@@ -2177,7 +2177,7 @@ def _merge_llama_guard_results(
         for s, v in by_suite.items()
     }
 
-    text_only.setdefault("strategies", {})["llama_guard_4"] = {
+    injection_only.setdefault("strategies", {})["llama_guard_4"] = {
         "total": total,
         "tp": tp,
         "tn": tn,
@@ -2189,36 +2189,36 @@ def _merge_llama_guard_results(
         "f1": f1_score,
         "by_suite_accuracy": by_suite_accuracy,
     }
-    text_only.setdefault("predictions", {})["llama_guard_4"] = rows
+    injection_only.setdefault("predictions", {})["llama_guard_4"] = rows
 
     lg_latency = lg_data.get("latency_ms")
     if isinstance(lg_latency, dict) and lg_latency:
-        text_only.setdefault("latency_ms", {})["llama_guard_4"] = lg_latency
+        injection_only.setdefault("latency_ms", {})["llama_guard_4"] = lg_latency
 
-    return text_only
+    return injection_only
 
 
 def merge_prior_text_rows(
-    current_text_only: dict[str, Any],
+    current_injection_only: dict[str, Any],
     previous_payload: dict[str, Any],
     *,
-    text_scope: str,
+    injection_scope: str,
 ) -> dict[str, Any]:
     """Preserve prior provider rows when current run omits those adapters."""
     if not previous_payload:
-        return current_text_only
-    previous_text = previous_payload.get("text_only")
+        return current_injection_only
+    previous_text = previous_payload.get("injection_only")
     if not isinstance(previous_text, dict):
-        return current_text_only
-    if previous_payload.get("text_scope") != text_scope:
-        return current_text_only
-    if int(previous_text.get("record_count", -1)) != int(current_text_only.get("record_count", -2)):
-        return current_text_only
+        return current_injection_only
+    if previous_payload.get("injection_scope") != injection_scope:
+        return current_injection_only
+    if int(previous_text.get("record_count", -1)) != int(current_injection_only.get("record_count", -2)):
+        return current_injection_only
 
-    current_strategies = current_text_only.setdefault("strategies", {})
+    current_strategies = current_injection_only.setdefault("strategies", {})
     previous_strategies = previous_text.get("strategies", {})
     if not isinstance(current_strategies, dict) or not isinstance(previous_strategies, dict):
-        return current_text_only
+        return current_injection_only
 
     preserve_names = (
         "bedrock_guardrails",
@@ -2234,33 +2234,33 @@ def merge_prior_text_rows(
         if name not in current_strategies and name in previous_strategies:
             current_strategies[name] = previous_strategies[name]
 
-    current_latency = current_text_only.setdefault("latency_ms", {})
+    current_latency = current_injection_only.setdefault("latency_ms", {})
     previous_latency = previous_text.get("latency_ms", {})
     if isinstance(current_latency, dict) and isinstance(previous_latency, dict):
         for name in preserve_names:
             if name not in current_latency and name in previous_latency:
                 current_latency[name] = previous_latency[name]
 
-    current_predictions = current_text_only.setdefault("predictions", {})
+    current_predictions = current_injection_only.setdefault("predictions", {})
     previous_predictions = previous_text.get("predictions", {})
     if isinstance(current_predictions, dict) and isinstance(previous_predictions, dict):
         for name in preserve_names:
             if name not in current_predictions and name in previous_predictions:
                 current_predictions[name] = previous_predictions[name]
 
-    return current_text_only
+    return current_injection_only
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
     parser.add_argument(
-        "--non-text-only",
+        "--surface-only",
         action="store_true",
-        help="Skip text-only/API evaluations and refresh only non-text comparisons",
+        help="Skip injection/API evaluations and refresh only surface comparisons",
     )
     parser.add_argument(
-        "--text-scope",
+        "--injection-scope",
         choices=["injection", "all"],
         default="injection",
         help="Scope for text benchmark records: 'injection' excludes non prompt-injection suites.",
@@ -2273,7 +2273,7 @@ def main() -> int:
     parser.add_argument(
         "--skip-holdout-text",
         action="store_true",
-        help="Skip legacy holdout text evaluation for faster text-only reruns.",
+        help="Skip legacy holdout text evaluation for faster injection reruns.",
     )
     parser.add_argument("--azure-endpoint", default=None, help="Azure Content Safety endpoint")
     parser.add_argument("--azure-key", default=None, help="Azure Content Safety key")
@@ -2323,7 +2323,7 @@ def main() -> int:
     parser.add_argument(
         "--llama-guard-results",
         default=None,
-        help="Path to Llama Guard 4 results.json to merge into text-only comparison.",
+        help="Path to Llama Guard 4 results.json to merge into injection comparison.",
     )
     args = parser.parse_args()
     ensure_cache_dir()
@@ -2344,9 +2344,9 @@ def main() -> int:
 
     table_rows = build_table(strategies)
     official = official_reference_summary()
-    non_text_only = run_non_text_strategies(cases)
-    text_only: dict[str, Any]
-    holdout_text_only: dict[str, Any] | None = None
+    surface_only = run_surface_strategies(cases)
+    injection_only: dict[str, Any]
+    holdout_injection_only: dict[str, Any] | None = None
     previous_payload: dict[str, Any] = {}
     previous_run_id = read_latest_pointer()
     previous_compare_json = (RUNS_ROOT / previous_run_id / "comparison.json") if previous_run_id else None
@@ -2355,17 +2355,17 @@ def main() -> int:
             previous_payload = json.loads(previous_compare_json.read_text())
         except Exception:
             previous_payload = {}
-    if args.non_text_only:
-        text_only = previous_payload.get("text_only", {"record_count": 0, "strategies": {}})
-        holdout_text_only = previous_payload.get("holdout_text_only")
+    if args.surface_only:
+        injection_only = previous_payload.get("injection_only", {"record_count": 0, "strategies": {}})
+        holdout_injection_only = previous_payload.get("holdout_injection_only")
         if args.llama_guard_results:
-            text_records = build_text_records(cases, text_scope=args.text_scope)
-            text_only = _merge_llama_guard_results(text_only, args.llama_guard_results, text_records)
+            text_records = build_text_records(cases, injection_scope=args.injection_scope)
+            injection_only = _merge_llama_guard_results(injection_only, args.llama_guard_results, text_records)
     else:
         guardllm_reuse: dict[str, Any] | None = None
         if args.reuse_guardllm_text and previous_payload:
             try:
-                previous_text = previous_payload.get("text_only", {})
+                previous_text = previous_payload.get("injection_only", {})
                 previous_predictions = previous_text.get("predictions", {})
                 guard_rows = previous_predictions.get("guardllm")
                 if isinstance(guard_rows, list):
@@ -2376,8 +2376,8 @@ def main() -> int:
             except Exception:
                 guardllm_reuse = None
 
-        text_records = build_text_records(cases, text_scope=args.text_scope)
-        text_only = run_text_only_strategies(
+        text_records = build_text_records(cases, injection_scope=args.injection_scope)
+        injection_only = run_injection_strategies(
             records=text_records,
             azure_endpoint=args.azure_endpoint,
             azure_key=args.azure_key,
@@ -2396,16 +2396,16 @@ def main() -> int:
                 progress_seconds=args.progress_seconds,
             )
         if args.llama_guard_results:
-            text_only = _merge_llama_guard_results(text_only, args.llama_guard_results, text_records)
-        text_only = merge_prior_text_rows(
-            current_text_only=text_only,
+            injection_only = _merge_llama_guard_results(injection_only, args.llama_guard_results, text_records)
+        injection_only = merge_prior_text_rows(
+            current_injection_only=injection_only,
             previous_payload=previous_payload,
-            text_scope=args.text_scope,
+            injection_scope=args.injection_scope,
         )
         holdout_cases = [] if args.skip_holdout_text else load_legacy_upstream_cases()
         if holdout_cases:
-            holdout_records = build_text_records(holdout_cases, text_scope=args.text_scope)
-            holdout_text_only = run_text_only_strategies(
+            holdout_records = build_text_records(holdout_cases, injection_scope=args.injection_scope)
+            holdout_injection_only = run_injection_strategies(
                 records=holdout_records,
                 azure_endpoint=args.azure_endpoint,
                 azure_key=args.azure_key,
@@ -2432,10 +2432,10 @@ def main() -> int:
         "case_count_total": len(cases),
         "strategies": strategies,
         "table_rows": table_rows,
-        "text_only": text_only,
-        "text_scope": args.text_scope,
-        "non_text_only": non_text_only,
-        "holdout_text_only": holdout_text_only,
+        "injection_only": injection_only,
+        "injection_scope": args.injection_scope,
+        "surface_only": surface_only,
+        "holdout_injection_only": holdout_injection_only,
         "official_reference": official,
     }
     run_id = str(payload["run_id"])
@@ -2447,10 +2447,10 @@ def main() -> int:
         table_rows=table_rows,
         strategies=strategies,
         official=official,
-        text_only=text_only,
-        non_text_only=non_text_only,
-        text_scope=args.text_scope,
-        holdout_text_only=holdout_text_only,
+        injection_only=injection_only,
+        surface_only=surface_only,
+        injection_scope=args.injection_scope,
+        holdout_injection_only=holdout_injection_only,
         out_path=compare_md,
     )
     write_latest_pointer(run_id)
@@ -2462,18 +2462,18 @@ def main() -> int:
     for name, item in strategies.items():
         s = item["summary"]
         print(f"- {name}: {s['passed']}/{s['total']} ({s['pass_rate']}%)")
-    print("text-only:")
-    for name, stats in text_only["strategies"].items():
+    print("injection:")
+    for name, stats in injection_only["strategies"].items():
         print(
             f"- {name}: accuracy={stats['accuracy']}% precision={stats['precision']}% recall={stats['recall']}%"
         )
-    print("non-text:")
-    for name, stats in non_text_only.get("strategies", {}).items():
+    print("surface:")
+    for name, stats in surface_only.get("strategies", {}).items():
         print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
-    print("non-text (excluding source_gate):")
-    for name, stats in non_text_only.get("strategies_no_source_gate", {}).items():
+    print("surface (excluding source_gate):")
+    for name, stats in surface_only.get("strategies_no_source_gate", {}).items():
         print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
-    guard_text = text_only.get("strategies", {}).get("guardllm", {})
+    guard_text = injection_only.get("strategies", {}).get("guardllm", {})
     guard_recall = float(guard_text.get("recall", 0.0))
     guard_f1 = float(guard_text.get("f1", 0.0))
     if guard_recall < float(args.min_guardllm_recall):

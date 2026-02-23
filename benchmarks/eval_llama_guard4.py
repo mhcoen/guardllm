@@ -1,4 +1,4 @@
-"""Evaluate Llama Guard 4 (12B) as a text-only prompt-injection detector.
+"""Evaluate Llama Guard 4 (12B) as an injection prompt-injection detector.
 
 Standalone script designed for GPU execution (e.g. RunPod with A6000/A100).
 Results can be merged into the main comparison table via:

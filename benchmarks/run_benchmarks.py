@@ -619,16 +619,28 @@ def compare_checkpoint(
 
     expected_summary = expected.get("expected_summary", {})
     expected_failed = sorted(expected.get("expected_failed_case_ids", []))
-    actual_failed = sorted(r.id for r in actual_results if not r.passed)
-
-    for key in ("total", "passed", "failed"):
-        if expected_summary.get(key) != actual_summary.get(key):
-            errors.append(
-                f"summary mismatch for {key}: expected={expected_summary.get(key)} actual={actual_summary.get(key)}"
-            )
-
     expected_suites = expected_summary.get("by_suite", {})
     actual_suites = actual_summary.get("by_suite", {})
+
+    # When extra suites are allowed, compare only the checkpoint-covered subset
+    if allow_extra_suites:
+        actual_failed = sorted(
+            r.id for r in actual_results
+            if not r.passed and r.suite in expected_suites
+        )
+        actual_total = sum(actual_suites.get(s, {}).get("total", 0) for s in expected_suites)
+        actual_passed = sum(actual_suites.get(s, {}).get("passed", 0) for s in expected_suites)
+        actual_failed_count = actual_total - actual_passed
+        comparable_summary = {"total": actual_total, "passed": actual_passed, "failed": actual_failed_count}
+    else:
+        actual_failed = sorted(r.id for r in actual_results if not r.passed)
+        comparable_summary = actual_summary
+
+    for key in ("total", "passed", "failed"):
+        if expected_summary.get(key) != comparable_summary.get(key):
+            errors.append(
+                f"summary mismatch for {key}: expected={expected_summary.get(key)} actual={comparable_summary.get(key)}"
+            )
 
     for suite, exp_stats in expected_suites.items():
         got = actual_suites.get(suite)

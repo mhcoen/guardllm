@@ -61,7 +61,7 @@ python benchmarks/run_benchmarks.py \
 
 This evaluates all 12 control surface kinds across native and upstream-derived cases. The checkpoint enforces that pass/fail counts match the baseline exactly (modulo known-failed cases listed in the checkpoint file).
 
-Expected output: checkpoint comparison passes with 10,146 cases, 9,927 passed, 219 known failures.
+Expected output: checkpoint comparison passes with 6,448 cases, 6,441 passed, 7 known failures. If optional suites (e.g. wainjectbench) are locally imported, use `--allow-extra-suites` to accept them without checkpoint mismatch.
 
 ### Run the eval suite (non-injection controls)
 

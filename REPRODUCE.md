@@ -18,6 +18,17 @@ pip install -e '.[dev]'
 - No external API keys or GPU required for Tiers 1 through 3
 - See [README.md](README.md) for general project overview and API documentation
 
+### Optional dependency groups
+
+Install only the groups you need:
+
+```bash
+pip install -e '.[dev]'             # Tier 1: unit tests and regression suite
+pip install -e '.[dev,benchmarks]'  # Tiers 2-4: dataset generation and competitor comparison
+pip install -e '.[dev,gpu]'         # Tier 6: GPU-based competitors (Llama Guard 4, DeBERTa)
+pip install -e '.[examples]'        # Local LLM demo
+```
+
 ### Pinned dependency versions (for exact reproduction of Tier 4 baselines)
 
 The non-text baseline strategies (Tier 4) depend on optional packages. For exact reproduction of the reported numbers, pin these versions:
@@ -29,7 +40,7 @@ jsonschema==4.23.0
 pydantic==2.12.5
 ```
 
-If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run actual validation and falls back to permissive defaults, producing different (lower) pass counts. All four packages above are installed by `pip install -e '.[dev]'`.
+If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run actual validation and falls back to permissive defaults, producing different (lower) pass counts. These packages are installed by `pip install -e '.[benchmarks]'`.
 
 ## Tier 1: Unit Tests and Regression Suite (no API keys, no GPU)
 
@@ -265,9 +276,10 @@ The comparison report includes a non-text controls section. Key claims to verify
 - `non_text_stack` (OPA + Redis + Casbin + JSON Schema composed): ~74% on non-text controls
 - `no_defense`: ~13% on non-text controls
 
-Optional non-text-stack dependencies (soft-imported, not required):
+Optional non-text-stack dependencies (included in `pip install -e '.[benchmarks]'`):
 
 ```bash
+# If not using the benchmarks extras group, install individually:
 pip install casbin pydantic jsonschema
 # OPA: download from https://www.openpolicyagent.org/docs/latest/#running-opa
 # Redis: install via package manager (brew install redis, apt install redis-server)
@@ -330,7 +342,7 @@ DeBERTa timings were collected on Mac M3 Max (MPS acceleration). Llama Guard 4 t
 ### ProtectAI DeBERTa
 
 ```bash
-pip install transformers torch
+pip install -e '.[gpu]'  # or: pip install transformers torch
 python benchmarks/compare_mitigations.py \
   --run-id comparison-deberta \
   --open-source-model-id "protectai/deberta-v3-base-prompt-injection-v2"
@@ -348,7 +360,7 @@ running, visit the model page on HuggingFace
 (`meta-llama/Llama-Guard-4-12B`) and request access. Once approved:
 
 ```bash
-pip install torch transformers huggingface_hub
+pip install -e '.[gpu]'  # or: pip install torch transformers huggingface_hub accelerate
 huggingface-cli login   # paste your HF token when prompted
 python benchmarks/eval_llama_guard4.py --run-id llama-guard4-v1
 ```
@@ -374,7 +386,7 @@ python benchmarks/eval_datafilter_gpt4o_contaminated_context.py \
 The demo runs a real LLM (Qwen2.5-3B-Instruct) through the pipeline twice: once without GuardLLM (injection succeeds, account number exfiltrated), once with GuardLLM (hidden div stripped, injection flagged, egress gate blocks exfiltration).
 
 ```bash
-pip install transformers torch accelerate
+pip install -e '.[examples]'  # or: pip install transformers torch accelerate
 python examples/demo_local_llm.py
 ```
 

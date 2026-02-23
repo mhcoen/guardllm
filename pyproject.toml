@@ -18,6 +18,24 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+benchmarks = [
+  "pyyaml>=6.0",
+  "casbin>=1.36",
+  "pydantic>=2.0",
+  "jsonschema>=4.20",
+  "certifi",
+]
+gpu = [
+  "torch>=2.0",
+  "transformers>=4.40",
+  "huggingface_hub>=0.20",
+  "accelerate>=0.25",
+]
+examples = [
+  "torch>=2.0",
+  "transformers>=4.40",
+  "accelerate>=0.25",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

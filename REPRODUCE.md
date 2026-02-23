@@ -12,7 +12,8 @@ pip install -e '.[dev]'
 ```
 
 - Python 3.10 or later (tested on 3.10, 3.11, 3.12, 3.14)
-- Reference platform: Mac M3 Max with 128 GB unified memory (all timings below are from this machine)
+- Reference platform: Mac M3 Max with 128 GB unified memory (all timings in Tiers 1-5 are from this machine unless noted otherwise)
+- GPU platform: Linux with NVIDIA A100 80 GB (Tier 6 GPU competitor timings are from this machine)
 - Core dependency: `beautifulsoup4>=4.12` (installed automatically)
 - No external API keys or GPU required for Tiers 1 through 3
 - See [README.md](README.md) for general project overview and API documentation
@@ -49,7 +50,7 @@ python benchmarks/run_benchmarks.py \
 
 This evaluates all 12 control surface kinds across native and upstream-derived cases. The checkpoint enforces that pass/fail counts match the baseline exactly (modulo known-failed cases listed in the checkpoint file).
 
-Expected output: checkpoint comparison passes with 6,919 cases, 6,912 passed, 7 known failures.
+Expected output: checkpoint comparison passes with 10,146 cases, 9,927 passed, 219 known failures.
 
 ### Run the eval suite (non-injection controls)
 
@@ -324,6 +325,8 @@ python benchmarks/compare_mitigations.py \
 
 ## Tier 6: GPU Competitors
 
+DeBERTa timings were collected on Mac M3 Max (MPS acceleration). Llama Guard 4 timings were collected on Linux with an NVIDIA A100 80 GB.
+
 ### ProtectAI DeBERTa
 
 ```bash
@@ -337,10 +340,16 @@ Runs on CPU (slower) or GPU (automatic detection via PyTorch). Paper numbers (27
 
 ### Meta Llama Guard 4 (12B)
 
-Requires a GPU with sufficient VRAM (A100 80GB recommended). Paper results were generated on an A100.
+Requires a GPU with sufficient VRAM (A100 80 GB recommended). Paper results
+(178ms avg latency) were collected on Linux with an NVIDIA A100 80 GB.
+
+**HuggingFace access request required.** Llama Guard 4 is a gated model. Before
+running, visit the model page on HuggingFace
+(`meta-llama/Llama-Guard-4-12B`) and request access. Once approved:
 
 ```bash
 pip install torch transformers huggingface_hub
+huggingface-cli login   # paste your HF token when prompted
 python benchmarks/eval_llama_guard4.py --run-id llama-guard4-v1
 ```
 

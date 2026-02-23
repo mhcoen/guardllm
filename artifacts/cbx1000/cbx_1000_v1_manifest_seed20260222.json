@@ -1,0 +1,115 @@
+{
+  "suite": "cbx_1000_v1",
+  "seed": 20260222,
+  "n_total": 1000,
+  "distribution": {
+    "ATTACK": 650,
+    "BASELINE": 250,
+    "NEAR_MISS": 100,
+    "ATTACK_within_scope": 500,
+    "ATTACK_out_of_scope_encoding": 150
+  },
+  "operator_weights": {
+    "within_scope": [
+      [
+        "verbatim_copy",
+        0.2
+      ],
+      [
+        "prefix_fragment",
+        0.18
+      ],
+      [
+        "middle_fragment",
+        0.18
+      ],
+      [
+        "suffix_fragment",
+        0.18
+      ],
+      [
+        "insert_separators",
+        0.1
+      ],
+      [
+        "markdown_link_wrap",
+        0.08
+      ],
+      [
+        "json_reformat",
+        0.08
+      ]
+    ],
+    "out_of_scope": [
+      [
+        "hex_encode",
+        0.35
+      ],
+      [
+        "rot13",
+        0.25
+      ],
+      [
+        "leetspeak",
+        0.25
+      ],
+      [
+        "homoglyph_substitution",
+        0.15
+      ]
+    ]
+  },
+  "wrappers": [
+    {
+      "id": 0,
+      "name": "forum_post"
+    },
+    {
+      "id": 1,
+      "name": "troubleshooting_doc"
+    },
+    {
+      "id": 2,
+      "name": "internal_ticket"
+    },
+    {
+      "id": 3,
+      "name": "pasted_email"
+    }
+  ],
+  "repos": {
+    "injecagent": {
+      "repo_url": "https://github.com/uiuc-kang-lab/InjecAgent.git",
+      "path": "artifacts/cbx1000/source_cache/injecagent",
+      "commit": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+      "license_path": "artifacts/cbx1000/source_cache/injecagent/LICENCE",
+      "license_sha256": "b48589499dbb84caa796b00b4ea652b0443e49660282c44d890fd473b8c0674e"
+    },
+    "agentdojo": {
+      "repo_url": "https://github.com/ethz-spylab/agentdojo.git",
+      "path": "artifacts/cbx1000/source_cache/agentdojo",
+      "commit": "462c88ddf596cb745882702f9999c8aeb5fe467f",
+      "license_path": "artifacts/cbx1000/source_cache/agentdojo/LICENSE",
+      "license_sha256": "4285a071f2d382338e52b4fb0a186d952984a34d43a33d8872e1a1d8cb43401e"
+    },
+    "pint": {
+      "repo_url": "https://github.com/lakeraai/pint-benchmark.git",
+      "path": "artifacts/cbx1000/source_cache/pint",
+      "commit": "0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8",
+      "license_path": "artifacts/cbx1000/source_cache/pint/LICENSE",
+      "license_sha256": "5968e9fe3dd27f519635cea1e55aaa638434252e0d896f2f856c2ba0c07a9167"
+    },
+    "giskard": {
+      "repo_url": "https://github.com/Giskard-AI/prompt-injections.git",
+      "path": "artifacts/cbx1000/source_cache/giskard",
+      "commit": "ce50a549dadc46b48c931250d2dd71d5f003c0c2",
+      "license_path": "artifacts/cbx1000/source_cache/giskard/LICENSE",
+      "license_sha256": "aa9cf026635fee60937c69b14005f2edd0397dec0bffcb31a469ffad944e13cf"
+    }
+  },
+  "counts": {
+    "explicit": 260,
+    "indirect": 590
+  },
+  "output_sha256": "8ef788af7933d67fa54625cef302c8c055827b41a6ed88badd10d68c18ceb32e"
+}

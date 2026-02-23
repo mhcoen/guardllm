@@ -1,0 +1,77 @@
+{
+  "suite": "suiteB_owasp",
+  "seed_master": 20260222,
+  "untrusted_kind": "owasp_payload",
+  "N_TOTAL": 1000,
+  "distribution": {
+    "ATTACK": 650,
+    "ATTACK_WITHIN": 500,
+    "ATTACK_OOS": 150,
+    "BASELINE": 250,
+    "NEAR_MISS": 100
+  },
+  "wrappers": [
+    {
+      "id": 0,
+      "name": "logline"
+    },
+    {
+      "id": 1,
+      "name": "json_error"
+    },
+    {
+      "id": 2,
+      "name": "ticket"
+    }
+  ],
+  "operator_weights": {
+    "within": [
+      [
+        "verbatim_copy",
+        0.2
+      ],
+      [
+        "prefix_fragment",
+        0.2
+      ],
+      [
+        "middle_fragment",
+        0.2
+      ],
+      [
+        "suffix_fragment",
+        0.2
+      ],
+      [
+        "insert_separators",
+        0.1
+      ],
+      [
+        "json_reformat",
+        0.1
+      ]
+    ],
+    "oos": [
+      [
+        "hex_encode",
+        0.35
+      ],
+      [
+        "rot13",
+        0.25
+      ],
+      [
+        "leetspeak",
+        0.25
+      ],
+      [
+        "homoglyph_substitution",
+        0.15
+      ]
+    ]
+  },
+  "pool_file": "artifacts/suites/cache/owasp_payload.txt",
+  "pool_sha256": "5ea045efac98e15eb4e53d2864e2170123403fc6f6194b7373825d9dd46e28f6",
+  "pool_size": 7191,
+  "output_sha256": "2d0efcd71bc6103bf73add40ef934a748af27c2ab9a3aac59ad88583db3ac373"
+}

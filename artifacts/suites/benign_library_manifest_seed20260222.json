@@ -1,0 +1,13 @@
+{
+  "suite": "benign_library_v1",
+  "seed": 20260222,
+  "N": 2000,
+  "strata": {
+    "uncontaminated_sensitive_present": 666,
+    "contaminated_sensitive_present": 666,
+    "contaminated_no_sensitive": 668
+  },
+  "output_sha256": "d0de9a34fb5eaac3a82a72b956dfbc3a6ccc0b2a84669307a7a76503a0ded0a8",
+  "benign_pool_sha256": "5f393c58297a6fb84bfa4d6b5d64540ac0f8098dec8663f95d14f190ea64d717",
+  "benign_pool_size": 15371
+}

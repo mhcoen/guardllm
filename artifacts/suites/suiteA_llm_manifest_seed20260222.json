@@ -1,0 +1,77 @@
+{
+  "suite": "suiteA_llm",
+  "seed_master": 20260222,
+  "untrusted_kind": "llm_injection",
+  "N_TOTAL": 1000,
+  "distribution": {
+    "ATTACK": 650,
+    "ATTACK_WITHIN": 500,
+    "ATTACK_OOS": 150,
+    "BASELINE": 250,
+    "NEAR_MISS": 100
+  },
+  "wrappers": [
+    {
+      "id": 0,
+      "name": "logline"
+    },
+    {
+      "id": 1,
+      "name": "json_error"
+    },
+    {
+      "id": 2,
+      "name": "ticket"
+    }
+  ],
+  "operator_weights": {
+    "within": [
+      [
+        "verbatim_copy",
+        0.2
+      ],
+      [
+        "prefix_fragment",
+        0.2
+      ],
+      [
+        "middle_fragment",
+        0.2
+      ],
+      [
+        "suffix_fragment",
+        0.2
+      ],
+      [
+        "insert_separators",
+        0.1
+      ],
+      [
+        "json_reformat",
+        0.1
+      ]
+    ],
+    "oos": [
+      [
+        "hex_encode",
+        0.35
+      ],
+      [
+        "rot13",
+        0.25
+      ],
+      [
+        "leetspeak",
+        0.25
+      ],
+      [
+        "homoglyph_substitution",
+        0.15
+      ]
+    ]
+  },
+  "pool_file": "artifacts/suites/cache/llm_injection.txt",
+  "pool_sha256": "8df9a71034ba78697f2f3251d119912789fcc8ed4a63a39ac85c2d61d4b52fba",
+  "pool_size": 219,
+  "output_sha256": "7f63eeff611c9e27c064ee0d638db275addb7a609df8dd12fcf9ee36a9f03bac"
+}

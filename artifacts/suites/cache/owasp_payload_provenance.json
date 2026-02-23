@@ -1,0 +1,54 @@
+{
+  "sources": {
+    "coreruleset": {
+      "repo_url": "https://github.com/coreruleset/coreruleset.git",
+      "commit": "5486e697bd336cedca4a0d4cece16722a6088235",
+      "path": "/tmp/coreruleset"
+    },
+    "PayloadsAllTheThings": {
+      "repo_url": "https://github.com/swisskyrepo/PayloadsAllTheThings.git",
+      "commit": "10d41d2e7de0de20c424c90ceb118a5993110081",
+      "path": "/tmp/PayloadsAllTheThings"
+    }
+  },
+  "crs_test_dirs": [
+    "REQUEST-930-APPLICATION-ATTACK-LFI",
+    "REQUEST-931-APPLICATION-ATTACK-RFI",
+    "REQUEST-932-APPLICATION-ATTACK-RCE",
+    "REQUEST-933-APPLICATION-ATTACK-PHP",
+    "REQUEST-934-APPLICATION-ATTACK-GENERIC",
+    "REQUEST-941-APPLICATION-ATTACK-XSS",
+    "REQUEST-942-APPLICATION-ATTACK-SQLI",
+    "REQUEST-944-APPLICATION-ATTACK-JAVA"
+  ],
+  "patt_intruder_dirs": [
+    "SQL Injection/Intruder",
+    "XSS Injection/Intruders",
+    "Command Injection/Intruder",
+    "LDAP Injection/Intruder",
+    "XXE Injection/Intruders",
+    "NoSQL Injection/Intruder",
+    "Directory Traversal/Intruder",
+    "CRLF Injection/Files",
+    "Server Side Include Injection/Files"
+  ],
+  "total_lines": 7191,
+  "category_counts": {
+    "pathtraver": 22582,
+    "xss": 2341,
+    "sqli": 1911,
+    "java": 717,
+    "rce": 625,
+    "cmdi": 478,
+    "php": 261,
+    "generic": 211,
+    "xxe": 98,
+    "ssi": 92,
+    "ldapi": 39,
+    "rfi": 38,
+    "lfi": 37,
+    "nosqli": 26,
+    "crlf": 17
+  },
+  "output_sha256": "5ea045efac98e15eb4e53d2864e2170123403fc6f6194b7373825d9dd46e28f6"
+}

@@ -1,0 +1,77 @@
+{
+  "suite": "suiteC_benign",
+  "seed_master": 20260222,
+  "untrusted_kind": "benign_noise",
+  "N_TOTAL": 1000,
+  "distribution": {
+    "ATTACK": 650,
+    "ATTACK_WITHIN": 500,
+    "ATTACK_OOS": 150,
+    "BASELINE": 250,
+    "NEAR_MISS": 100
+  },
+  "wrappers": [
+    {
+      "id": 0,
+      "name": "logline"
+    },
+    {
+      "id": 1,
+      "name": "json_error"
+    },
+    {
+      "id": 2,
+      "name": "ticket"
+    }
+  ],
+  "operator_weights": {
+    "within": [
+      [
+        "verbatim_copy",
+        0.2
+      ],
+      [
+        "prefix_fragment",
+        0.2
+      ],
+      [
+        "middle_fragment",
+        0.2
+      ],
+      [
+        "suffix_fragment",
+        0.2
+      ],
+      [
+        "insert_separators",
+        0.1
+      ],
+      [
+        "json_reformat",
+        0.1
+      ]
+    ],
+    "oos": [
+      [
+        "hex_encode",
+        0.35
+      ],
+      [
+        "rot13",
+        0.25
+      ],
+      [
+        "leetspeak",
+        0.25
+      ],
+      [
+        "homoglyph_substitution",
+        0.15
+      ]
+    ]
+  },
+  "pool_file": "artifacts/suites/cache/benign_noise.txt",
+  "pool_sha256": "5f393c58297a6fb84bfa4d6b5d64540ac0f8098dec8663f95d14f190ea64d717",
+  "pool_size": 15371,
+  "output_sha256": "d4b37398239b930589898b643778e90a9b86ed351a261f941ad9f696170933a2"
+}

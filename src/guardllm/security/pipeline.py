@@ -157,9 +157,10 @@ class SecurityPipeline:
         Runs: L3 (DLP) -> L4 (provenance) -> L6 (rate limit) -> L5 (canary).
 
         Ordering rationale (spec §7, §8):
-        - DLP runs first as a coarse pre-filter (default LCS >= 100,
-          n-gram >= 40%, configurable via PolicyConfig) to catch obvious
-          exfiltration cheaply before provenance.
+        - DLP runs first as a coarse pre-filter (default LCS >= 14 for
+          untrusted echo, >= 12 for sensitive leak, n-gram >= 40%,
+          configurable via PolicyConfig) to catch exfiltration cheaply
+          before provenance.
         - Provenance runs second as the primary no-copy enforcement
           (default LCS >= 50, n-gram >= 30%, configurable via PolicyConfig).
         - Both layers share overlap utilities from normalization.py.
@@ -174,11 +175,6 @@ class SecurityPipeline:
             contaminated=self._context_contaminated,
         )
         if not dlp_result.allowed:
-            if (
-                dlp_result.contamination_triggered
-                and ctx.policy.contaminated_action == "confirm"
-            ):
-                dlp_result.reason = f"Confirmation required: {dlp_result.reason}"
             return dlp_result
 
         # L4: Provenance check
@@ -201,6 +197,8 @@ class SecurityPipeline:
                 reason=reason,
                 provenance_blocked=True,
                 contamination_triggered=contamination_triggered,
+                echo_detected=dlp_result.echo_detected,
+                echo_lcs=dlp_result.echo_lcs,
             )
 
         # L6: Rate limit check
@@ -221,7 +219,12 @@ class SecurityPipeline:
                 reason="Canary token detected in outbound content",
             )
 
-        return OutboundResult(allowed=True, reason="clean")
+        return OutboundResult(
+            allowed=True,
+            reason="clean" if not dlp_result.echo_detected else "clean (echo signal only)",
+            echo_detected=dlp_result.echo_detected,
+            echo_lcs=dlp_result.echo_lcs,
+        )
 
     def check_tool_execution(
         self,

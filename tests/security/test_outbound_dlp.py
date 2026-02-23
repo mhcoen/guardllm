@@ -149,12 +149,14 @@ class TestOutboundDLP:
         assert result.allowed is False
         assert any("AWS" in s for s in result.secrets_found)
 
-    def test_verbatim_overlap_blocks(self, dlp, ctx):
+    def test_verbatim_echo_is_signal_not_block(self, dlp, ctx):
+        """Untrusted echo is a signal, not a block. Only sensitive-leak blocks."""
         untrusted = "x" * 150
         dlp.ingest_untrusted(untrusted)
         result = dlp.check(untrusted, ctx)
-        assert result.allowed is False
-        assert "Verbatim overlap" in result.reason
+        assert result.allowed is True
+        assert result.echo_detected is True
+        assert result.echo_lcs >= 14
 
     def test_short_verbatim_overlap_passes(self, dlp, ctx):
         untrusted = "x" * 50  # < 100 char threshold for DLP
@@ -166,13 +168,13 @@ class TestOutboundDLP:
         result2 = dlp.check("completely different content", ctx)
         assert result2.allowed is True
 
-    def test_ngram_overlap_blocks(self, dlp, ctx):
-        # Create content with high n-gram overlap but <100 char LCS
+    def test_ngram_echo_is_signal_not_block(self, dlp, ctx):
+        """High n-gram overlap with untrusted is a signal, not a block."""
         untrusted = "the quick brown fox jumps over the lazy dog " * 5
         dlp.ingest_untrusted(untrusted)
-        # Same content = 100% overlap
         result = dlp.check(untrusted, ctx)
-        assert result.allowed is False
+        assert result.allowed is True
+        assert result.echo_detected is True
 
     def test_quoting_directive_skips_overlap(self, dlp, ctx):
         untrusted = "x" * 200
@@ -195,9 +197,9 @@ class TestOutboundDLP:
         # text1 should have been evicted
         result = dlp.check(text1, ctx)
         assert result.allowed is True
-        # text3 should still be in buffer
+        # text3 should still be in buffer (echo detected, not blocked)
         result3 = dlp.check(text3, ctx)
-        assert result3.allowed is False
+        assert result3.echo_detected is True
 
     def test_empty_buffer_passes(self, dlp, ctx):
         result = dlp.check("anything goes here", ctx)
@@ -232,6 +234,33 @@ class TestOutboundDLP:
             trust_level=TrustLevel.UNTRUSTED,
         )
         result = dlp.check("normal text no secrets", ctx)
+        assert result.allowed is True
+
+    def test_sensitive_leak_blocks_when_contaminated(self, dlp, ctx):
+        """Sensitive-leak check blocks when outbound overlaps sensitive content."""
+        dlp.ingest_untrusted("some untrusted text here")
+        dlp.ingest_sensitive("my secret api token value is extremely private data")
+        result = dlp.check(
+            "the secret api token value is extremely private data",
+            ctx,
+            contaminated=True,
+        )
+        assert result.allowed is False
+        assert result.contamination_triggered is True
+
+    def test_echo_does_not_widen_sensitive_threshold(self, dlp, ctx):
+        """Echo is pure metadata; sensitive-leak uses base threshold only."""
+        # 10-char secret embedded in longer text to keep n-gram overlap low
+        short_secret = "the quick brown fox jumps over the lazy dog near a river"
+        dlp.ingest_sensitive(short_secret)
+        untrusted = "w" * 100
+        dlp.ingest_untrusted(untrusted)
+        # Outbound echoes untrusted (triggers echo) with a short overlap of
+        # the sensitive text (7 chars "the qui"), well below LCS=12 threshold
+        outbound = "w" * 100 + " the qui and some other unrelated text here"
+        result = dlp.check(outbound, ctx, contaminated=True)
+        assert result.echo_detected is True
+        # Sensitive LCS overlap < 12, so ALLOW despite echo signal
         assert result.allowed is True
 
     def test_custom_lcs_threshold_allows_overlap(self, dlp):

@@ -363,9 +363,21 @@ class TestOutboundOrdering:
     def test_provenance_blocks_when_dlp_passes(self, pipeline, untrusted_ctx):
         """Provenance (L4) catches content that DLP (L3) allows.
 
-        Content with 50-99 char LCS passes DLP (threshold 100) but
-        fails provenance (threshold 50).
+        With a wide DLP threshold (100) and narrow provenance threshold
+        (50), content with 55-char LCS passes DLP but fails provenance.
+        Uses explicit policy to set up the gap.
         """
+        from guardllm.security.types import PolicyConfig
+
+        wide_policy = PolicyConfig(dlp_verbatim_lcs_min=100, provenance_verbatim_lcs_min=50)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            trust_level=TrustLevel.UNTRUSTED,
+            policy=wide_policy,
+        )
+
         # Long untrusted content: lots of unique n-grams
         untrusted = (
             "alpha bravo charlie delta echo foxtrot golf hotel india "
@@ -374,7 +386,7 @@ class TestOutboundOrdering:
             "one two three four five six seven eight nine ten eleven "
             "twelve thirteen fourteen fifteen sixteen"
         )
-        pipeline.process_inbound(untrusted, untrusted_ctx)
+        pipeline.process_inbound(untrusted, ctx)
 
         # Outbound shares 55 chars (provenance LCS>=50 blocks,
         # DLP LCS<100 allows, DLP n-gram ~20% < 40% allows)
@@ -384,7 +396,7 @@ class TestOutboundOrdering:
             + shared
             + " and some more unrelated text after"
         )
-        result = pipeline.check_outbound(outbound, untrusted_ctx)
+        result = pipeline.check_outbound(outbound, ctx)
         assert result.allowed is False
         assert result.provenance_blocked is True
 

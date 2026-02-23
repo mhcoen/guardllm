@@ -44,8 +44,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Restricted upstream benchmark fixtures (do not redistribute in-repo)
-benchmarks/upstream/mcp_bench/
+# Restricted upstream benchmark fixtures (no license signal, do not redistribute)
 benchmarks/upstream/wainjectbench/
 benchmarks/upstream_sources/
 benchmarks/hold/

@@ -564,7 +564,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "maxLength": 1024},
-                        "source_name": {"type": "string", "pattern": r"^(?!.*\\.\\.).*"},
+                        "source_name": {"type": "string", "pattern": r"^(?!.*\.\.).*"},
                         "thread_handle": {"type": "string", "pattern": r"^[A-Za-z0-9_-]+$"},
                     },
                     "additionalProperties": True,

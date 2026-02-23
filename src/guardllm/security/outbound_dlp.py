@@ -16,6 +16,7 @@ from guardllm.security.normalization import (
     compute_lcs_length,
     compute_ngram_overlap,
     deobfuscate_reversed,
+    deobfuscate_separated,
     deobfuscate_spelled,
     normalize_for_overlap,
 )
@@ -85,8 +86,16 @@ class OutboundDLP:
     Before any outbound action executes, scans content against recently
     ingested untrusted content. Checks:
     - Secret patterns (always, even with quoting directive)
-    - Verbatim overlap (>= 100 chars)
+    - Untrusted-echo signal (outbound vs untrusted buffer, LCS >= 14).
+      This is a SIGNAL, not a BLOCK. When it fires, it lowers the
+      sensitive-leak threshold and sets echo_detected for downstream
+      checks (provenance). It does not block on its own because
+      natural English text from the same distribution shares 14+ char
+      substrings at ~26% rate.
+    - Sensitive-leak check (outbound vs sensitive buffer, LCS >= 12,
+      or lowered when echo detected). This IS a BLOCK trigger.
     - N-gram overlap (>= 40% 5-gram overlap)
+    - Separator-stripped variant (catches inserted spaces/hyphens/underscores)
     """
 
     def __init__(self, buffer_max: int = 50) -> None:
@@ -115,16 +124,28 @@ class OutboundDLP:
     ) -> OutboundResult:
         """Check outbound content for exfiltration indicators.
 
+        Decision flow:
+        1. Secret scan (always, even with quoting): BLOCK if match.
+        2. Untrusted-echo check (outbound vs untrusted buffer): SIGNAL only.
+           Records echo_detected and echo_lcs on the result but does NOT
+           block on its own.
+        3. Sensitive-leak check (outbound vs sensitive buffer): BLOCK if
+           match at base threshold. This is the core security property.
+        4. If nothing blocks: ALLOW with echo_detected metadata for
+           downstream layers (provenance, audit).
+
         Args:
             content: Outbound content to check.
             ctx: Security context.
             has_quoting_directive: True if user explicitly directed quoting.
+            contaminated: True if untrusted content has entered the session.
 
         Returns:
             OutboundResult with allowed=True if content passes DLP.
         """
-        lcs_threshold = int(getattr(ctx.policy, "dlp_verbatim_lcs_min", 100))
+        echo_threshold = int(getattr(ctx.policy, "dlp_verbatim_lcs_min", 14))
         ngram_threshold = float(getattr(ctx.policy, "dlp_ngram_overlap_min", 0.40))
+        sensitive_lcs = int(getattr(ctx.policy, "dlp_sensitive_lcs_min", 12))
 
         # Step 1: Secret scan (always runs, even with quoting directive)
         secrets = _scan_secrets(content)
@@ -141,62 +162,83 @@ class OutboundDLP:
 
         normalized_content = normalize_for_overlap(content)
 
-        # Build deobfuscated variants for overlap checks
-        content_variants = [normalized_content]
+        # Build deobfuscated variants for overlap checks.
+        # Each entry: (normalized_text, strip_separators, label)
+        #   strip_separators=True means the buffer must also be
+        #   separator-stripped before comparison.
+        variants: list[tuple[str, bool, str]] = [
+            (normalized_content, False, ""),
+        ]
         reversed_norm = normalize_for_overlap(deobfuscate_reversed(content))
         if reversed_norm != normalized_content:
-            content_variants.append(reversed_norm)
+            variants.append((reversed_norm, False, " (deobfuscated)"))
         spelled_norm = normalize_for_overlap(deobfuscate_spelled(content))
         if spelled_norm != normalized_content:
-            content_variants.append(spelled_norm)
+            variants.append((spelled_norm, False, " (deobfuscated)"))
+        separated_norm = normalize_for_overlap(deobfuscate_separated(content))
+        if separated_norm != normalized_content:
+            variants.append((separated_norm, True, " (separator-stripped)"))
 
-        for variant in content_variants:
-            deob = " (deobfuscated)" if variant is not normalized_content else ""
+        # Step 2: Untrusted-echo check (SIGNAL, not BLOCK).
+        # Compute the maximum LCS and n-gram overlap across all
+        # untrusted buffer entries. This fires on natural English
+        # boilerplate (~26% of random Enron pairs at LCS >= 14), so
+        # it must not block on its own.
+        echo_max_lcs = 0
+        echo_max_ngram = 0.0
+        for variant, strip_seps, label in variants:
             for buffered in self._buffer:
-                # Step 2: Verbatim overlap (configurable, default LCS >= 100 chars)
-                lcs_len = compute_lcs_length(variant, buffered)
-                if lcs_len >= lcs_threshold:
-                    return OutboundResult(
-                        allowed=False,
-                        reason=f"Verbatim overlap ({lcs_len} chars){deob} with "
-                               f"ingested untrusted content",
-                        overlap_pct=0.0,
-                    )
+                buf = deobfuscate_separated(buffered) if strip_seps else buffered
+                lcs_len = compute_lcs_length(variant, buf)
+                if lcs_len > echo_max_lcs:
+                    echo_max_lcs = lcs_len
+                ngram = compute_ngram_overlap(variant, buf, n=5)
+                if ngram > echo_max_ngram:
+                    echo_max_ngram = ngram
 
-                # Step 3: N-gram overlap (configurable, default >= 40%)
-                overlap = compute_ngram_overlap(variant, buffered, n=5)
-                if overlap >= ngram_threshold:
-                    return OutboundResult(
-                        allowed=False,
-                        reason=f"N-gram overlap ({overlap:.0%}){deob} with "
-                               f"ingested untrusted content",
-                        overlap_pct=overlap,
-                    )
+        echo_detected = (
+            echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold
+        )
 
-        # Contaminated-context check: when untrusted content has entered the
-        # session, also check outbound against the sensitive buffer.
+        # Step 3: Sensitive-leak check (BLOCK trigger).
+        # Outbound vs sensitive buffer at base threshold. Echo does not
+        # widen this check; it is pure metadata for downstream layers.
         if contaminated and not has_quoting_directive:
-            for variant in content_variants:
-                deob = " (deobfuscated)" if variant is not normalized_content else ""
+            for variant, strip_seps, label in variants:
                 for buffered in self._sensitive_buffer:
-                    lcs_len = compute_lcs_length(variant, buffered)
-                    if lcs_len >= lcs_threshold:
-                        return OutboundResult(
+                    buf = deobfuscate_separated(buffered) if strip_seps else buffered
+                    lcs_len = compute_lcs_length(variant, buf)
+                    if lcs_len >= sensitive_lcs:
+                        result = OutboundResult(
                             allowed=False,
-                            reason=f"Verbatim overlap ({lcs_len} chars){deob} with "
+                            reason=f"Verbatim overlap ({lcs_len} chars){label} with "
                                    f"ingested sensitive content",
                             overlap_pct=0.0,
                             contamination_triggered=True,
+                            echo_detected=echo_detected,
+                            echo_lcs=echo_max_lcs,
                         )
-
-                    overlap = compute_ngram_overlap(variant, buffered, n=5)
+                        if ctx.policy.contaminated_action == "confirm":
+                            result.reason = f"Confirmation required: {result.reason}"
+                        return result
+                    overlap = compute_ngram_overlap(variant, buf, n=5)
                     if overlap >= ngram_threshold:
-                        return OutboundResult(
+                        result = OutboundResult(
                             allowed=False,
-                            reason=f"N-gram overlap ({overlap:.0%}){deob} with "
+                            reason=f"N-gram overlap ({overlap:.0%}){label} with "
                                    f"ingested sensitive content",
                             overlap_pct=overlap,
                             contamination_triggered=True,
+                            echo_detected=echo_detected,
+                            echo_lcs=echo_max_lcs,
                         )
+                        if ctx.policy.contaminated_action == "confirm":
+                            result.reason = f"Confirmation required: {result.reason}"
+                        return result
 
-        return OutboundResult(allowed=True, reason="clean")
+        return OutboundResult(
+            allowed=True,
+            reason="clean" if not echo_detected else "clean (echo signal only)",
+            echo_detected=echo_detected,
+            echo_lcs=echo_max_lcs,
+        )

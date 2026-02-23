@@ -87,9 +87,10 @@ class PolicyConfig:
     argument_limits: Dict[str, Any] = field(default_factory=dict)
     escalation_gate_enabled: bool = True
     contaminated_action: str = "block"
-    # Tunable overlap thresholds (defaults preserve current behavior)
-    dlp_verbatim_lcs_min: int = 100
+    # Tunable overlap thresholds
+    dlp_verbatim_lcs_min: int = 14       # untrusted-echo LCS threshold
     dlp_ngram_overlap_min: float = 0.40
+    dlp_sensitive_lcs_min: int = 12      # sensitive-leak LCS threshold (lower)
     provenance_verbatim_lcs_min: int = 50
     provenance_ngram_overlap_min: float = 0.30
 
@@ -164,6 +165,8 @@ class OutboundResult:
     secrets_found: List[str] = field(default_factory=list)
     provenance_blocked: bool = False
     contamination_triggered: bool = False
+    echo_detected: bool = False
+    echo_lcs: int = 0
 
 
 @dataclass

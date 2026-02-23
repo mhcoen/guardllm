@@ -11,11 +11,24 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-- Python 3.10 or later (tested on 3.10, 3.11, 3.12)
+- Python 3.10 or later (tested on 3.10, 3.11, 3.12, 3.14)
 - Reference platform: Mac M3 Max with 128 GB unified memory (all timings below are from this machine)
 - Core dependency: `beautifulsoup4>=4.12` (installed automatically)
-- No external API keys or GPU required for Tier 1 and Tier 2
+- No external API keys or GPU required for Tiers 1 through 3
 - See [README.md](README.md) for general project overview and API documentation
+
+### Pinned dependency versions (for exact reproduction of Tier 4 baselines)
+
+The non-text baseline strategies (Tier 4) depend on optional packages. For exact reproduction of the reported numbers, pin these versions:
+
+```
+beautifulsoup4==4.14.3
+casbin==1.43.0
+jsonschema==4.23.0
+pydantic==2.12.5
+```
+
+If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run actual validation and falls back to permissive defaults, producing different (lower) pass counts. All four packages above are installed by `pip install -e '.[dev]'`.
 
 ## Tier 1: Unit Tests and Regression Suite (no API keys, no GPU)
 
@@ -54,9 +67,9 @@ Benchmark cases come from two sources, both committed in the repository:
 
 2. **Upstream-derived snapshots** in `benchmarks/upstream/<suite>/<version>/mapped_cases.jsonl` (up to 10,064 cases across 9 suites): imported from pinned commits of external benchmark repositories (PINT, BIPIA, AgentDojo, JailbreakBench, HarmBench, InjecAgent, MCPBench, mcp-bench, WAInjectBench).
 
-All upstream snapshots are committed and available after `git clone`. No separate download or build step is needed to run Tier 1 or Tier 3 benchmarks.
+All upstream snapshots are committed and available after `git clone`. No separate download or build step is needed to run Tier 1 or Tier 4 benchmarks.
 
-The scripts `run_benchmarks.py` and `compare_mitigations.py` load cases directly from these two locations. The `build_dataset.py` script (Tier 2) assembles them into a single canonical dataset package for the ROC/PR experiments, which require a unified `cases.jsonl` with provenance metadata.
+The scripts `run_benchmarks.py` and `compare_mitigations.py` load cases directly from these two locations. The `build_dataset.py` script (Tier 3) assembles them into a single canonical dataset package for the ROC/PR experiments, which require a unified `cases.jsonl` with provenance metadata.
 
 ### Upstream provenance
 
@@ -71,18 +84,9 @@ for s in m['sources']:
 "
 ```
 
-Two suites (`mcp_bench`, `wainjectbench`) have unclear upstream licensing and are **not included** in the repository. To use them, fetch the data from the upstream repositories and import locally:
+One suite (`wainjectbench`) has no upstream license signal and is **not included** in the repository. To use it, fetch the data from the upstream repository and import locally:
 
 ```bash
-# mcp_bench (Accenture/mcp-bench @ 7a8eaeae)
-git clone https://github.com/Accenture/mcp-bench /tmp/mcp-bench
-cd /tmp/mcp-bench && git checkout 7a8eaeae
-cd /path/to/GuardLLM
-python benchmarks/import_official_exports.py \
-  --suite mcp_bench \
-  --input /tmp/mcp-bench \
-  --ref 7a8eaeae83a842a2949080acc5473f65e1569daf
-
 # wainjectbench (WAInjectBench @ 4a5b7a5d)
 git clone https://github.com/Norrrrrrr-lyn/WAInjectBench /tmp/wainjectbench
 cd /tmp/wainjectbench && git checkout 4a5b7a5d
@@ -93,9 +97,115 @@ python benchmarks/import_official_exports.py \
   --ref 4a5b7a5d4e393983d7105aed3485014b7206d205
 ```
 
-These suites are optional. All benchmark results, the eval suite, and the comparison tables work without them. See `benchmarks/DATASET_REPRO.md` for the full acquisition and verification protocol.
+This suite is optional. All benchmark results, the eval suite, and the comparison tables work without it. See `benchmarks/DATASET_REPRO.md` for the full acquisition and verification protocol.
 
-## Tier 2: Deterministic Dataset Rebuild and ROC/PR Curves (no API keys)
+## Tier 2: Cross-Boundary Exfiltration Evaluation (no API keys)
+
+These datasets evaluate the contaminated-context egress gate, the paper's primary
+contribution. They require cloning external repos to build pool files but no API
+keys or GPU.
+
+### External data requirements
+
+**EnronSent Corpus v1.0** (public domain, ~25 MB):
+
+```bash
+mkdir -p /tmp/enron && cd /tmp/enron
+curl -LO http://wstyler.ucsd.edu/files/enronsentv1.tar.gz
+tar xzf enronsentv1.tar.gz
+```
+
+Source: William Styler, UC Colorado. Public domain preparation of the Enron
+Sent Corpus. URL: `http://wstyler.ucsd.edu/files/enronsentv1.tar.gz`
+
+The extraction script reads all `.txt` files under the extracted directory,
+deduplicates email bodies, filters to lines with 40+ characters and 40%+
+alphabetic content, and truncates each to 2000 characters.
+
+Expected pool: 15,371 lines.
+SHA-256: `5f393c58297a6fb84bfa4d6b5d64540ac0f8098dec8663f95d14f190ea64d717`
+
+**OWASP CRS and PayloadsAllTheThings** (cloned automatically by `sources_owasp.py`):
+
+| repo | commit | license |
+|---|---|---|
+| `coreruleset/coreruleset` | `5486e697bd336cedca4a0d4cece16722a6088235` | Apache-2.0 |
+| `swisskyrepo/PayloadsAllTheThings` | `10d41d2e7de0de20c424c90ceb118a5993110081` | MIT |
+
+**LLM injection repos** (cloned automatically by `scripts/gen_cbx1000.py` and `sources_llm.py`):
+
+| repo | commit | license |
+|---|---|---|
+| `uiuc-kang-lab/InjecAgent` | `f19c9f2c79a41046eb13c03c51a24c567a8ffa07` | MIT |
+| `ethz-spylab/agentdojo` | `462c88ddf596cb745882702f9999c8aeb5fe467f` | MIT |
+| `lakeraai/pint-benchmark` | `0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8` | MIT |
+| `Giskard-AI/prompt-injections` | `ce50a549dadc46b48c931250d2dd71d5f003c0c2` | MIT |
+
+### Generate CBX-1000
+
+```bash
+python scripts/gen_cbx1000.py
+```
+
+Output: `artifacts/cbx1000/cbx_1000_v1_seed20260222.jsonl` (1000 cases) and
+manifest with repo commit SHAs and source file hashes.
+
+Distribution: 500 expected BLOCK, 350 expected ALLOW, 150 REPORT_LIMITATION.
+
+### Evaluate CBX-1000
+
+```bash
+python benchmarks/eval_cbx1000.py
+```
+
+Expected: 500/500 expected-BLOCK cases blocked, 0 false negatives, 0 false positives.
+
+### Build pool files for invariance suites
+
+```bash
+python scripts/gen_suites/sources_llm.py --cache_dir artifacts/suites/cache
+python scripts/gen_suites/sources_owasp.py --cache_dir artifacts/suites/cache
+```
+
+The benign pool must be built from the EnronSent download above. Place the
+processed file at `artifacts/suites/cache/benign_noise.txt`.
+
+Expected pool sizes:
+- `llm_injection.txt`: 219 lines
+- `owasp_payload.txt`: 7,191 lines
+- `benign_noise.txt`: 15,371 lines
+
+### Generate and evaluate invariance suites
+
+```bash
+python scripts/gen_suites/gen_attack_suites.py \
+  --outdir artifacts/suites --seed 20260222 \
+  --cache_dir artifacts/suites/cache
+
+python benchmarks/eval_invariance_suites.py
+```
+
+Expected: all three suites produce identical results (500/500 blocked, 0 FN,
+0 FP). This proves detection is mechanism-driven, not corpus-tuned.
+
+### Generate and evaluate benign library (false-positive measurement)
+
+```bash
+python scripts/gen_suites/gen_benign_library.py \
+  --outdir artifacts/suites --seed 20260222 \
+  --benign_pool artifacts/suites/cache/benign_noise.txt --N 2000
+
+python benchmarks/eval_benign_library.py
+```
+
+All 2000 cases are expected ALLOW. Any block is a false positive.
+
+Expected FP rate: 0.75% (15/2000). Breakdown:
+- 4 from high-entropy tokens in real Enron email text (secret scanner)
+- 11 from provenance overlap (genuinely similar email pairs at LCS >= 50)
+- 0 from DLP
+
+## Tier 3: Deterministic Dataset Rebuild and ROC/PR Curves (no API keys)
 
 ### Rebuild the canonical dataset
 
@@ -133,7 +243,7 @@ python benchmarks/plot_roc_pr.py --run-id rocpr-canonical-local
 
 Output: `benchmarks/runs/rocpr-canonical-local/roc_curve.svg` and `pr_curve.svg`
 
-## Tier 3: Local Competitor Comparison (no API keys)
+## Tier 4: Local Competitor Comparison (no API keys)
 
 ### Run GuardLLM vs. baselines on all cases
 
@@ -151,7 +261,7 @@ Output: `benchmarks/runs/comparison-local/comparison.json` and `comparison.md`
 
 The comparison report includes a non-text controls section. Key claims to verify:
 - GuardLLM: 100% on non-text controls
-- `non_text_stack` (OPA + Redis + Casbin + JSON Schema composed): ~61% on non-text controls
+- `non_text_stack` (OPA + Redis + Casbin + JSON Schema composed): ~74% on non-text controls
 - `no_defense`: ~13% on non-text controls
 
 Optional non-text-stack dependencies (soft-imported, not required):
@@ -162,7 +272,7 @@ pip install casbin pydantic jsonschema
 # Redis: install via package manager (brew install redis, apt install redis-server)
 ```
 
-## Tier 4: Vendor API Comparisons (requires API keys)
+## Tier 5: Vendor API Comparisons (requires API keys)
 
 ### OpenAI and Anthropic
 
@@ -212,7 +322,7 @@ python benchmarks/compare_mitigations.py \
   --bedrock-region "us-east-1"
 ```
 
-## Tier 5: GPU Competitors
+## Tier 6: GPU Competitors
 
 ### ProtectAI DeBERTa
 
@@ -263,17 +373,35 @@ Runtime: under 5 minutes on the reference platform (excluding first-time model d
 
 ## Verifying Specific Paper Claims
 
+### Claim: CBX-1000 attack detection (500/500, 0 FP)
+
+Run Tier 2 (`eval_cbx1000.py`). Expected: 500 expected-BLOCK cases all blocked,
+350 expected-ALLOW cases all allowed, 0 false negatives, 0 false positives.
+
+### Claim: Invariance across text sources
+
+Run Tier 2 (`eval_invariance_suites.py`). The three suites use different
+untrusted text sources (LLM injections, OWASP payloads, benign Enron emails)
+but produce identical blocked/FN/FP counts: 500/0/0.
+
+### Claim: 0.75% false positive rate on real email text
+
+Run Tier 2 (`eval_benign_library.py`). The 2000-case benign library drawn from
+real Enron email text yields 15 false positives (0.75%). Zero of these come
+from the DLP layer; 11 are provenance overlap between genuinely similar email
+pairs, 4 are high-entropy tokens in real email text.
+
 ### Claim: GuardLLM processes inbound content in under 0.1ms
 
-This is measured by the benchmark harness latency column. Run Tier 3 and check the `avg_latency_ms` field for `guardllm` in `comparison.json`.
+This is measured by the benchmark harness latency column. Run Tier 4 and check the `avg_latency_ms` field for `guardllm` in `comparison.json`.
 
 ### Claim: F1 = 85.46 on text-scope injection detection (3,823 records)
 
-Run Tier 3 or Tier 4. The text-scope comparison section of `comparison.md` shows F1, precision, recall, and latency for all strategies. Record count (3,823) is the `injection`-scope text projection from the canonical dataset (1,021 attacks, 2,802 benign).
+Run Tier 4 or Tier 5. The text-scope comparison section of `comparison.md` shows F1, precision, recall, and latency for all strategies. Record count (3,823) is the `injection`-scope text projection from the canonical dataset (1,021 attacks, 2,802 benign).
 
 ### Claim: 100% on non-text controls
 
-Run Tier 3. The non-text comparison section shows GuardLLM at 100% across all non-text control kinds.
+Run Tier 4. The non-text comparison section shows GuardLLM at 100% across all non-text control kinds.
 
 ### Claim: ~10,000x faster than neural-based alternatives
 
@@ -281,7 +409,7 @@ Compare GuardLLM's avg latency (0.07ms) against vendor latencies in the comparis
 
 ### Claim: ROC/PR curves with dev/test split
 
-Run Tier 2. The methodology uses deterministic stratified dev/test split (seed=1337, dev_fraction=0.30, dev_max_records=700). Threshold selection on dev only; frozen thresholds evaluated once on test with 95% Wilson intervals.
+Run Tier 3. The methodology uses deterministic stratified dev/test split (seed=1337, dev_fraction=0.30, dev_max_records=700). Threshold selection on dev only; frozen thresholds evaluated once on test with 95% Wilson intervals.
 
 ## Dataset Provenance
 

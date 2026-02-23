@@ -176,7 +176,6 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `secrets_exfil_style`
 - `multistep_agent_attack_style`
 - `unicode_evasion_style`
-- `cross_boundary_exfil_style` (471 cases: contaminated-context exfiltration with encoding variants including reversed text, spelled-out characters, base64, partial overlap, near-miss, and multi-turn scenarios)
 - `upstream_pint`
 - `upstream_bipia`
 - `upstream_agentdojo`
@@ -185,6 +184,148 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `upstream_injecagent`
 - `upstream_mcpbench`
 - `upstream_mcp_bench`
+
+## Paper-Cited Evaluation Datasets
+
+Three datasets are cited in the CACM paper. All are deterministically generated
+from pinned seeds and upstream sources.
+
+### CBX-1000
+
+1000 contaminated-context exfiltration cases. Attacker text sampled verbatim
+from four MIT-licensed repos.
+
+- Dataset: `artifacts/cbx1000/cbx_1000_v1_seed20260222.jsonl`
+- Manifest: `artifacts/cbx1000/cbx_1000_v1_manifest_seed20260222.json`
+- Generator: `scripts/gen_cbx1000.py`
+- Distribution: 500 expected BLOCK, 350 expected ALLOW, 150 REPORT_LIMITATION
+- Seed: `20260222`
+
+Attacker text sources (cloned automatically by the generator):
+
+| repo | commit | license |
+|---|---|---|
+| `uiuc-kang-lab/InjecAgent` | `f19c9f2c79a41046eb13c03c51a24c567a8ffa07` | MIT |
+| `ethz-spylab/agentdojo` | `462c88ddf596cb745882702f9999c8aeb5fe467f` | MIT |
+| `lakeraai/pint-benchmark` | `0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8` | MIT |
+| `Giskard-AI/prompt-injections` | `ce50a549dadc46b48c931250d2dd71d5f003c0c2` | MIT |
+
+Rebuild:
+
+```bash
+python scripts/gen_cbx1000.py
+```
+
+Evaluate:
+
+```bash
+python benchmarks/eval_cbx1000.py
+```
+
+### Invariance Suites (A/B/C)
+
+Three 1000-case suites with identical transform programs but different untrusted
+text sources. Proves detection is mechanism-driven, not corpus-tuned.
+
+- Suite A (LLM injections): `artifacts/suites/suiteA_llm_N1000_seed20260222.jsonl`
+- Suite B (OWASP payloads): `artifacts/suites/suiteB_owasp_N1000_seed20260222.jsonl`
+- Suite C (benign noise): `artifacts/suites/suiteC_benign_N1000_seed20260222.jsonl`
+- Manifests: `artifacts/suites/suite{A,B,C}_*_manifest_seed20260222.json`
+- Generator: `scripts/gen_suites/gen_attack_suites.py`
+- Distribution per suite: 500 expected BLOCK, 350 expected ALLOW, 150 REPORT_LIMITATION
+- Seed: `20260222`
+
+Pool files (in `artifacts/suites/cache/`):
+
+| pool file | lines | source |
+|---|---|---|
+| `llm_injection.txt` | 219 | Extracted from InjecAgent, AgentDojo, PINT, Giskard (same repos as CBX-1000) |
+| `owasp_payload.txt` | 7,191 | Real payloads from OWASP CRS regression tests + PayloadsAllTheThings |
+| `benign_noise.txt` | 15,371 | Real email bodies from EnronSent Corpus v1.0 |
+
+Pool provenance for OWASP payloads is recorded in
+`artifacts/suites/cache/owasp_payload_provenance.json`:
+
+| repo | commit | license |
+|---|---|---|
+| `coreruleset/coreruleset` | `5486e697bd336cedca4a0d4cece16722a6088235` | Apache-2.0 |
+| `swisskyrepo/PayloadsAllTheThings` | `10d41d2e7de0de20c424c90ceb118a5993110081` | MIT |
+
+Pool build scripts: `scripts/gen_suites/sources_llm.py`,
+`scripts/gen_suites/sources_owasp.py`.
+
+Rebuild pools and suites:
+
+```bash
+# Rebuild pool files (requires cloning upstream repos)
+python scripts/gen_suites/sources_llm.py --cache_dir artifacts/suites/cache
+python scripts/gen_suites/sources_owasp.py --cache_dir artifacts/suites/cache
+
+# Generate suites
+python scripts/gen_suites/gen_attack_suites.py \
+  --outdir artifacts/suites --seed 20260222 \
+  --cache_dir artifacts/suites/cache
+```
+
+Evaluate:
+
+```bash
+python benchmarks/eval_invariance_suites.py
+```
+
+### Benign Library (False-Positive Measurement)
+
+2000 all-benign cases for measuring false positive rates. Every case is
+expected ALLOW; any block is a false positive.
+
+- Dataset: `artifacts/suites/benign_library_N2000_seed20260222.jsonl`
+- Manifest: `artifacts/suites/benign_library_manifest_seed20260222.json`
+- Generator: `scripts/gen_suites/gen_benign_library.py`
+- Strata: 666 uncontaminated/sensitive, 666 contaminated/sensitive, 668 contaminated/no-sensitive
+- Seed: `20260222`
+- Benign pool: `artifacts/suites/cache/benign_noise.txt` (15,371 real Enron emails)
+
+Rebuild:
+
+```bash
+python scripts/gen_suites/gen_benign_library.py \
+  --outdir artifacts/suites --seed 20260222 \
+  --benign_pool artifacts/suites/cache/benign_noise.txt --N 2000
+```
+
+Evaluate:
+
+```bash
+python benchmarks/eval_benign_library.py
+```
+
+### External Data: EnronSent Corpus
+
+The benign pool (`benign_noise.txt`) is built from real email text. The pool
+file is included in the repository, but to rebuild it from scratch:
+
+1. Download the EnronSent Corpus v1.0:
+   ```
+   http://wstyler.ucsd.edu/files/enronsentv1.tar.gz
+   ```
+   Size: ~25 MB. License: public domain (William Styler, UC Colorado preparation
+   of the Enron Sent Corpus).
+
+2. Extract and process:
+   ```bash
+   mkdir -p /tmp/enron && cd /tmp/enron
+   curl -LO http://wstyler.ucsd.edu/files/enronsentv1.tar.gz
+   tar xzf enronsentv1.tar.gz
+   ```
+
+3. The extraction script reads all `.txt` files under the extracted directory,
+   deduplicates email bodies, filters to lines with 40+ characters and 40%+
+   alphabetic content, and truncates each to 2000 characters. The result is
+   written one email per line to `artifacts/suites/cache/benign_noise.txt`.
+
+Pool integrity:
+- Expected line count: 15,371
+- SHA-256: `5f393c58297a6fb84bfa4d6b5d64540ac0f8098dec8663f95d14f190ea64d717`
 
 ## Pinned Upstream Sources
 

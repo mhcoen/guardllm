@@ -151,3 +151,19 @@ def deobfuscate_spelled(text: str) -> str:
         pattern = re.compile(f'({char}){esc}(?:{char}{esc}){{2,}}{char}')
         text = pattern.sub(lambda m, s=sep: m.group(0).replace(s, ''), text)
     return text
+
+
+# Regex for stripping separator characters inserted between token chunks
+_SEPARATOR_STRIP_RE = re.compile(r'[\s\-_./,;:|]+')
+
+
+def deobfuscate_separated(text: str) -> str:
+    """Strip inserted separators to recover the original token.
+
+    Catches evasion where a secret like ``sk_abcdef1234`` is split into
+    ``sk_ abc def 123 4`` by inserting spaces, hyphens, or underscores
+    every few characters.  Stripping all common separator characters
+    produces ``skabcdef1234`` which can then be matched via LCS against
+    the original.
+    """
+    return _SEPARATOR_STRIP_RE.sub('', text)

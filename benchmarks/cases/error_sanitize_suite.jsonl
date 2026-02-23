@@ -1,0 +1,647 @@
+{"id": "error_sanitize_suite_0000", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0001", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0002", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0003", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0004", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0005", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "password"}
+{"id": "error_sanitize_suite_0006", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0007", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0008", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0009", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0010", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0011", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0012", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0013", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0014", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0015", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0016", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0017", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0018", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0019", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0020", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0021", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0022", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0023", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0024", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0025", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0026", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0027", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0028", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0029", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0030", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0031", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0032", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0033", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0034", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "prompt"}
+{"id": "error_sanitize_suite_0035", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0036", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0037", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0038", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0039", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0040", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0041", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0042", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0043", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0044", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0045", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0046", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0047", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0048", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0049", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0050", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0051", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0052", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0053", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0054", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0055", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0056", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0057", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0058", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0059", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0060", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0061", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0062", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0063", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "file_path"}
+{"id": "error_sanitize_suite_0064", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0065", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0066", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0067", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0068", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0069", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0070", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0071", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0072", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0073", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0074", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0075", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0076", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0077", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0078", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0079", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0080", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0081", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0082", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0083", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0084", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0085", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0086", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0087", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0088", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0089", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0090", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0091", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0092", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0093", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0094", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0095", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0096", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0097", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0098", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0099", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0100", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0101", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0102", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0103", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0104", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0105", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0106", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0107", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0108", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0109", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0110", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0111", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "username"}
+{"id": "error_sanitize_suite_0112", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0113", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0114", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0115", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0116", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0117", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0118", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0119", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0120", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "email"}
+{"id": "error_sanitize_suite_0121", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0122", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0123", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0124", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0125", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0126", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0127", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0128", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0129", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0130", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0131", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0132", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0133", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0134", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0135", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0136", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0137", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0138", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0139", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "username"}
+{"id": "error_sanitize_suite_0140", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "email"}
+{"id": "error_sanitize_suite_0141", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0142", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0143", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0144", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0145", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0146", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0147", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0148", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0149", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0150", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0151", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0152", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0153", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0154", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0155", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0156", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0157", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0158", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0159", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0160", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0161", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0162", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0163", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0164", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0165", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0166", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0167", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0168", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0169", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0170", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0171", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0172", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0173", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0174", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0175", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0176", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0177", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0178", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0179", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0180", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0181", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0182", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "prompt"}
+{"id": "error_sanitize_suite_0183", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0184", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0185", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0186", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0187", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "email"}
+{"id": "error_sanitize_suite_0188", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0189", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0190", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0191", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0192", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0193", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0194", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0195", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0196", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "file_path"}
+{"id": "error_sanitize_suite_0197", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0198", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0199", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0200", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0201", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0202", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0203", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0204", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "max_tokens"}
+{"id": "error_sanitize_suite_0205", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0206", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0207", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0208", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0209", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0210", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0211", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0212", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0213", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0214", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0215", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0216", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0217", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0218", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0219", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0220", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0221", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0222", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0223", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0224", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0225", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0226", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "temperature"}
+{"id": "error_sanitize_suite_0227", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0228", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0229", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "password"}
+{"id": "error_sanitize_suite_0230", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0231", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0232", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0233", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0234", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0235", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0236", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0237", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0238", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0239", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0240", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0241", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0242", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0243", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0244", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0245", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0246", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0247", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0248", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0249", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0250", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0251", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0252", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0253", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0254", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0255", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0256", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0257", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0258", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0259", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0260", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0261", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0262", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "password"}
+{"id": "error_sanitize_suite_0263", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0264", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0265", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0266", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0267", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0268", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0269", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0270", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0271", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0272", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0273", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0274", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0275", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0276", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "max_tokens"}
+{"id": "error_sanitize_suite_0277", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0278", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0279", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0280", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0281", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0282", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "thread_handle"}
+{"id": "error_sanitize_suite_0283", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0284", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0285", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0286", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0287", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0288", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0289", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0290", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0291", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0292", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0293", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0294", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0295", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0296", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0297", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "password"}
+{"id": "error_sanitize_suite_0298", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0299", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0300", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0301", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0302", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0303", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0304", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0305", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0306", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0307", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0308", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0309", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0310", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0311", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0312", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0313", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0314", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0315", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0316", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0317", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0318", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0319", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0320", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0321", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0322", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0323", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0324", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0325", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0326", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "email"}
+{"id": "error_sanitize_suite_0327", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0328", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0329", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0330", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0331", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0332", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0333", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0334", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0335", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "thread_handle"}
+{"id": "error_sanitize_suite_0336", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0337", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0338", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0339", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0340", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0341", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0342", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0343", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0344", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0345", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "username"}
+{"id": "error_sanitize_suite_0346", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0347", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0348", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0349", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0350", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0351", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0352", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0353", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0354", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0355", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0356", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0357", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0358", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0359", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0360", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0361", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0362", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0363", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0364", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0365", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0366", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0367", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0368", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0369", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0370", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0371", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0372", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0373", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0374", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "subject"}
+{"id": "error_sanitize_suite_0375", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0376", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0377", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0378", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0379", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0380", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0381", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0382", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0383", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0384", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0385", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0386", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0387", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0388", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0389", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0390", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0391", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0392", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0393", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0394", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0395", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0396", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0397", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0398", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0399", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0400", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "thread_handle"}
+{"id": "error_sanitize_suite_0401", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0402", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0403", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0404", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0405", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0406", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0407", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0408", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0409", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0410", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0411", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0412", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0413", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0414", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0415", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0416", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0417", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0418", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0419", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0420", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0421", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0422", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0423", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0424", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0425", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0426", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "database_url"}
+{"id": "error_sanitize_suite_0427", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0428", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0429", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0430", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0431", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0432", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "thread_handle"}
+{"id": "error_sanitize_suite_0433", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0434", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0435", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0436", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "file_path"}
+{"id": "error_sanitize_suite_0437", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0438", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0439", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0440", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0441", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0442", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0443", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "model_name"}
+{"id": "error_sanitize_suite_0444", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0445", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0446", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0447", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0448", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0449", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0450", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0451", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0452", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0453", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0454", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0455", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0456", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0457", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "file_path"}
+{"id": "error_sanitize_suite_0458", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0459", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0460", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0461", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0462", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0463", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0464", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0465", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0466", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0467", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0468", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0469", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0470", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0471", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0472", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0473", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0474", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0475", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0476", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0477", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0478", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0479", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0480", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "thread_handle"}
+{"id": "error_sanitize_suite_0481", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0482", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "recipient"}
+{"id": "error_sanitize_suite_0483", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0484", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 300}
+{"id": "error_sanitize_suite_0485", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0486", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0487", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0488", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0489", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0490", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0491", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0492", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0493", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0494", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0495", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0496", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0497", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0498", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0499", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0500", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0501", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0502", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0503", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0504", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0505", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0506", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "max_tokens"}
+{"id": "error_sanitize_suite_0507", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "source_name"}
+{"id": "error_sanitize_suite_0508", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0509", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0510", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0511", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0512", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0513", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0514", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0515", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0516", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0517", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0518", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0519", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0520", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0521", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "password"}
+{"id": "error_sanitize_suite_0522", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0523", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0524", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0525", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0526", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0527", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0528", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0529", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0530", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0531", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0532", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0533", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "temperature"}
+{"id": "error_sanitize_suite_0534", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0535", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0536", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "database_url"}
+{"id": "error_sanitize_suite_0537", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0538", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0539", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0540", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0541", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0542", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0543", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0544", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0545", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0546", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0547", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0548", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "file_path"}
+{"id": "error_sanitize_suite_0549", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0550", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0551", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0552", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0553", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0554", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0555", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0556", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0557", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0558", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0559", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "session_id"}
+{"id": "error_sanitize_suite_0560", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0561", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0562", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0563", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0564", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0565", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0566", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0567", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0568", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0569", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0570", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "username"}
+{"id": "error_sanitize_suite_0571", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0572", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0573", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0574", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0575", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0576", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0577", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0578", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0579", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0580", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0581", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "api_key"}
+{"id": "error_sanitize_suite_0582", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0583", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0584", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0585", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0586", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0587", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0588", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0589", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0590", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0591", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "ValueError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0592", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0593", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "query"}
+{"id": "error_sanitize_suite_0594", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0595", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0596", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0597", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0598", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0599", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0600", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0601", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0602", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0603", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "temperature"}
+{"id": "error_sanitize_suite_0604", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0605", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "temperature"}
+{"id": "error_sanitize_suite_0606", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0607", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0608", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0609", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0610", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0611", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0612", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0613", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0614", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0615", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0616", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0617", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0618", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0619", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0620", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "username"}
+{"id": "error_sanitize_suite_0621", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0622", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0623", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "sqlite3.OperationalError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0624", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0625", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidParamsError", "expect_code": "invalid_params", "field_name": "tool_name"}
+{"id": "error_sanitize_suite_0626", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0627", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0628", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0629", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "TypeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0630", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0631", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0632", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0633", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0634", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0635", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 120}
+{"id": "error_sanitize_suite_0636", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0637", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 30}
+{"id": "error_sanitize_suite_0638", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0639", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0640", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RateLimitError", "expect_code": "rate_limited", "retry_after": 60}
+{"id": "error_sanitize_suite_0641", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "PermissionDeniedError", "expect_code": "permission_denied"}
+{"id": "error_sanitize_suite_0642", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "InvalidHandleError", "expect_code": "invalid_handle"}
+{"id": "error_sanitize_suite_0643", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "UnauthorizedError", "expect_code": "unauthorized"}
+{"id": "error_sanitize_suite_0644", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0645", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "FileNotFoundError", "expect_code": "internal_error"}
+{"id": "error_sanitize_suite_0646", "suite": "error_sanitize_suite", "kind": "error_sanitize", "error": "RuntimeError", "expect_code": "internal_error"}

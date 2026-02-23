@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import re
 import ssl
 import subprocess
@@ -231,6 +232,36 @@ NON_TEXT_KINDS = {
     "source_gate",
     "rate_limit",
 }
+
+
+def _rebalance_by_kind(
+    cases: list[dict[str, Any]],
+    max_per_kind: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    """Down-sample non-text kinds that exceed *max_per_kind* cases.
+
+    Text cases (inbound_sanitize, outbound_check, canary_check, etc.) pass
+    through unchanged. Non-text kinds are capped at *max_per_kind* via
+    seeded random sampling.
+    """
+    rng = random.Random(seed)
+    text_cases = [c for c in cases if not _is_non_text_case(c)]
+    non_text = [c for c in cases if _is_non_text_case(c)]
+
+    by_kind: dict[str, list[dict[str, Any]]] = {}
+    for c in non_text:
+        by_kind.setdefault(c["kind"], []).append(c)
+
+    sampled: list[dict[str, Any]] = []
+    for kind, group in sorted(by_kind.items()):
+        if len(group) > max_per_kind:
+            sampled.extend(rng.sample(group, max_per_kind))
+        else:
+            sampled.extend(group)
+
+    return text_cases + sampled
+
 
 # Strict prompt-injection/jailbreak text benchmark suites.
 TEXT_SCOPE_INCLUDED_SUITES = {
@@ -2318,6 +2349,12 @@ def main() -> int:
         default=0.0,
         help="Fail if GuardLLM text F1 (%%) is below this threshold.",
     )
+    parser.add_argument(
+        "--max-per-kind",
+        type=int,
+        default=None,
+        help="Cap each non-text kind to at most N cases via seeded down-sampling.",
+    )
     parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
     parser.add_argument(
         "--llama-guard-results",
@@ -2331,6 +2368,11 @@ def main() -> int:
     if not cases:
         print("No benchmark cases found.")
         return 1
+
+    if args.max_per_kind:
+        before = len(cases)
+        cases = _rebalance_by_kind(cases, args.max_per_kind, seed=20260223)
+        print(f"Rebalanced: {before} -> {len(cases)} cases (max {args.max_per_kind} per non-text kind)")
 
     strategies = {}
     for name in ("guardllm", "isolation_only", "source_gate_only", "no_defense"):

@@ -21,9 +21,11 @@ from _bootstrap import ROOT  # noqa: F401
 from guardllm import Guard
 from guardllm.security.canary import generate_canary
 from guardllm.security.error_sanitizer import (
+    InvalidHandleError,
     InvalidParamsError,
     PermissionDeniedError,
     RateLimitError,
+    UnauthorizedError,
 )
 from guardllm.security.rate_limiter import RateLimiter
 from guardllm.security.source_gate import check_extraction_allowed
@@ -266,12 +268,26 @@ def run_validation(case: dict[str, Any]) -> CaseResult:
 def run_error(case: dict[str, Any]) -> CaseResult:
     guard = Guard()
     error_name = case["error"]
+    exc: Exception
     if error_name == "PermissionDeniedError":
         exc = PermissionDeniedError("blocked")
     elif error_name == "InvalidParamsError":
-        exc = InvalidParamsError("thread_handle")
+        exc = InvalidParamsError(case.get("field_name", "thread_handle"))
     elif error_name == "RateLimitError":
-        exc = RateLimitError(30)
+        exc = RateLimitError(case.get("retry_after", 30))
+    elif error_name == "UnauthorizedError":
+        exc = UnauthorizedError("expired token")
+    elif error_name == "InvalidHandleError":
+        exc = InvalidHandleError("handle not found")
+    elif error_name == "FileNotFoundError":
+        exc = FileNotFoundError("/nonexistent/path")
+    elif error_name == "sqlite3.OperationalError":
+        import sqlite3
+        exc = sqlite3.OperationalError("no such table: secrets")
+    elif error_name == "ValueError":
+        exc = ValueError("bad value")
+    elif error_name == "TypeError":
+        exc = TypeError("wrong type")
     else:
         exc = RuntimeError("unknown")
     payload = guard.sanitize_exception(exc)

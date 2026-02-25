@@ -32,7 +32,7 @@ def untrusted_ctx():
         mode="client",
         source_type="mcp_server",
         source_id="server-1",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
     )
 
 
@@ -42,7 +42,7 @@ def trusted_ctx():
         mode="client",
         source_type="cli_user",
         source_id="user-1",
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
     )
 
 
@@ -52,7 +52,7 @@ def server_ctx():
         mode="server",
         source_type="mcp_client",
         source_id="client-1",
-        trust_level=TrustLevel.SEMI_TRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
     )
 
 
@@ -72,10 +72,6 @@ class TestProcessInbound:
         assert result.isolated is True
         assert "<untrusted_content" in result.content
         assert "Evil content" in result.content
-
-    def test_semi_trusted_is_isolated(self, pipeline, server_ctx):
-        result = pipeline.process_inbound("Client data", server_ctx)
-        assert result.isolated is True
 
     def test_sanitization_strips_invisible(self, pipeline, untrusted_ctx):
         content = "Hello\u200BWorld"
@@ -106,7 +102,7 @@ class TestProcessInbound:
             mode="client",
             source_type="mcp_server",
             source_id="server-1",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
             content_type=ContentType.HTML,
         )
         result = pipeline.process_inbound(
@@ -153,7 +149,7 @@ class TestCheckOutbound:
             mode="client",
             source_type="cli_user",
             source_id="user-1",
-            trust_level=TrustLevel.TRUSTED,
+            source_trust=TrustLevel.TRUSTED,
         )
         # Ingest untrusted via inbound
         long_text = "y" * 80
@@ -184,7 +180,7 @@ class TestCheckOutbound:
             mode="client",
             source_type="mcp_server",
             source_id="server-1",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
             policy=PolicyConfig(
                 dlp_verbatim_lcs_min=1000,
                 dlp_ngram_overlap_min=1.1,
@@ -374,7 +370,7 @@ class TestOutboundOrdering:
             mode="client",
             source_type="mcp_server",
             source_id="s1",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
             policy=wide_policy,
         )
 
@@ -460,7 +456,7 @@ class TestPipelineIntegration:
             mode="client",
             source_type="mcp_server",
             source_id="evil-server",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
         )
         sensitive = "super secret confidential data " * 8
         pipeline.process_inbound(sensitive, ctx)
@@ -480,3 +476,273 @@ class TestPipelineIntegration:
             "CANARY-anything", untrusted_ctx
         )
         assert result.allowed is True
+
+
+class TestPrincipalTrustImmutability:
+    """Tests for principal_trust session-level enforcement."""
+
+    def test_pipeline_stores_principal_trust(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.SEMI_TRUSTED)
+        assert pipe.principal_trust == TrustLevel.SEMI_TRUSTED
+
+    def test_pipeline_default_principal_trust(self):
+        pipe = SecurityPipeline()
+        assert pipe.principal_trust == TrustLevel.UNTRUSTED
+
+    def test_mismatched_principal_trust_raises(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            source_trust=TrustLevel.UNTRUSTED,
+            principal_trust=TrustLevel.UNTRUSTED,
+        )
+        with pytest.raises(ValueError, match="principal_trust mismatch"):
+            pipe.process_inbound("test", ctx)
+
+    def test_matching_principal_trust_works(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="cli_user",
+            source_id="user-1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+        )
+        result = pipe.process_inbound("hello", ctx)
+        assert result.content == "hello"
+
+
+class TestPrincipalTrustDenyList:
+    """Phase 2: untrusted_deny_tools blocks tools for untrusted principals."""
+
+    def test_denied_tool_blocked_for_untrusted(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                untrusted_deny_tools=frozenset({"dangerous_tool"}),
+            ),
+        )
+        result = pipe.check_tool_execution(
+            tool="dangerous_tool", args={}, ctx=ctx,
+        )
+        assert result.allowed is False
+        assert "denied" in result.reason.lower()
+
+    def test_denied_tool_allowed_for_trusted(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(
+                untrusted_deny_tools=frozenset({"dangerous_tool"}),
+            ),
+        )
+        result = pipe.check_tool_execution(
+            tool="dangerous_tool", args={}, ctx=ctx,
+        )
+        assert result.allowed is True
+
+    def test_non_denied_tool_allowed_for_untrusted(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                untrusted_deny_tools=frozenset({"dangerous_tool"}),
+            ),
+        )
+        result = pipe.check_tool_execution(
+            tool="safe_read", args={}, ctx=ctx,
+        )
+        assert result.allowed is True
+
+    def test_empty_deny_list_allows_all(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                untrusted_deny_tools=frozenset(),
+            ),
+        )
+        result = pipe.check_tool_execution(
+            tool="any_tool", args={}, ctx=ctx,
+        )
+        assert result.allowed is True
+
+
+class TestUntrustedRequireAuth:
+    """Phase 2: untrusted_require_auth blocks no-auth calls for untrusted."""
+
+    def test_no_auth_blocked_when_required(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(untrusted_require_auth=True),
+        )
+        result = pipe.check_tool_execution(
+            tool="gmail_read_email", args={}, ctx=ctx,
+        )
+        assert result.allowed is False
+        assert "authorization required" in result.reason.lower()
+
+    def test_with_auth_allowed_when_required(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(untrusted_require_auth=True),
+        )
+        auth = AuthorizationEvent(
+            action="gmail_read_email",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            tool="gmail_read_email", args={}, ctx=ctx, auth_event=auth,
+        )
+        assert result.allowed is True
+
+    def test_trusted_principal_skips_require_auth(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(untrusted_require_auth=True),
+        )
+        result = pipe.check_tool_execution(
+            tool="gmail_read_email", args={}, ctx=ctx,
+        )
+        assert result.allowed is True
+
+    def test_deny_list_checked_before_require_auth(self):
+        """Deny list takes precedence over require_auth."""
+        pipe = SecurityPipeline(principal_trust=TrustLevel.UNTRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                untrusted_deny_tools=frozenset({"blocked_tool"}),
+                untrusted_require_auth=True,
+            ),
+        )
+        auth = AuthorizationEvent(
+            action="blocked_tool",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            tool="blocked_tool", args={}, ctx=ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+        assert "denied" in result.reason.lower()
+
+
+class TestDefaultParityRegression:
+    """Phase 2: Default PolicyConfig preserves pre-change behavior.
+
+    Under default PolicyConfig with all new fields at defaults, assert
+    byte-identical decisions to pre-change behavior.
+    """
+
+    def test_pipeline_isolation_untrusted(self):
+        """Untrusted inbound is isolated (same as before)."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+        )
+        result = pipe.process_inbound("hello world", ctx)
+        assert result.isolated is True
+
+    def test_pipeline_no_isolation_trusted(self):
+        """Trusted inbound is not isolated (same as before)."""
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="cli_user",
+            source_id="u1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+        )
+        result = pipe.process_inbound("hello world", ctx)
+        assert result.isolated is False
+
+    def test_pipeline_contamination_on_untrusted(self):
+        """Untrusted inbound sets context_contaminated (same as before)."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+        )
+        assert pipe.context_contaminated is False
+        pipe.process_inbound("test content", ctx)
+        assert pipe.context_contaminated is True
+
+    def test_source_gate_unknown_blocks(self):
+        """Unknown source type defaults to BLOCK (same as before)."""
+        from guardllm.security.source_gate import ExtractionPolicy
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="totally_unknown",
+            source_id="x1",
+        )
+        result = pipe.check_kg_extraction(ctx)
+        assert result.policy == ExtractionPolicy.BLOCK
+
+    def test_policy_engine_allows_non_destructive(self):
+        """Non-destructive tools implicitly allowed (same as before)."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+        )
+        result = pipe.check_tool_execution(
+            tool="gmail_read_email", args={}, ctx=ctx,
+        )
+        assert result.allowed is True
+        assert result.confidence == "implicit"
+
+    def test_provenance_blocks_untrusted_verbatim(self):
+        """Verbatim copy of untrusted content is blocked outbound (same)."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+        )
+        long_content = "This is a sufficiently long piece of content that should trigger the provenance no-copy rule when echoed verbatim in outbound"
+        pipe.process_inbound(long_content, ctx)
+        result = pipe.check_outbound(long_content, ctx)
+        assert result.allowed is False

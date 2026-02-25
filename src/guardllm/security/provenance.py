@@ -31,7 +31,7 @@ class ProvenancedSpan:
     text: str
     source_type: str          # "mcp_server", "mcp_client", "cli_user", "assistant"
     source_id: str            # Specific source identifier
-    trust_level: str          # "trusted", "semi_trusted", "untrusted"
+    source_trust: str          # "trusted" or "untrusted"
     sensitivity: str = "public"  # "public", "internal", "sensitive"
     topic_of_origin: Optional[str] = None  # For cross-topic leak detection
 
@@ -71,7 +71,7 @@ class ProvenanceTracker:
 
         # Select spans to check: always untrusted, plus sensitive when contaminated
         check_spans: list[tuple[ProvenancedSpan, str]] = [
-            (s, "untrusted") for s in self._spans if s.trust_level == "untrusted"
+            (s, "untrusted") for s in self._spans if s.source_trust == "untrusted"
         ]
         if contaminated:
             check_spans.extend(

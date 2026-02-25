@@ -15,7 +15,7 @@ def main() -> None:
         mode="client",
         source_type="calendar_content",
         source_id="event-8831",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.PLAINTEXT,
     )
 

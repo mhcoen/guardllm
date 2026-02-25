@@ -15,7 +15,7 @@ def main() -> None:
         mode="client",
         source_type="email_content",
         source_id="inbox-message-123",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.HTML,
     )
 

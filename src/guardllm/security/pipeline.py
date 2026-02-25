@@ -48,6 +48,7 @@ class SecurityPipeline:
         self,
         audit_logger: Optional[object] = None,
         canary_session_id: Optional[str] = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> None:
         self._sanitizer = sanitize
         self._provenance = ProvenanceTracker()
@@ -55,10 +56,16 @@ class SecurityPipeline:
         self._policy = PolicyEngine()
         self._rate_limiter = RateLimiter()
         self._audit_logger = audit_logger
+        self._principal_trust = principal_trust
         self._context_contaminated: bool = False
         self._canary: Optional[str] = None
         if canary_session_id:
             self._canary = generate_canary(canary_session_id)
+
+    @property
+    def principal_trust(self) -> TrustLevel:
+        """Session-level principal trust, immutable after construction."""
+        return self._principal_trust
 
     @property
     def context_contaminated(self) -> bool:
@@ -84,6 +91,11 @@ class SecurityPipeline:
         Client mode: MCP server response content.
         Server mode: MCP client argument content.
         """
+        if ctx.principal_trust != self._principal_trust:
+            raise ValueError(
+                f"principal_trust mismatch: context has {ctx.principal_trust}, "
+                f"pipeline was constructed with {self._principal_trust}"
+            )
         warnings: list[str] = []
 
         # TR39 confusable normalization at inbound trust boundary.
@@ -99,14 +111,14 @@ class SecurityPipeline:
         cleaned = san_result.cleaned_text
         warnings.extend(san_result.warnings)
 
-        # L1: Isolate untrusted/semi-trusted content
+        # L1: Isolate untrusted content
         isolated = False
-        if ctx.trust_level in (TrustLevel.UNTRUSTED, TrustLevel.SEMI_TRUSTED):
+        if ctx.source_trust == TrustLevel.UNTRUSTED:
             cleaned = wrap_untrusted(
                 cleaned,
                 source_type=ctx.source_type,
                 source_id=ctx.source_id,
-                trust=ctx.trust_level.value,
+                trust=ctx.source_trust.value,
             )
             isolated = True
         elif detection.is_attack:
@@ -116,12 +128,12 @@ class SecurityPipeline:
                 cleaned,
                 source_type=ctx.source_type,
                 source_id=ctx.source_id,
-                trust=ctx.trust_level.value,
+                trust=ctx.source_trust.value,
             )
             isolated = True
 
         # Ingest into DLP buffer for later outbound checks
-        if ctx.trust_level in (TrustLevel.UNTRUSTED, TrustLevel.SEMI_TRUSTED):
+        if ctx.source_trust == TrustLevel.UNTRUSTED:
             self._dlp.ingest_untrusted(content)
             self._context_contaminated = True
 
@@ -134,7 +146,7 @@ class SecurityPipeline:
             text=content,
             source_type=ctx.source_type,
             source_id=ctx.source_id,
-            trust_level=ctx.trust_level.value,
+            source_trust=ctx.source_trust.value,
             sensitivity=ctx.sensitivity.value,
         ))
 
@@ -285,8 +297,12 @@ class SecurityPipeline:
 
     def check_kg_extraction(
         self,
-        source_type: str,
-        source_id: str = "",
+        ctx: SecurityContext,
     ) -> SourceGateResult:
         """Check if KG extraction is allowed for this source (Layer 2)."""
-        return check_extraction_allowed(source_type, source_id)
+        return check_extraction_allowed(
+            ctx.source_type,
+            ctx.source_id,
+            source_trust=ctx.source_trust,
+            source_gate_overrides=ctx.policy.source_gate_overrides,
+        )

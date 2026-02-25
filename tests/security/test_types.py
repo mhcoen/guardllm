@@ -170,14 +170,15 @@ class TestSecurityContext:
         assert ctx.source_type == "mcp_server"
         assert ctx.source_id == "server-1"
 
-    def test_default_trust_level(self):
-        """Default trust_level is UNTRUSTED."""
+    def test_default_trust_levels(self):
+        """Default source_trust and principal_trust are UNTRUSTED."""
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
             source_id="server-1",
         )
-        assert ctx.trust_level == TrustLevel.UNTRUSTED
+        assert ctx.source_trust == TrustLevel.UNTRUSTED
+        assert ctx.principal_trust == TrustLevel.UNTRUSTED
 
     def test_default_content_type(self):
         """Default content_type is PLAINTEXT."""
@@ -213,15 +214,25 @@ class TestSecurityContext:
         )
         assert ctx.confirmation_handler is None
 
-    def test_custom_trust_level(self):
-        """SecurityContext accepts custom trust_level."""
+    def test_custom_source_trust(self):
+        """SecurityContext accepts custom source_trust."""
         ctx = SecurityContext(
             mode="client",
             source_type="cli_user",
             source_id="user-1",
-            trust_level=TrustLevel.TRUSTED,
+            source_trust=TrustLevel.TRUSTED,
         )
-        assert ctx.trust_level == TrustLevel.TRUSTED
+        assert ctx.source_trust == TrustLevel.TRUSTED
+
+    def test_source_trust_rejects_semi_trusted(self):
+        """source_trust=SEMI_TRUSTED raises ValueError."""
+        with pytest.raises(ValueError, match="source_trust"):
+            SecurityContext(
+                mode="client",
+                source_type="mcp_server",
+                source_id="s1",
+                source_trust=TrustLevel.SEMI_TRUSTED,
+            )
 
     def test_custom_content_type(self):
         """SecurityContext accepts custom content_type."""
@@ -340,3 +351,48 @@ class TestEnums:
         assert ContentType.HTML.value == "html"
         assert ContentType.PLAINTEXT.value == "plaintext"
         assert ContentType.STRUCTURED.value == "structured"
+
+    def test_trust_level_ordering(self):
+        """UNTRUSTED < SEMI_TRUSTED < TRUSTED."""
+        assert TrustLevel.UNTRUSTED < TrustLevel.SEMI_TRUSTED
+        assert TrustLevel.SEMI_TRUSTED < TrustLevel.TRUSTED
+        assert TrustLevel.UNTRUSTED < TrustLevel.TRUSTED
+        assert not (TrustLevel.TRUSTED < TrustLevel.UNTRUSTED)
+        assert TrustLevel.UNTRUSTED <= TrustLevel.UNTRUSTED
+        assert TrustLevel.TRUSTED <= TrustLevel.TRUSTED
+
+    def test_trust_level_ordering_non_trustlevel(self):
+        """Comparison with non-TrustLevel returns NotImplemented."""
+        assert TrustLevel.UNTRUSTED.__lt__("not_a_trustlevel") is NotImplemented
+        assert TrustLevel.UNTRUSTED.__le__(42) is NotImplemented
+
+
+class TestPolicyConfigValidation:
+    """Tests for PolicyConfig new fields and validation."""
+
+    def test_defaults_preserve_behavior(self):
+        """New fields have safe defaults that don't change existing behavior."""
+        p = PolicyConfig()
+        assert p.source_gate_overrides == {}
+        assert p.untrusted_deny_tools == frozenset()
+        assert p.untrusted_require_auth is False
+        assert p.confirm_all_below is None
+        assert p.rate_limit_overrides == {}
+
+    def test_rate_limit_overrides_valid_keys(self):
+        """Valid rate_limit_overrides keys are accepted."""
+        p = PolicyConfig(
+            rate_limit_overrides={
+                TrustLevel.UNTRUSTED: {"emails_per_hour": 5, "burst_threshold": 2},
+            }
+        )
+        assert p.rate_limit_overrides[TrustLevel.UNTRUSTED]["emails_per_hour"] == 5
+
+    def test_rate_limit_overrides_rejects_unknown_keys(self):
+        """Unknown rate_limit_overrides keys raise ValueError."""
+        with pytest.raises(ValueError, match="Unknown rate_limit_overrides keys"):
+            PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.UNTRUSTED: {"invalid_key": 5},
+                }
+            )

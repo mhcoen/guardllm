@@ -13,6 +13,7 @@ from guardllm.security.types import (
     AuthorizationEvent,
     GateResult,
     SecurityContext,
+    TrustLevel,
 )
 
 # Tools that can modify external state (spec §6)
@@ -63,9 +64,32 @@ class PolicyEngine:
     ) -> GateResult:
         """Policy check before tool execution.
 
-        Server mode: checks capability_scopes and destructive flag.
-        Client mode: requires AuthorizationEvent for destructive tools.
+        Trust-gated layer runs first (principal_trust checks), then
+        server/client mode-specific logic.
         """
+        # Principal-trust deny list: block before any scope/auth check
+        if (
+            ctx.principal_trust == TrustLevel.UNTRUSTED
+            and tool in ctx.policy.untrusted_deny_tools
+        ):
+            return GateResult(
+                allowed=False,
+                reason=f"Tool '{tool}' denied for untrusted principal",
+                confidence="none",
+            )
+
+        # Principal-trust require auth: block if no auth_event
+        if (
+            ctx.principal_trust == TrustLevel.UNTRUSTED
+            and ctx.policy.untrusted_require_auth
+            and auth_event is None
+        ):
+            return GateResult(
+                allowed=False,
+                reason="Authorization required for untrusted principal",
+                confidence="none",
+            )
+
         if ctx.mode == "server":
             return self._check_server(tool, args, auth_event, ctx)
         return self._check_client(tool, args, auth_event, ctx)

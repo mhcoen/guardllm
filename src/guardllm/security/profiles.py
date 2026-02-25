@@ -13,7 +13,7 @@ from guardllm.security.types import (
 
 def mcp_server_response(
     server_id: str,
-    trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED,
     content_type: ContentType = ContentType.PLAINTEXT,
     policy: PolicyConfig | None = None,
 ) -> SecurityContext:
@@ -22,7 +22,7 @@ def mcp_server_response(
         mode="client",
         source_type="mcp_server",
         source_id=server_id,
-        trust_level=trust_level,
+        source_trust=source_trust,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )
@@ -30,7 +30,7 @@ def mcp_server_response(
 
 def mcp_client_request(
     client_id: str,
-    trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED,
     content_type: ContentType = ContentType.PLAINTEXT,
     policy: PolicyConfig | None = None,
 ) -> SecurityContext:
@@ -39,7 +39,7 @@ def mcp_client_request(
         mode="server",
         source_type="mcp_client",
         source_id=client_id,
-        trust_level=trust_level,
+        source_trust=source_trust,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )
@@ -55,7 +55,7 @@ def untrusted_document(
         mode="client",
         source_type="rag_content",
         source_id=document_id,
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )
@@ -71,7 +71,7 @@ def web_query_result(
         mode="client",
         source_type="web_content",
         source_id=source_id,
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )
@@ -87,7 +87,7 @@ def internal_sensitive(
         mode="client",
         source_type="internal",
         source_id=source_id,
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
         sensitivity=SensitivityLevel.SENSITIVE,
         content_type=content_type,
         policy=policy or PolicyConfig(),

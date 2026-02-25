@@ -282,3 +282,134 @@ class TestSessionIsolation:
         # Custom session has 1 record
         result = limiter.check("gmail_send_email", ctx, session_id="custom-session")
         assert result.remaining == DEFAULT_LIMITS["emails_per_hour"] - 1
+
+
+# ---------------------------------------------------------------------------
+# Principal-trust rate limit overrides (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitOverrides:
+    """Phase 2: rate_limit_overrides merge with DEFAULT_LIMITS per principal_trust."""
+
+    def test_override_reduces_hourly_limit(self):
+        """Override can lower hourly limit for untrusted principals."""
+        from guardllm.security.types import PolicyConfig
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-override",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.UNTRUSTED: {"emails_per_hour": 3},
+                },
+            ),
+        )
+        # Record 3 actions
+        for _ in range(3):
+            limiter.record("gmail_send_email", ctx)
+
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.allowed is False
+        assert "3" in result.reason
+
+    def test_override_increases_hourly_limit(self):
+        """Override can raise hourly limit for trusted principals."""
+        from guardllm.security.types import PolicyConfig
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-trusted",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.TRUSTED: {"emails_per_hour": 100},
+                },
+            ),
+        )
+        # Record 10 actions (would exceed default)
+        for _ in range(10):
+            limiter.record("gmail_send_email", ctx)
+
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.allowed is True
+        assert result.remaining == 90
+
+    def test_override_merges_with_defaults(self):
+        """Override only replaces specified keys, defaults fill the rest."""
+        from guardllm.security.types import PolicyConfig
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-merge",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.UNTRUSTED: {"emails_per_hour": 5},
+                },
+            ),
+        )
+        # burst_threshold should still be from DEFAULT_LIMITS (3)
+        for _ in range(3):
+            limiter.record("gmail_send_email", ctx)
+
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.allowed is True  # 3 < 5 hourly limit
+        # Burst anomaly should still trigger (uses default burst_threshold=3)
+        assert any("burst" in a.lower() or "rapid" in a.lower() for a in result.anomalies)
+
+    def test_no_override_uses_defaults(self):
+        """Without overrides, DEFAULT_LIMITS are used."""
+        from guardllm.security.types import PolicyConfig
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-default",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(),  # no overrides
+        )
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.remaining == DEFAULT_LIMITS["emails_per_hour"]
+
+    def test_non_matching_trust_level_uses_defaults(self):
+        """Override for TRUSTED doesn't affect UNTRUSTED principal."""
+        from guardllm.security.types import PolicyConfig
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-mismatch",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.TRUSTED: {"emails_per_hour": 100},
+                },
+            ),
+        )
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.remaining == DEFAULT_LIMITS["emails_per_hour"]
+
+    def test_does_not_mutate_default_limits(self):
+        """Merge must not modify DEFAULT_LIMITS."""
+        from guardllm.security.types import PolicyConfig
+        original = dict(DEFAULT_LIMITS)
+        limiter = RateLimiter()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="session-nomutate",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={
+                    TrustLevel.UNTRUSTED: {"emails_per_hour": 1},
+                },
+            ),
+        )
+        limiter.check("gmail_send_email", ctx)
+        assert DEFAULT_LIMITS == original

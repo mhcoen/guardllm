@@ -231,7 +231,7 @@ class TestOutboundDLP:
             mode="client",
             source_type="mcp_server",
             source_id="suspicious-server",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
         )
         result = dlp.check("normal text no secrets", ctx)
         assert result.allowed is True

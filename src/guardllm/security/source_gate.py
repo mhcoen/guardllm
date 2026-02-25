@@ -1,4 +1,4 @@
-"""Layer 2: Source gate — KG extraction trust-level filtering.
+"""Layer 2: Source gate -- KG extraction filtering.
 
 Determines whether content from a given source is eligible for
 KG extraction, and whether extracted triples should be quarantined.
@@ -7,15 +7,12 @@ KG extraction, and whether extracted triples should be quarantined.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from guardllm.security.types import TrustLevel
+from guardllm.security.types import ExtractionPolicy
 
-
-class ExtractionPolicy(Enum):
-    ALLOW = "allow"              # Extract normally, no quarantine
-    QUARANTINE = "quarantine"    # Extract but quarantine all triples
-    BLOCK = "block"              # Do not extract
+if TYPE_CHECKING:
+    from guardllm.security.types import TrustLevel
 
 
 @dataclass(frozen=True)
@@ -47,17 +44,31 @@ _SOURCE_POLICY = {
 def check_extraction_allowed(
     source_type: str,
     source_id: str = "",
+    *,
+    source_trust: Optional[TrustLevel] = None,
+    source_gate_overrides: Optional[Dict[Any, ExtractionPolicy]] = None,
 ) -> SourceGateResult:
     """Check whether KG extraction is allowed for this source.
 
     Args:
         source_type: One of the keys in _SOURCE_POLICY.
         source_id: Optional identifier (e.g., client_id, email sender).
+        source_trust: Optional source trust level for override lookup.
+        source_gate_overrides: Optional dict keyed by (source_type, TrustLevel)
+            that overrides _SOURCE_POLICY. Falls back to _SOURCE_POLICY if no
+            override matches.
 
     Returns:
         SourceGateResult with policy, reason, and provenance tag.
     """
-    policy = _SOURCE_POLICY.get(source_type, ExtractionPolicy.BLOCK)
+    # Check policy overrides first
+    policy: Optional[ExtractionPolicy] = None
+    if source_gate_overrides and source_trust is not None:
+        policy = source_gate_overrides.get((source_type, source_trust))
+
+    # Fall back to static policy table; unknown source types default to BLOCK
+    if policy is None:
+        policy = _SOURCE_POLICY.get(source_type, ExtractionPolicy.BLOCK)
 
     if policy == ExtractionPolicy.ALLOW:
         origin = "cli" if source_type in ("user_input", "cli") else source_type
@@ -75,9 +86,9 @@ def check_extraction_allowed(
             source_origin=origin,
         )
 
-    # BLOCK
+    # BLOCK (explicit default)
     return SourceGateResult(
-        policy=policy,
+        policy=ExtractionPolicy.BLOCK,
         reason=f"KG extraction blocked for source type '{source_type}'",
         source_origin=source_type,
     )

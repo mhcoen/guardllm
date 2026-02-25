@@ -36,10 +36,12 @@ class Guard:
         *,
         canary_session_id: Optional[str] = None,
         audit_logger: Optional[object] = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> None:
         self._pipeline = SecurityPipeline(
             audit_logger=audit_logger,
             canary_session_id=canary_session_id,
+            principal_trust=principal_trust,
         )
         self._action_gate = ActionGate()
         self._audit_logger = audit_logger
@@ -101,13 +103,13 @@ class Guard:
     def context_mcp_server(
         server_id: str,
         *,
-        trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+        source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: Optional[PolicyConfig] = None,
     ) -> SecurityContext:
         return profiles.mcp_server_response(
             server_id=server_id,
-            trust_level=trust_level,
+            source_trust=source_trust,
             content_type=content_type,
             policy=policy,
         )
@@ -116,13 +118,13 @@ class Guard:
     def context_mcp_client(
         client_id: str,
         *,
-        trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+        source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: Optional[PolicyConfig] = None,
     ) -> SecurityContext:
         return profiles.mcp_client_request(
             client_id=client_id,
-            trust_level=trust_level,
+            source_trust=source_trust,
             content_type=content_type,
             policy=policy,
         )

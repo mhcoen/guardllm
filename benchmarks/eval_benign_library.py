@@ -34,7 +34,7 @@ def run_case(case: dict) -> dict:
             mode="client",
             source_type="internal",
             source_id="private-channel",
-            trust_level=TrustLevel.TRUSTED,
+            source_trust=TrustLevel.TRUSTED,
             sensitivity=SensitivityLevel.SENSITIVE,
         )
         guard.process_inbound(sensitive, sensitive_ctx)
@@ -46,7 +46,7 @@ def run_case(case: dict) -> dict:
             mode="client",
             source_type="web_content",
             source_id="public-channel",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
         )
         guard.process_inbound(untrusted, untrusted_ctx)
 

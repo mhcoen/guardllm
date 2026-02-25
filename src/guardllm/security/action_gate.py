@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from guardllm.security.types import SecurityContext
+from guardllm.security.types import SecurityContext, TrustLevel
 
 
 @dataclass
@@ -46,6 +46,32 @@ class ActionGate:
       context_has_web_derived is True (gated on muse_escalation_gate config)
     """
 
+    def requires_confirmation(
+        self,
+        proposal: ActionProposal,
+        ctx: SecurityContext,
+        context_has_web_derived: bool = False,
+    ) -> bool:
+        """Return True if this proposal requires user confirmation.
+
+        Confirmation is required when:
+        - confirm_all_below is set and principal_trust <= that threshold
+        - context_has_web_derived is True and escalation_gate_enabled
+        """
+        # confirm_all_below: require confirmation for ALL tools (including
+        # non-destructive) when principal_trust is at or below the threshold
+        if (
+            ctx.policy.confirm_all_below is not None
+            and ctx.principal_trust <= ctx.policy.confirm_all_below
+        ):
+            return True
+
+        # INV-MUSE-7: web-derived content triggers enhanced confirmation
+        if context_has_web_derived and ctx.policy.escalation_gate_enabled:
+            return True
+
+        return False
+
     async def confirm(
         self,
         proposal: ActionProposal,
@@ -71,6 +97,14 @@ class ActionGate:
                 "heightened_scrutiny": proposal.heightened_scrutiny,
             }
 
+            # confirm_all_below: force confirmation for all tools when
+            # principal_trust is at or below the configured threshold
+            if (
+                ctx.policy.confirm_all_below is not None
+                and ctx.principal_trust <= ctx.policy.confirm_all_below
+            ):
+                context_dict["trust_gated_confirmation"] = True
+
             # INV-MUSE-7: Enhanced confirmation when web-derived content present
             if (
                 context_has_web_derived
@@ -85,5 +119,5 @@ class ActionGate:
                 context_dict,
             )
 
-        # No handler configured — deny by default
+        # No handler configured -- deny by default
         return False

@@ -233,7 +233,7 @@ def run_with_guard(model, tokenizer) -> None:
         mode="client",
         source_type="internal",
         source_id="crm-system",
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
         sensitivity=SensitivityLevel.SENSITIVE,
         content_type=ContentType.PLAINTEXT,
     )
@@ -245,7 +245,7 @@ def run_with_guard(model, tokenizer) -> None:
         mode="client",
         source_type="web_content",
         source_id="linkedin.com",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.HTML,
     )
     processed = guard.process_inbound(WEB_PAGE, web_ctx)

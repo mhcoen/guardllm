@@ -185,3 +185,103 @@ class TestActionGate:
         )
         result = asyncio.run(gate.confirm(proposal, ctx))
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# confirm_all_below (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestConfirmAllBelow:
+    """Phase 2: confirm_all_below requires confirmation for all tools
+    when principal_trust <= the configured threshold."""
+
+    def test_requires_confirmation_below_threshold(self, gate, proposal):
+        """UNTRUSTED principal requires confirmation when threshold is UNTRUSTED."""
+        from guardllm.security.types import PolicyConfig
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.UNTRUSTED),
+        )
+        assert gate.requires_confirmation(proposal, ctx) is True
+
+    def test_requires_confirmation_at_semi_trusted(self, gate, proposal):
+        """SEMI_TRUSTED principal requires confirmation when threshold is SEMI_TRUSTED."""
+        from guardllm.security.types import PolicyConfig
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.SEMI_TRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.SEMI_TRUSTED),
+        )
+        assert gate.requires_confirmation(proposal, ctx) is True
+
+    def test_untrusted_requires_when_threshold_semi_trusted(self, gate, proposal):
+        """UNTRUSTED (below SEMI_TRUSTED) requires confirmation."""
+        from guardllm.security.types import PolicyConfig
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.SEMI_TRUSTED),
+        )
+        assert gate.requires_confirmation(proposal, ctx) is True
+
+    def test_trusted_skips_when_threshold_semi_trusted(self, gate, proposal):
+        """TRUSTED (above SEMI_TRUSTED) does not require confirmation."""
+        from guardllm.security.types import PolicyConfig
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.SEMI_TRUSTED),
+        )
+        assert gate.requires_confirmation(proposal, ctx) is False
+
+    def test_no_threshold_no_confirmation_required(self, gate, proposal):
+        """Without confirm_all_below, no trust-gated confirmation."""
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+        )
+        assert gate.requires_confirmation(proposal, ctx) is False
+
+    def test_confirm_passes_trust_gated_flag_to_handler(self, gate, proposal):
+        """confirm() passes trust_gated_confirmation context to handler."""
+        from guardllm.security.types import PolicyConfig
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            principal_trust=TrustLevel.UNTRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.UNTRUSTED),
+            confirmation_handler=handler,
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        assert handler.last_context.get("trust_gated_confirmation") is True
+
+    def test_web_derived_independent_of_confirm_all_below(self, gate, proposal):
+        """Web-derived warning is additive, not gated by confirm_all_below."""
+        from guardllm.security.types import PolicyConfig
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(confirm_all_below=TrustLevel.SEMI_TRUSTED),
+        )
+        # TRUSTED principal, above threshold, but web_derived still triggers
+        assert gate.requires_confirmation(
+            proposal, ctx, context_has_web_derived=True
+        ) is True

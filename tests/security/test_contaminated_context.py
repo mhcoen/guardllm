@@ -28,7 +28,7 @@ def _sensitive_ctx(policy: PolicyConfig | None = None) -> SecurityContext:
         mode="client",
         source_type="internal",
         source_id="private-channel",
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
         sensitivity=SensitivityLevel.SENSITIVE,
         policy=policy or PolicyConfig(),
     )
@@ -40,7 +40,7 @@ def _untrusted_ctx(policy: PolicyConfig | None = None) -> SecurityContext:
         mode="client",
         source_type="web_content",
         source_id="public-channel",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         policy=policy or PolicyConfig(),
     )
 
@@ -51,7 +51,7 @@ def _public_ctx(policy: PolicyConfig | None = None) -> SecurityContext:
         mode="client",
         source_type="internal",
         source_id="public-docs",
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
         sensitivity=SensitivityLevel.PUBLIC,
         policy=policy or PolicyConfig(),
     )
@@ -86,17 +86,6 @@ class TestContaminationFlagLifecycle:
         pipe = SecurityPipeline()
         pipe.process_inbound("safe internal data", _sensitive_ctx())
         assert pipe.context_contaminated is False
-
-    def test_semi_trusted_inbound_sets_contaminated(self):
-        pipe = SecurityPipeline()
-        ctx = SecurityContext(
-            mode="client",
-            source_type="mcp_server",
-            source_id="semi",
-            trust_level=TrustLevel.SEMI_TRUSTED,
-        )
-        pipe.process_inbound("semi-trusted content", ctx)
-        assert pipe.context_contaminated is True
 
 
 # ---------------------------------------------------------------------------

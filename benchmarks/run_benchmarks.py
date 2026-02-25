@@ -77,7 +77,7 @@ def _context_for_source(source_type: str, content_type: ContentType, policy: Pol
         mode="client",
         source_type=source_type,
         source_id=source_type,
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )
@@ -421,8 +421,8 @@ def run_binding_replay(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
-def _trust_level(name: str) -> TrustLevel:
-    return {"trusted": TrustLevel.TRUSTED, "semi_trusted": TrustLevel.SEMI_TRUSTED, "untrusted": TrustLevel.UNTRUSTED}[name]
+def _source_trust(name: str) -> TrustLevel:
+    return {"trusted": TrustLevel.TRUSTED, "untrusted": TrustLevel.UNTRUSTED}[name]
 
 
 def _sensitivity_level(name: str) -> SensitivityLevel:
@@ -442,7 +442,7 @@ def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
         mode="client",
         source_type="internal",
         source_id="private-channel",
-        trust_level=TrustLevel.TRUSTED,
+        source_trust=TrustLevel.TRUSTED,
         sensitivity=SensitivityLevel.SENSITIVE,
         policy=policy,
     )
@@ -455,7 +455,7 @@ def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
             mode="client",
             source_type="web_content",
             source_id="public-channel",
-            trust_level=TrustLevel.UNTRUSTED,
+            source_trust=TrustLevel.UNTRUSTED,
             policy=policy,
         )
         guard.process_inbound(untrusted_text, untrusted_ctx)
@@ -482,7 +482,7 @@ def _run_contaminated_exfil_steps(guard: Guard, policy: PolicyConfig, case: dict
     for i, step in enumerate(case["steps"]):
         action = step["action"]
         if action == "ingest":
-            trust = _trust_level(step.get("trust", "trusted"))
+            trust = _source_trust(step.get("trust", "trusted"))
             sensitivity = _sensitivity_level(step.get("sensitivity", "public"))
             source_type = "internal" if trust == TrustLevel.TRUSTED else "web_content"
             source_id = "private-channel" if trust == TrustLevel.TRUSTED else "public-channel"
@@ -490,7 +490,7 @@ def _run_contaminated_exfil_steps(guard: Guard, policy: PolicyConfig, case: dict
                 mode="client",
                 source_type=source_type,
                 source_id=source_id,
-                trust_level=trust,
+                source_trust=trust,
                 sensitivity=sensitivity,
                 policy=policy,
             )

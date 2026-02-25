@@ -1,4 +1,4 @@
-"""Unit tests for Layer 3 source gate — policy module in isolation (no DB)."""
+"""Unit tests for Layer 3 source gate -- policy module in isolation (no DB)."""
 
 import pytest
 
@@ -7,6 +7,7 @@ from guardllm.security.source_gate import (
     SourceGateResult,
     check_extraction_allowed,
 )
+from guardllm.security.types import TrustLevel
 
 
 class TestSourceGatePolicy:
@@ -92,3 +93,53 @@ class TestSourceGatePolicy:
         result = check_extraction_allowed("web_synthesis")
         assert result.policy == ExtractionPolicy.QUARANTINE
         assert "quarantine" in result.reason.lower()
+
+
+class TestSourceGateOverrides:
+    """Tests for PolicyConfig source_gate_overrides lookup."""
+
+    def test_override_changes_policy(self):
+        """Override table can promote a BLOCK source to ALLOW."""
+        overrides = {
+            ("email_content", TrustLevel.TRUSTED): ExtractionPolicy.ALLOW,
+        }
+        result = check_extraction_allowed(
+            "email_content",
+            source_id="msg-001",
+            source_trust=TrustLevel.TRUSTED,
+            source_gate_overrides=overrides,
+        )
+        assert result.policy == ExtractionPolicy.ALLOW
+
+    def test_override_not_matched_falls_back(self):
+        """When override key doesn't match, falls back to _SOURCE_POLICY."""
+        overrides = {
+            ("email_content", TrustLevel.TRUSTED): ExtractionPolicy.ALLOW,
+        }
+        result = check_extraction_allowed(
+            "email_content",
+            source_id="msg-001",
+            source_trust=TrustLevel.UNTRUSTED,
+            source_gate_overrides=overrides,
+        )
+        assert result.policy == ExtractionPolicy.BLOCK
+
+    def test_no_overrides_uses_default(self):
+        """Without overrides, behavior matches the static table."""
+        result = check_extraction_allowed(
+            "web_content",
+            source_trust=TrustLevel.UNTRUSTED,
+        )
+        assert result.policy == ExtractionPolicy.BLOCK
+
+    def test_unknown_source_type_blocks_even_with_overrides(self):
+        """Unknown source types still default to BLOCK."""
+        overrides = {
+            ("known_type", TrustLevel.TRUSTED): ExtractionPolicy.ALLOW,
+        }
+        result = check_extraction_allowed(
+            "totally_unknown",
+            source_trust=TrustLevel.UNTRUSTED,
+            source_gate_overrides=overrides,
+        )
+        assert result.policy == ExtractionPolicy.BLOCK

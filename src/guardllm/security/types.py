@@ -10,7 +10,7 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -22,11 +22,43 @@ class TrustLevel(Enum):
     SEMI_TRUSTED = "semi_trusted"
     UNTRUSTED = "untrusted"
 
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, TrustLevel):
+            return NotImplemented
+        return _TRUST_RANK[self] < _TRUST_RANK[other]
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, TrustLevel):
+            return NotImplemented
+        return _TRUST_RANK[self] <= _TRUST_RANK[other]
+
+
+_TRUST_RANK: Dict[TrustLevel, int] = {
+    TrustLevel.UNTRUSTED: 0,
+    TrustLevel.SEMI_TRUSTED: 1,
+    TrustLevel.TRUSTED: 2,
+}
+
+
+# SourceTrust: only TRUSTED or UNTRUSTED allowed (no SEMI_TRUSTED on source axis)
+SourceTrust = TrustLevel
+
+# PrincipalTrust: all three values allowed (per-session caller identity)
+PrincipalTrust = TrustLevel
+
 
 class ContentType(Enum):
     HTML = "html"
     PLAINTEXT = "plaintext"
     STRUCTURED = "structured"
+
+
+class ExtractionPolicy(Enum):
+    """KG extraction policy for a source type (Layer 2)."""
+
+    ALLOW = "allow"              # Extract normally, no quarantine
+    QUARANTINE = "quarantine"    # Extract but quarantine all triples
+    BLOCK = "block"              # Do not extract
 
 
 class SensitivityLevel(Enum):
@@ -94,6 +126,33 @@ class PolicyConfig:
     provenance_verbatim_lcs_min: int = 50
     provenance_ngram_overlap_min: float = 0.30
 
+    # Two-axis trust model fields (Phase 1 scaffolding, Phase 2 consumers)
+    # Override source gate policy keyed by (source_type, source_trust)
+    source_gate_overrides: Dict[Tuple[str, TrustLevel], ExtractionPolicy] = field(default_factory=dict)
+    # Tools denied when principal_trust == UNTRUSTED
+    untrusted_deny_tools: FrozenSet[str] = frozenset()
+    # Require auth event when principal_trust == UNTRUSTED
+    untrusted_require_auth: bool = False
+    # Require confirmation for all tools when principal_trust <= this level
+    confirm_all_below: Optional[TrustLevel] = None
+    # Per-principal_trust rate limit overrides, merged over DEFAULT_LIMITS
+    rate_limit_overrides: Dict[TrustLevel, Dict[str, int]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _VALID_RATE_LIMIT_KEYS = {
+            "emails_per_hour",
+            "burst_threshold",
+            "burst_window_seconds",
+            "novel_recipient_flag",
+        }
+        for trust_level, overrides in self.rate_limit_overrides.items():
+            unknown = set(overrides.keys()) - _VALID_RATE_LIMIT_KEYS
+            if unknown:
+                raise ValueError(
+                    f"Unknown rate_limit_overrides keys for {trust_level}: "
+                    f"{sorted(unknown)}. Valid keys: {sorted(_VALID_RATE_LIMIT_KEYS)}"
+                )
+
 
 class ConfirmationHandler:
     """Protocol for user confirmation. Implemented by Episodic's CLI."""
@@ -109,11 +168,19 @@ class SecurityContext:
     mode: str                      # "client" or "server"
     source_type: str               # "mcp_server", "mcp_client", "cli_user"
     source_id: str                 # server_id or client_id
-    trust_level: TrustLevel = TrustLevel.UNTRUSTED
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED
+    principal_trust: TrustLevel = TrustLevel.UNTRUSTED
     sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     content_type: ContentType = ContentType.PLAINTEXT
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     confirmation_handler: Optional[ConfirmationHandler] = None
+
+    def __post_init__(self) -> None:
+        if self.source_trust == TrustLevel.SEMI_TRUSTED:
+            raise ValueError(
+                "source_trust does not allow SEMI_TRUSTED; "
+                "use TRUSTED or UNTRUSTED"
+            )
 
 
 # ---------------------------------------------------------------------------

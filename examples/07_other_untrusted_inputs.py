@@ -16,7 +16,7 @@ def main() -> None:
         mode="client",
         source_type="tool_output",
         source_id="third-party-webhook",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.STRUCTURED,
     )
 

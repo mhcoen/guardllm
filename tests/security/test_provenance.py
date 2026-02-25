@@ -19,19 +19,19 @@ class TestProvenancedSpan:
             text="Hello world",
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         )
         assert span.text == "Hello world"
         assert span.source_type == "mcp_server"
         assert span.source_id == "server-1"
-        assert span.trust_level == "untrusted"
+        assert span.source_trust == "untrusted"
 
     def test_topic_of_origin_defaults_to_none(self):
         span = ProvenancedSpan(
             text="test",
             source_type="cli_user",
             source_id="user-1",
-            trust_level="trusted",
+            source_trust="trusted",
         )
         assert span.topic_of_origin is None
 
@@ -40,20 +40,20 @@ class TestProvenancedSpan:
             text="Sensitive data from topic A",
             source_type="mcp_server",
             source_id="server-2",
-            trust_level="untrusted",
+            source_trust="untrusted",
             topic_of_origin="topic-a",
         )
         assert span.topic_of_origin == "topic-a"
 
     def test_various_trust_levels(self):
-        for trust in ("trusted", "semi_trusted", "untrusted"):
+        for trust in ("trusted", "untrusted"):
             span = ProvenancedSpan(
                 text="t",
                 source_type="mcp_server",
                 source_id="s",
-                trust_level=trust,
+                source_trust=trust,
             )
-            assert span.trust_level == trust
+            assert span.source_trust == trust
 
     def test_various_source_types(self):
         for source in ("mcp_server", "mcp_client", "cli_user", "assistant"):
@@ -61,7 +61,7 @@ class TestProvenancedSpan:
                 text="t",
                 source_type=source,
                 source_id="s",
-                trust_level="untrusted",
+                source_trust="untrusted",
             )
             assert span.source_type == source
 
@@ -145,7 +145,7 @@ class TestProvenanceTracker:
             text="test content",
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         )
         tracker.add_span(span)
         assert len(tracker._spans) == 1
@@ -158,7 +158,7 @@ class TestProvenanceTracker:
                 text=f"content {i}",
                 source_type="mcp_server",
                 source_id=f"server-{i}",
-                trust_level="untrusted",
+                source_trust="untrusted",
             ))
         assert len(tracker._spans) == 3
 
@@ -174,7 +174,7 @@ class TestProvenanceTracker:
             text="some trusted content that is quite long and could match",
             source_type="cli_user",
             source_id="user-1",
-            trust_level="trusted",
+            source_trust="trusted",
         ))
         allowed, reason = tracker.check_outbound(
             "some trusted content that is quite long and could match"
@@ -190,7 +190,7 @@ class TestProvenanceTracker:
             text=long_text,
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         allowed, reason = tracker.check_outbound(
             long_text, has_quoting_directive=True
@@ -205,7 +205,7 @@ class TestProvenanceTracker:
             text=shared,
             source_type="mcp_server",
             source_id="evil-server",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         allowed, reason = tracker.check_outbound("prefix " + shared + " suffix")
         assert allowed is False
@@ -220,7 +220,7 @@ class TestProvenanceTracker:
             text=span_text,
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         # Outbound has a few common words but mostly different
         outbound = (
@@ -238,26 +238,12 @@ class TestProvenanceTracker:
             text=span_text,
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         # Rearranged but largely the same content
         outbound = "the quick brown fox jumps over the lazy dog near the river"
         allowed, reason = tracker.check_outbound(outbound)
         assert allowed is False
-
-    def test_ignores_semi_trusted_spans(self):
-        """Only untrusted spans trigger blocks, not semi-trusted."""
-        tracker = ProvenanceTracker()
-        long_text = "x" * 100
-        tracker.add_span(ProvenancedSpan(
-            text=long_text,
-            source_type="mcp_server",
-            source_id="server-1",
-            trust_level="semi_trusted",
-        ))
-        allowed, reason = tracker.check_outbound(long_text)
-        assert allowed is True
-        assert reason == "clean"
 
     def test_empty_span_text_skipped(self):
         tracker = ProvenanceTracker()
@@ -265,7 +251,7 @@ class TestProvenanceTracker:
             text="",
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         allowed, reason = tracker.check_outbound("any content")
         assert allowed is True
@@ -278,13 +264,13 @@ class TestProvenanceTracker:
             text=safe_text,
             source_type="mcp_server",
             source_id="safe",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         tracker.add_span(ProvenancedSpan(
             text=dangerous,
             source_type="mcp_server",
             source_id="evil",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         allowed, reason = tracker.check_outbound(dangerous)
         assert allowed is False
@@ -297,7 +283,7 @@ class TestProvenanceTracker:
             text=shared,
             source_type="mcp_server",
             source_id="server-1",
-            trust_level="untrusted",
+            source_trust="untrusted",
         ))
         allowed, reason = tracker.check_outbound(
             shared,

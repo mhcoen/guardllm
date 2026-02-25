@@ -80,7 +80,7 @@ async def main() -> None:
         mode="client",
         source_type="email_content",
         source_id="msg-001",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.HTML,
     )
     email_processed = guard.process_inbound(raw_email, email_ctx)
@@ -96,7 +96,7 @@ async def main() -> None:
         mode="client",
         source_type="calendar_content",
         source_id="evt-123",
-        trust_level=TrustLevel.UNTRUSTED,
+        source_trust=TrustLevel.UNTRUSTED,
         content_type=ContentType.PLAINTEXT,
     )
     calendar_processed = guard.process_inbound(raw_event, calendar_ctx)

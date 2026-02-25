@@ -57,6 +57,19 @@ class RateLimiter:
         cutoff = time.time() - window_seconds
         return [t for t in times if t > cutoff]
 
+    def _effective_limits(self, ctx: SecurityContext) -> Dict:
+        """Merge principal_trust overrides with base limits.
+
+        Override wins for any key present. Base limits fill in the rest.
+        Never mutates DEFAULT_LIMITS or self._limits.
+        """
+        overrides = ctx.policy.rate_limit_overrides.get(ctx.principal_trust)
+        if not overrides:
+            return self._limits
+        merged = dict(self._limits)
+        merged.update(overrides)
+        return merged
+
     def check(
         self,
         action: str,
@@ -78,6 +91,7 @@ class RateLimiter:
         sid = session_id or ctx.source_id
         session = self._get_session(sid)
         anomalies: List[str] = []
+        limits = self._effective_limits(ctx)
 
         # Prune old entries
         session.action_times[action] = self._prune_old(
@@ -86,7 +100,7 @@ class RateLimiter:
         hourly_count = len(session.action_times[action])
 
         # Check hourly limit
-        hourly_limit = self._limits.get("emails_per_hour", 10)
+        hourly_limit = limits.get("emails_per_hour", 10)
         if hourly_count >= hourly_limit:
             return RateLimitResult(
                 allowed=False,
@@ -96,8 +110,8 @@ class RateLimiter:
             )
 
         # Check burst pattern
-        burst_threshold = self._limits.get("burst_threshold", 3)
-        burst_window = self._limits.get("burst_window_seconds", 10)
+        burst_threshold = limits.get("burst_threshold", 3)
+        burst_window = limits.get("burst_window_seconds", 10)
         recent = self._prune_old(session.action_times[action], burst_window)
         if len(recent) >= burst_threshold:
             anomalies.append(
@@ -107,7 +121,7 @@ class RateLimiter:
         # Check novel recipient
         if (
             recipient
-            and self._limits.get("novel_recipient_flag", True)
+            and limits.get("novel_recipient_flag", True)
             and recipient not in session.known_recipients
         ):
             anomalies.append(f"Novel recipient: {recipient}")

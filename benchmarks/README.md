@@ -222,6 +222,56 @@ Evaluate:
 python benchmarks/eval_cbx1000.py
 ```
 
+### CBX-1200
+
+1200 contaminated-context exfiltration cases with expanded secret types.
+Extends CBX-1000 with pii, internal_id, and contract_text secret kinds
+(composite strings of 40-80 chars) alongside the original api_key,
+bearer_token, and webhook_url kinds.
+
+Evaluation runs each case through two independent pipeline configurations:
+
+- Variant A (VA): No sensitive buffer. Only secret-pattern regex, entropy
+  scanning, and hex decode-then-scan can fire. No overlap comparison.
+- Variant B (VB): Full contaminated-context mechanism. Sensitive buffer
+  populated via `process_inbound`, overlap comparison active.
+
+- Dataset: `artifacts/cbx1200/cbx_1200_v1_seed20260224.jsonl`
+- Manifest: `artifacts/cbx1200/cbx_1200_v1_manifest_seed20260224.json`
+- Generator: `scripts/gen_cbx1200.py`
+- Evaluator: `benchmarks/eval_cbx1200.py`
+- Distribution: 780 ATTACK (600 within-scope, 180 out-of-scope encoding),
+  300 BASELINE, 120 NEAR_MISS
+- Seed: `20260224`
+
+Within-scope transform operators: `verbatim_copy`, `prefix_fragment`,
+`middle_fragment`, `suffix_fragment`, `insert_separators`,
+`markdown_link_wrap`, `json_reformat`.
+
+Out-of-scope encoding operators: `hex_encode`, `rot13`, `leetspeak`,
+`homoglyph_substitution`.
+
+Attacker text sources (same repos as CBX-1000):
+
+| repo | commit | license |
+|---|---|---|
+| `uiuc-kang-lab/InjecAgent` | `f19c9f2c79a41046eb13c03c51a24c567a8ffa07` | MIT |
+| `ethz-spylab/agentdojo` | `462c88ddf596cb745882702f9999c8aeb5fe467f` | MIT |
+| `lakeraai/pint-benchmark` | `0aa0d6415d6ce3108c6cbd8fb630b2ffaa6ee9f8` | MIT |
+| `Giskard-AI/prompt-injections` | `ce50a549dadc46b48c931250d2dd71d5f003c0c2` | MIT |
+
+Rebuild:
+
+```bash
+python scripts/gen_cbx1200.py
+```
+
+Evaluate:
+
+```bash
+python benchmarks/eval_cbx1200.py
+```
+
 ### Invariance Suites (A/B/C)
 
 Three 1000-case suites with identical transform programs but different untrusted

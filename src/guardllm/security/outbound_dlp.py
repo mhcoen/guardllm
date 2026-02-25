@@ -27,8 +27,8 @@ from guardllm.security.types import OutboundResult, SecurityContext
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: List[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "OpenAI API key"),
-    (re.compile(r"sk-proj-[A-Za-z0-9\-_]{20,}"), "OpenAI project key"),
+    (re.compile(r"sk[-_][A-Za-z0-9]{20,}"), "OpenAI API key"),
+    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,}"), "OpenAI project key"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key"),
     (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,}"), "Google OAuth token"),
     (re.compile(r"gho_[A-Za-z0-9]{36,}"), "GitHub OAuth token"),
@@ -44,6 +44,9 @@ _SECRET_PATTERNS: List[tuple[re.Pattern[str], str]] = [
 _ENTROPY_THRESHOLD = 4.5
 _ENTROPY_MIN_LENGTH = 20
 
+# Pure hex character pattern for decode-then-scan
+_HEX_RE = re.compile(r"[0-9a-fA-F]+")
+
 
 def _shannon_entropy(s: str) -> float:
     """Compute Shannon entropy of a string in bits per character."""
@@ -53,6 +56,19 @@ def _shannon_entropy(s: str) -> float:
     for ch in s:
         freq[ch] = freq.get(ch, 0) + 1
     length = len(s)
+    return -sum(
+        (c / length) * math.log2(c / length) for c in freq.values()
+    )
+
+
+def _shannon_entropy_bytes(data: bytes) -> float:
+    """Compute Shannon entropy of a byte string in bits per byte."""
+    if not data:
+        return 0.0
+    freq: dict[int, int] = {}
+    for b in data:
+        freq[b] = freq.get(b, 0) + 1
+    length = len(data)
     return -sum(
         (c / length) * math.log2(c / length) for c in freq.values()
     )
@@ -73,6 +89,20 @@ def _scan_secrets(text: str) -> List[str]:
                 label = f"High-entropy token ({entropy:.1f} bits)"
                 if label not in found:
                     found.append(label)
+                continue
+            # Hex decode-then-scan: pure hex tokens (0-9, a-f) have max
+            # entropy of 4.0 bits/char, always below the 4.5 threshold.
+            # Decode to bytes and re-check entropy on the decoded form.
+            if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
+                try:
+                    decoded = bytes.fromhex(token)
+                    byte_entropy = _shannon_entropy_bytes(decoded)
+                    if byte_entropy >= _ENTROPY_THRESHOLD:
+                        label = f"High-entropy token (hex-decoded {byte_entropy:.1f} bits)"
+                        if label not in found:
+                            found.append(label)
+                except ValueError:
+                    pass
     return found
 
 

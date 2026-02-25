@@ -9,7 +9,7 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L0 | Input Sanitization | Strip hidden HTML, dangerous attributes/comments, invisible Unicode, and normalize content before further processing | `guardllm.security.sanitizer` |
 | L1 | Content Isolation | Wrap untrusted input in `<untrusted_content ...>` tags with source attribution | `guardllm.security.isolation` |
 | L2 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
-| L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
+| L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, hex decode-then-scan entropy detection, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
 | L4 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
 | L5 | Canary Detection | Session canary generation/detection to flag leakage/exfiltration | `guardllm.security.canary` |
 | L6 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
@@ -49,11 +49,12 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 The central orchestrator is `guardllm.security.pipeline.SecurityPipeline`, exposed through the high-level `Guard` API.
 
 Inbound path:
-1. Sanitize untrusted input (L0)
-2. Isolate by trust level (L1)
-3. Ingest for outbound DLP comparisons (L3 data prep)
-4. Record provenance spans (L4)
-5. Check canary presence in inbound payloads (L5)
+1. TR39 confusable normalization (homoglyph characters mapped to ASCII)
+2. Sanitize untrusted input (L0)
+3. Isolate by trust level (L1)
+4. Ingest for outbound DLP comparisons (L3 data prep)
+5. Record provenance spans (L4)
+6. Check canary presence in inbound payloads (L5)
 
 L0 encoded payload handling:
 - Base64 and URL-encoded segments are decoded and scored with the prompt-injection detector.
@@ -65,10 +66,11 @@ Tool-call path:
 3. Optional request binding verification (L11)
 
 Outbound path:
-1. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters)
-2. Provenance reuse guard (L4), including deobfuscated variants
-3. Rate limiting (L6)
-4. Canary leakage detection (L5)
+1. TR39 confusable normalization (homoglyph characters mapped to ASCII)
+2. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters) and hex decode-then-scan for entropy detection
+3. Provenance reuse guard (L4), including deobfuscated variants
+4. Rate limiting (L6)
+5. Canary leakage detection (L5)
 
 Threshold tuning:
 - L3 and L4 overlap thresholds are configurable per context via `PolicyConfig`
@@ -103,9 +105,10 @@ These source types integrate directly with source-gate and provenance behavior.
 ## Threats Covered
 
 - Hidden-instruction prompt injection in HTML/text payloads
-- Unicode obfuscation attacks (zero-width/bidi controls)
+- Unicode obfuscation attacks (zero-width/bidi controls, TR39 homoglyph substitution)
 - Exfiltration by copying untrusted spans into outbound content
 - Obfuscated exfiltration via reversed text or spelled-out characters (e.g. `s-t-r-i-p-e`)
+- Hex-encoded secret exfiltration (decoded and entropy-scanned)
 - Replay/deferred tool execution after conversation state changes
 - Over-privileged tool invocation and destructive action abuse
 

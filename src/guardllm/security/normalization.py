@@ -1,13 +1,17 @@
 """Normalization contract for overlap computation (spec §8).
 
-Five-step pipeline producing canonical text for DLP overlap checks,
+Six-step pipeline producing canonical text for DLP overlap checks,
 provenance comparison, and other content matching operations.
+
+Includes Unicode TR39 confusable normalization to defeat homoglyph
+substitution attacks (e.g. Cyrillic 'a' -> Latin 'a').
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Dict
 
 # Zero-width and invisible characters (spec §1.2)
 _INVISIBLE_RE = re.compile(
@@ -33,19 +37,78 @@ _BIDI_RE = re.compile(
     "]"
 )
 
-# Whitespace collapse: runs of any whitespace → single space
+# Whitespace collapse: runs of any whitespace -> single space
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
+# ---------------------------------------------------------------------------
+# Unicode TR39 confusable normalization
+# ---------------------------------------------------------------------------
+
+def _build_confusable_table() -> Dict[int, str]:
+    """Build a translation table mapping non-ASCII confusables to ASCII.
+
+    Uses the confusables library (Unicode TR39 data) to map each non-ASCII
+    character that has an ASCII visual equivalent to that ASCII form.
+    Prefers lowercase ASCII mappings where available.
+    """
+    try:
+        from confusables import CONFUSABLE_MAP
+    except ImportError:
+        return {}
+
+    table: Dict[int, str] = {}
+    for char, confusables_list in CONFUSABLE_MAP.items():
+        if len(char) != 1 or ord(char) < 128:
+            continue
+        lower_ascii = None
+        upper_ascii = None
+        any_ascii = None
+        for c in confusables_list:
+            if len(c) == 1 and ord(c) < 128:
+                if c.islower():
+                    lower_ascii = c
+                elif c.isupper():
+                    upper_ascii = c
+                else:
+                    any_ascii = c
+        best = lower_ascii or upper_ascii or any_ascii
+        if best:
+            table[ord(char)] = best
+    return table
+
+
+# Built once at import time (2252 mappings from TR39 data)
+_CONFUSABLE_TABLE: Dict[int, str] = _build_confusable_table()
+
+
+def normalize_confusables(text: str) -> str:
+    """Map Unicode confusable characters to their ASCII canonical forms.
+
+    Applies NFC normalization first, then maps all TR39 confusable
+    characters to ASCII equivalents. This defeats homoglyph substitution
+    attacks (e.g. Cyrillic U+0430 -> Latin 'a').
+
+    This function should be called at every trust boundary before any
+    security-relevant operation (tagging, entropy scan, pattern matching,
+    overlap comparison).
+    """
+    text = unicodedata.normalize("NFC", text)
+    if not _CONFUSABLE_TABLE:
+        return text
+    return text.translate(_CONFUSABLE_TABLE)
+
+
 def normalize_for_overlap(text: str) -> str:
-    """Apply the 5-step normalization pipeline.
+    """Apply the 6-step normalization pipeline.
 
     Steps:
     1. Unicode NFC normalization
-    2. Strip invisible characters (zero-width, directional, tags)
-    3. Collapse whitespace (all runs → single space, trim)
-    4. Lowercase
-    5. Strip bidi controls
+    2. TR39 confusable normalization (homoglyph -> ASCII)
+    3. Strip invisible characters (zero-width, directional, tags)
+    4. Collapse whitespace (all runs -> single space, trim)
+    5. Lowercase
+    6. Strip bidi controls
 
     The result is suitable for overlap comparison (DLP, provenance).
     This function is idempotent: normalize(normalize(x)) == normalize(x).
@@ -53,17 +116,21 @@ def normalize_for_overlap(text: str) -> str:
     # Step 1: NFC
     text = unicodedata.normalize("NFC", text)
 
-    # Step 2: Strip invisible characters
+    # Step 2: TR39 confusable normalization
+    if _CONFUSABLE_TABLE:
+        text = text.translate(_CONFUSABLE_TABLE)
+
+    # Step 3: Strip invisible characters
     text = _INVISIBLE_RE.sub("", text)
     text = _TAG_CHAR_RE.sub("", text)
 
-    # Step 3: Collapse whitespace
+    # Step 4: Collapse whitespace
     text = _WHITESPACE_RE.sub(" ", text).strip()
 
-    # Step 4: Lowercase
+    # Step 5: Lowercase
     text = text.lower()
 
-    # Step 5: Strip bidi controls
+    # Step 6: Strip bidi controls
     text = _BIDI_RE.sub("", text)
 
     # Re-collapse whitespace after bidi removal (ensures idempotency)

@@ -15,6 +15,7 @@ from guardllm.security.source_gate import (
     SourceGateResult,
 )
 from guardllm.security.isolation import wrap_untrusted
+from guardllm.security.normalization import normalize_confusables
 from guardllm.security.outbound_dlp import OutboundDLP
 from guardllm.security.policy_engine import PolicyEngine
 from guardllm.security.prompt_injection_detector import detect_prompt_injection
@@ -84,6 +85,10 @@ class SecurityPipeline:
         Server mode: MCP client argument content.
         """
         warnings: list[str] = []
+
+        # TR39 confusable normalization at inbound trust boundary.
+        # Maps homoglyph characters to ASCII before any security check.
+        content = normalize_confusables(content)
 
         # Early prompt-injection signal pass on raw input.
         detection = detect_prompt_injection(content, ctx.content_type)
@@ -169,6 +174,9 @@ class SecurityPipeline:
         Client mode: tool arguments (e.g. email body).
         Server mode: tool responses.
         """
+        # TR39 confusable normalization at outbound trust boundary.
+        content = normalize_confusables(content)
+
         # L3: DLP scan (coarse pre-filter, higher thresholds)
         dlp_result = self._dlp.check(
             content, ctx, has_quoting_directive,

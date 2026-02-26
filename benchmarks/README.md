@@ -428,6 +428,16 @@ Recommended policy for this repo:
 - For sources with unclear/no license, distribute loaders/importers plus pinned refs, and require users to fetch data from upstream themselves.
 - Restricted sources are intentionally not vendored in git (`benchmarks/upstream/mcp_bench/`, `benchmarks/upstream/wainjectbench/`).
 
+## Metric Conventions
+
+Precision, recall, and F1 follow these conventions for edge cases:
+
+- **Precision when TP+FP=0**: 1.0 if FN==0 (no positive class at all, vacuously correct), 0.0 otherwise (all positives were missed).
+- **Recall when TP+FN=0**: 0.0 (no positive examples to recall).
+- **F1 when P+R=0**: 0.0.
+
+These conventions ensure that reported 1.000 values are never an undefined-metric artifact: a strategy scoring 1.000 genuinely classified every example correctly.
+
 ## Notes
 
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.

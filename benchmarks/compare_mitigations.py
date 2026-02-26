@@ -819,7 +819,17 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         return {"passed": 0, "total": 0, "tp": 0, "fp": 0, "fn": 0, "tn": 0}
 
     def _add_f1_metrics(entry: dict[str, Any]) -> None:
-        """Add pass_rate, precision, recall, f1 to a counters dict in-place."""
+        """Add pass_rate, precision, recall, f1 to a counters dict in-place.
+
+        Undefined-metric conventions:
+        - Precision when TP+FP=0: 1.0 if FN==0 (no positive class,
+          vacuously correct), 0.0 otherwise (all positives were missed).
+        - Recall when TP+FN=0: 0.0 (no positive examples to recall).
+        - F1 when P+R=0: 0.0.
+        These conventions ensure that reported 1.000 values are never an
+        undefined-metric artifact: a strategy scoring 1.000 genuinely
+        classified every example correctly.
+        """
         total = entry["total"]
         passed = entry["passed"]
         tp, fp, fn, tn = entry["tp"], entry["fp"], entry["fn"], entry["tn"]
@@ -841,13 +851,48 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
     }
     by_kind: dict[str, dict[str, dict[str, int]]] = {}
 
+    # Rejection-stage tracking for binding_replay and action_gate attack cases
+    binding_replay_stages: dict[str, int] = {}
+    action_gate_stages: dict[str, int] = {}
+
     for case in surface_cases:
         cid = case["id"]
         kind = str(case.get("kind"))
         is_attack = _is_attack_like_case(case)
         kind_entry = by_kind.setdefault(kind, {})
 
-        guardllm_passed = run_case(case).passed
+        guardllm_result = run_case(case)
+        guardllm_passed = guardllm_result.passed
+
+        # Classify rejection stage for binding_replay and action_gate attack cases
+        if is_attack and kind == "binding_replay":
+            details = guardllm_result.details or ""
+            if "Message hash mismatch" in details:
+                stage = "L11_message_hash"
+            elif "Args hash mismatch" in details:
+                stage = "L11_args_hash"
+            elif "Binding expired" in details:
+                stage = "L11_ttl_expired"
+            elif "Tool mismatch" in details:
+                stage = "L11_tool_mismatch"
+            elif "expired" in details.lower() and "Authorization" in details:
+                stage = "L9_auth_expired"
+            elif "Scope" in details or "scope" in details:
+                stage = "L9_scope_mismatch"
+            elif "Action mismatch" in details:
+                stage = "L9_action_mismatch"
+            else:
+                stage = "other"
+            binding_replay_stages[stage] = binding_replay_stages.get(stage, 0) + 1
+        elif is_attack and kind == "action_gate":
+            # Classify by case structure: use_handler=False means no handler,
+            # otherwise handler denied the action
+            if not case.get("use_handler", True):
+                stage = "no_handler"
+            else:
+                stage = "handler_deny"
+            action_gate_stages[stage] = action_gate_stages.get(stage, 0) + 1
+
         if guardllm_passed:
             strategies["guardllm_surface"]["passed"] += 1
             kind_entry.setdefault("guardllm_surface", _init_counters())["passed"] += 1
@@ -977,6 +1022,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         "partitions": partitions,
         "errors": surface_errors,
         "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
+        "binding_replay_stages": binding_replay_stages,
+        "action_gate_stages": action_gate_stages,
     }
 
 
@@ -2235,6 +2282,30 @@ def write_markdown(
                         f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
                         f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
                     )
+
+    # Rejection-stage sub-breakdowns for binding_replay and action_gate
+    br_stages = surface_only.get("binding_replay_stages", {})
+    ag_stages = surface_only.get("action_gate_stages", {})
+    if br_stages or ag_stages:
+        lines.append("")
+        lines.append("### Rejection-Stage Breakdown (Attack Cases)")
+        lines.append("")
+    if br_stages:
+        lines.append("**binding_replay** attack cases by rejection stage:")
+        lines.append("")
+        lines.append("| stage | count |")
+        lines.append("|---|---:|")
+        for stage, count in sorted(br_stages.items(), key=lambda x: -x[1]):
+            lines.append(f"| {stage} | {count} |")
+        lines.append("")
+    if ag_stages:
+        lines.append("**action_gate** attack cases by rejection stage:")
+        lines.append("")
+        lines.append("| stage | count |")
+        lines.append("|---|---:|")
+        for stage, count in sorted(ag_stages.items(), key=lambda x: -x[1]):
+            lines.append(f"| {stage} | {count} |")
+        lines.append("")
 
     lines.append("")
     lines.append("## Holdout Generalization (Legacy Upstream Snapshots)")

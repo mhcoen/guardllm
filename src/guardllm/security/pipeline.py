@@ -186,6 +186,11 @@ class SecurityPipeline:
         Client mode: tool arguments (e.g. email body).
         Server mode: tool responses.
         """
+        if ctx.principal_trust != self._principal_trust:
+            raise ValueError(
+                f"principal_trust mismatch: context has {ctx.principal_trust}, "
+                f"pipeline was constructed with {self._principal_trust}"
+            )
         # TR39 confusable normalization at outbound trust boundary.
         content = normalize_confusables(content)
 
@@ -262,6 +267,11 @@ class SecurityPipeline:
         Client mode: calling external MCP tool.
         Server mode: executing internal tool for MCP client.
         """
+        if ctx.principal_trust != self._principal_trust:
+            raise ValueError(
+                f"principal_trust mismatch: context has {ctx.principal_trust}, "
+                f"pipeline was constructed with {self._principal_trust}"
+            )
         # Contamination-aware tool gating (cross-stage invariant)
         if self._context_contaminated:
             ctp = ctx.policy.contaminated_tool_policy

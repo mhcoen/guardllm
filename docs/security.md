@@ -18,7 +18,7 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L9 | Tool Firewall | Authorize tools by policy + explicit authorization events | `guardllm.security.policy_engine` |
 | L10 | Validation | Validate tool arguments before dispatch | `guardllm.security.validation` |
 | L11 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
-| L12 | Action Gate | Optional interactive confirmation gate for sensitive actions | `guardllm.security.action_gate` |
+| L12 | Action Gate | Optional interactive confirmation gate for sensitive actions, with G6 commitment verification | `guardllm.security.action_gate` |
 | - | Audit Logging | Structured security event logging for analysis and incident response (cross-cutting observer) | `guardllm.security.audit` |
 
 Note: Layer numbering follows pipeline execution order. L8 is documented for completeness but remains outside the library boundary.
@@ -70,6 +70,7 @@ Tool-call path:
 1. Tool authorization/firewall checks (L9)
 2. Rate limiting (L6)
 3. Optional request binding verification (L11)
+4. Optional L12 confirmation gate with G6 commitment verification: the action gate captures a canonical snapshot of tool args before the confirmation handler is called. After confirmation, `verify_commitment` checks that the args have not been mutated. If args changed between confirmation and execution, the call is rejected (prevents TOCTOU attacks on the confirmation flow).
 
 Outbound path:
 1. TR39 confusable normalization (homoglyph characters mapped to ASCII)

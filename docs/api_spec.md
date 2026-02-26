@@ -309,11 +309,13 @@ Execution order:
 1. Optional validation (`validate=True` by default)
 2. Tool policy/rate/binding checks (`check_tool_call`)
 3. Optional manual confirmation (`require_confirmation=True`)
+4. G6 commitment verification: after confirmation, verifies that tool args have not been mutated since the confirmation handler was called. If args changed, the call is rejected with `"Commitment verification failed"`. This prevents TOCTOU attacks where args are swapped between confirmation and execution.
 
 Return behavior:
 - Validation failure: `GateResult(allowed=False, reason="Validation failed: ...", confidence="none")`
 - Gate failure: returns gate denial from `check_tool_call`
 - Confirmation denied: `GateResult(allowed=False, reason="User denied confirmation", confidence="none")`
+- G6 commitment mismatch: `GateResult(allowed=False, reason="Commitment verification failed: ...", confidence="none")`
 - Success: returns gate result from `check_tool_call`
 
 ## Type Specification

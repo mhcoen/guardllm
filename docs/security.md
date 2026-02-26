@@ -96,7 +96,7 @@ These source types integrate directly with source-gate and provenance behavior.
 
 ## Default Security Posture
 
-- Trust defaults to `UNTRUSTED`.
+- Both trust axes default to `UNTRUSTED`: `source_trust` (per-content) and `principal_trust` (per-session caller) each default to `TrustLevel.UNTRUSTED`.
 - Destructive tool calls are blocked unless explicitly enabled via `PolicyConfig(enable_destructive=True)`.
 - Destructive tool calls require authorization events in client mode.
 - Request binding is optional but recommended for all write-capable actions.

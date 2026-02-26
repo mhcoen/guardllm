@@ -25,12 +25,13 @@ from guardllm import Guard
 ### Constructor
 
 ```python
-Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None)
+Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED)
 ```
 
 Parameters:
 - `canary_session_id`: optional session identifier used to generate a canary token for exfiltration detection checks.
 - `audit_logger`: optional logger object. If it has `.log(event)` it receives `AuditEvent` records emitted by Guard methods.
+- `principal_trust`: session-level caller trust (default `UNTRUSTED`). Accepts `TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`.
 
 Behavior:
 - Initializes security pipeline and action gate.
@@ -102,7 +103,7 @@ Notes:
 Guard.context_mcp_server(
     server_id: str,
     *,
-    trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED,
     content_type: ContentType = ContentType.PLAINTEXT,
     policy: PolicyConfig | None = None,
 ) -> SecurityContext
@@ -112,7 +113,7 @@ Returns `SecurityContext` with:
 - `mode="client"`
 - `source_type="mcp_server"`
 - `source_id=server_id`
-- `trust_level`, `content_type` as passed/defaulted
+- `source_trust`, `content_type` as passed/defaulted
 - `policy=policy or PolicyConfig()`
 
 ### Static Method: `context_mcp_client`
@@ -121,7 +122,7 @@ Returns `SecurityContext` with:
 Guard.context_mcp_client(
     client_id: str,
     *,
-    trust_level: TrustLevel = TrustLevel.UNTRUSTED,
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED,
     content_type: ContentType = ContentType.PLAINTEXT,
     policy: PolicyConfig | None = None,
 ) -> SecurityContext
@@ -131,7 +132,7 @@ Returns `SecurityContext` with:
 - `mode="server"`
 - `source_type="mcp_client"`
 - `source_id=client_id`
-- `trust_level`, `content_type` as passed/defaulted
+- `source_trust`, `content_type` as passed/defaulted
 - `policy=policy or PolicyConfig()`
 
 ### Static Method: `context_document`
@@ -149,7 +150,7 @@ Returns `SecurityContext` with:
 - `mode="client"`
 - `source_type="rag_content"`
 - `source_id=document_id`
-- `trust_level=TrustLevel.UNTRUSTED`
+- `source_trust=TrustLevel.UNTRUSTED`
 - `content_type` as passed/defaulted
 - `policy=policy or PolicyConfig()`
 
@@ -168,7 +169,7 @@ Returns `SecurityContext` with:
 - `mode="client"`
 - `source_type="web_content"`
 - `source_id=source_id`
-- `trust_level=TrustLevel.UNTRUSTED`
+- `source_trust=TrustLevel.UNTRUSTED`
 - `content_type` as passed/defaulted
 - `policy=policy or PolicyConfig()`
 
@@ -180,7 +181,7 @@ guard.process_inbound(content: str, context: SecurityContext) -> ProcessedConten
 
 Pipeline behavior:
 - Sanitizes inbound content.
-- Wraps untrusted/semi-trusted content in `<untrusted_content ...>` tags.
+- Wraps untrusted content in `<untrusted_content ...>` tags.
 - Tracks provenance and warnings.
 - Emits audit event `inbound_processed` if audit logger is configured.
 
@@ -305,8 +306,10 @@ All types below are from `guardllm.security.types`.
 ### Enum: `TrustLevel`
 
 - `TrustLevel.TRUSTED` -> `"trusted"`
-- `TrustLevel.SEMI_TRUSTED` -> `"semi_trusted"`
+- `TrustLevel.SEMI_TRUSTED` -> `"semi_trusted"` (valid only for `principal_trust`, not `source_trust`)
 - `TrustLevel.UNTRUSTED` -> `"untrusted"`
+
+Note: `SEMI_TRUSTED` is only valid on the `principal_trust` axis. Setting `source_trust=TrustLevel.SEMI_TRUSTED` on a `SecurityContext` raises `ValueError`.
 
 ### Enum: `ContentType`
 
@@ -333,15 +336,22 @@ Fields:
 - `tool_allowlist: dict[tuple, Any] = {}`
 - `directive_patterns: dict[str, Any] = {}`
 - `enable_destructive: bool = False`
-- `capability_scopes: dict[str, Any] = {}`
+- `capability_scopes: dict[str, Any] | None = None` (`None` = no allowlist; `{}` = deny all tools)
 - `client_id: str | None = None`
 - `rate_limits: dict[str, Any] = {}`
 - `argument_limits: dict[str, Any] = {}`
 - `escalation_gate_enabled: bool = True`
-- `dlp_verbatim_lcs_min: int = 100`
+- `contaminated_action: str = "block"`
+- `dlp_verbatim_lcs_min: int = 14`
 - `dlp_ngram_overlap_min: float = 0.40`
+- `dlp_sensitive_lcs_min: int = 12`
 - `provenance_verbatim_lcs_min: int = 50`
 - `provenance_ngram_overlap_min: float = 0.30`
+- `source_gate_overrides: dict[tuple[str, TrustLevel], ExtractionPolicy] = {}`
+- `untrusted_deny_tools: frozenset[str] = frozenset()`
+- `untrusted_require_auth: bool = False`
+- `confirm_all_below: TrustLevel | None = None`
+- `rate_limit_overrides: dict[TrustLevel, dict[str, int]] = {}`
 
 ### Protocol Class: `ConfirmationHandler`
 
@@ -357,7 +367,9 @@ Fields:
 - `mode: str` (`"client"` or `"server"` by convention)
 - `source_type: str`
 - `source_id: str`
-- `trust_level: TrustLevel = TrustLevel.UNTRUSTED`
+- `source_trust: TrustLevel = TrustLevel.UNTRUSTED` (per-content trust; `TRUSTED` or `UNTRUSTED` only)
+- `principal_trust: TrustLevel = TrustLevel.UNTRUSTED` (per-session caller trust; `TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`)
+- `sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC`
 - `content_type: ContentType = ContentType.PLAINTEXT`
 - `policy: PolicyConfig = PolicyConfig()`
 - `confirmation_handler: ConfirmationHandler | None = None`
@@ -399,6 +411,9 @@ Fields:
 - `overlap_pct: float = 0.0`
 - `secrets_found: list[str] = []`
 - `provenance_blocked: bool = False`
+- `contamination_triggered: bool = False`
+- `echo_detected: bool = False`
+- `echo_lcs: int = 0`
 
 ### Dataclass: `RateLimitResult`
 

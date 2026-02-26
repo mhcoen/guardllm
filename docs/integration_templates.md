@@ -111,7 +111,7 @@ email_ctx = SecurityContext(
     mode="client",
     source_type="email_content",
     source_id="msg-123",
-    trust_level=TrustLevel.UNTRUSTED,
+    source_trust=TrustLevel.UNTRUSTED,
     content_type=ContentType.HTML,
 )
 

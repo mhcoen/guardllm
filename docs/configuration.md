@@ -8,15 +8,22 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - `tool_allowlist`: client-mode allowlist map for tool authorization policy.
 - `directive_patterns`: optional adapter-side directive rules.
 - `enable_destructive`: enable destructive tools (default `False`).
-- `capability_scopes`: server-mode allowed tool scope mapping.
+- `capability_scopes`: server-mode allowed tool scope mapping (`None` = no allowlist; `{}` = deny all tools).
 - `client_id`: optional logical client identity.
 - `rate_limits`: custom rate limits (overrides defaults where used).
 - `argument_limits`: custom argument constraints.
 - `escalation_gate_enabled`: enable heightened confirmation behavior in action gate.
-- `dlp_verbatim_lcs_min`: outbound DLP verbatim overlap block threshold (default `100` chars).
+- `contaminated_action`: action when contaminated context detected (default `"block"`).
+- `dlp_verbatim_lcs_min`: untrusted-echo LCS threshold (default `14` chars).
 - `dlp_ngram_overlap_min`: outbound DLP n-gram overlap block threshold (default `0.40`).
+- `dlp_sensitive_lcs_min`: sensitive-leak LCS threshold (default `12` chars).
 - `provenance_verbatim_lcs_min`: provenance verbatim overlap block threshold (default `50` chars).
 - `provenance_ngram_overlap_min`: provenance n-gram overlap block threshold (default `0.30`).
+- `source_gate_overrides`: override source gate policy keyed by `(source_type, source_trust)`.
+- `untrusted_deny_tools`: tools denied when `principal_trust == UNTRUSTED`.
+- `untrusted_require_auth`: require auth event when `principal_trust == UNTRUSTED` (default `False`).
+- `confirm_all_below`: require confirmation for all tools when `principal_trust` is at or below this level.
+- `rate_limit_overrides`: per-`principal_trust` rate limit overrides, merged over defaults.
 
 ## SecurityContext
 
@@ -24,7 +31,9 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - `mode`: `"client"` or `"server"`
 - `source_type`: provenance label (`mcp_server`, `mcp_client`, `web_content`, `email_content`, etc.)
 - `source_id`: source identifier for traceability
-- `trust_level`: trusted/semi-trusted/untrusted
+- `source_trust`: per-content trust (`TRUSTED` or `UNTRUSTED` only; `SEMI_TRUSTED` is not valid on this axis)
+- `principal_trust`: per-session caller identity (`TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`)
+- `sensitivity`: data sensitivity level (`PUBLIC`, `INTERNAL`, or `SENSITIVE`)
 - `content_type`: plaintext/html/structured
 - `policy`: `PolicyConfig`
 

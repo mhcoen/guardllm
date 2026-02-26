@@ -50,7 +50,7 @@ If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run ac
 pytest -q
 ```
 
-Expected: 429 tests pass.
+Expected: 477 tests pass (excluding the parametrized eval suite; 6,393 total with eval suite).
 
 ### Run benchmark regression with checkpoint validation
 
@@ -61,7 +61,7 @@ python benchmarks/run_benchmarks.py \
 
 This evaluates all 12 control surface kinds across native and upstream-derived cases. The checkpoint enforces that pass/fail counts match the baseline exactly (modulo known-failed cases listed in the checkpoint file).
 
-Expected output: checkpoint comparison passes with 6,448 cases, 6,441 passed, 7 known failures. If optional suites (e.g. wainjectbench) are locally imported, use `--allow-extra-suites` to accept them without checkpoint mismatch.
+Expected output: checkpoint comparison passes. If optional suites (e.g. wainjectbench) are locally imported, use `--allow-extra-suites` to accept them without checkpoint mismatch.
 
 ### Run the eval suite (non-injection controls)
 
@@ -75,7 +75,7 @@ This parametrizes each non-`inbound_sanitize` benchmark case as an individual py
 
 Benchmark cases come from two sources, both committed in the repository:
 
-1. **Native fixtures** in `benchmarks/cases/*.jsonl` (553 cases across 13 files): hand-authored threat patterns covering prompt injection, tool abuse, secrets exfiltration, unicode evasion, cross-boundary exfiltration, and more.
+1. **Native fixtures** in `benchmarks/cases/*.jsonl` (729 cases across 12 files): hand-authored threat patterns covering prompt injection, tool abuse, secrets exfiltration, unicode evasion, cross-boundary exfiltration, error sanitization, and more.
 
 2. **Upstream-derived snapshots** in `benchmarks/upstream/<suite>/<version>/mapped_cases.jsonl` (up to 10,064 cases across 9 suites): imported from pinned commits of external benchmark repositories (PINT, BIPIA, AgentDojo, JailbreakBench, HarmBench, InjecAgent, MCPBench, mcp-bench, WAInjectBench).
 
@@ -376,7 +376,7 @@ python benchmarks/compare_mitigations.py \
 ### DataFilter + GPT-4o (contaminated-context exfiltration)
 
 ```bash
-python benchmarks/eval_datafilter_gpt4o_contaminated_context.py \
+python local/eval_datafilter_gpt4o_contaminated_context.py \
   --run-id datafilter-gpt4o-cc \
   --openai-api-key "$OPENAI_API_KEY"
 ```
@@ -435,7 +435,7 @@ Run Tier 3. The methodology uses deterministic stratified dev/test split (seed=1
 ## Dataset Provenance
 
 The canonical dataset (`canonical-v1`) is built from:
-- 13 native fixture files in `benchmarks/cases/` (553 cases)
+- 12 native fixture files in `benchmarks/cases/` (729 cases)
 - 9 upstream-derived snapshots in `benchmarks/upstream/` (up to 10,064 cases)
 
 All upstream sources are pinned by commit SHA in `benchmarks/upstream/manifest.json`. Two suites (`mcp_bench`, `wainjectbench`) have unclear upstream licensing and must be fetched directly from their source repositories.

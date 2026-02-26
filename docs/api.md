@@ -9,13 +9,13 @@ from guardllm import Guard
 ```
 
 Constructor:
-- `Guard(canary_session_id: str | None = None, audit_logger: object | None = None)`
+- `Guard(canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED)`
 
 ## Context Builders
 
 Use these to declare trust boundaries explicitly:
-- `Guard.context_mcp_server(server_id, trust_level=..., content_type=..., policy=...)`
-- `Guard.context_mcp_client(client_id, trust_level=..., content_type=..., policy=...)`
+- `Guard.context_mcp_server(server_id, source_trust=..., content_type=..., policy=...)`
+- `Guard.context_mcp_client(client_id, source_trust=..., content_type=..., policy=...)`
 - `Guard.context_document(document_id, content_type=..., policy=...)`
 - `Guard.context_web(source_id="web", content_type=..., policy=...)`
 

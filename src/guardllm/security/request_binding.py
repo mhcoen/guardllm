@@ -81,6 +81,10 @@ def verify_binding(
     if binding.expired:
         return False, "Binding expired (TTL exceeded)"
 
+    # Reject empty hashes: a binding with no message hash is not a valid binding
+    if not binding.message_hash and not current_message_hash:
+        return False, "Empty binding hashes (no message context)"
+
     # Check tool name
     if binding.tool_name != tool:
         return False, f"Tool mismatch: bound={binding.tool_name}, executing={tool}"

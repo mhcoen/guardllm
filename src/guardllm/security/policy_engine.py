@@ -163,6 +163,15 @@ class PolicyEngine:
                     confidence="none",
                 )
 
+        # Capability scopes apply in client mode too (restrict allowed tools)
+        if ctx.policy.capability_scopes is not None:
+            if not ctx.policy.capability_scopes or tool not in ctx.policy.capability_scopes:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Tool '{tool}' not in capability scopes",
+                    confidence="none",
+                )
+
         # Non-destructive tools without auth_event are implicitly allowed
         if auth_event is None:
             return GateResult(
@@ -182,7 +191,7 @@ class PolicyEngine:
                 confidence="none",
             )
 
-        # Verify scope constraints: each scope key must appear in args
+        # Verify scope constraints: auth scope must cover all args keys
         for key, value in auth_event.scope.items():
             if key not in args:
                 return GateResult(
@@ -199,6 +208,18 @@ class PolicyEngine:
                     ),
                     confidence="none",
                 )
+
+        # Reverse check: args must not contain keys outside auth scope
+        uncovered = set(args.keys()) - set(auth_event.scope.keys())
+        if uncovered:
+            return GateResult(
+                allowed=False,
+                reason=(
+                    f"Args key(s) {sorted(uncovered)} not covered by "
+                    f"authorization scope"
+                ),
+                confidence="none",
+            )
 
         # Verify timestamp within TTL
         elapsed = time.time() - auth_event.timestamp

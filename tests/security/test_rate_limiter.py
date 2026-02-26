@@ -108,6 +108,42 @@ class TestExceedHourlyLimit:
         result = custom_limiter.check("gmail_send_email", ctx)
         assert result.allowed is False
 
+    def test_custom_window_seconds(self, ctx):
+        """Custom window_seconds extends the counting window beyond default 3600s."""
+        from unittest.mock import patch
+        custom_limiter = RateLimiter(limits={
+            "emails_per_hour": 5,
+            "window_seconds": 7200,
+        })
+        # Record 5 calls at t=0
+        with patch("guardllm.security.rate_limiter.time") as mock_time:
+            mock_time.time.return_value = 0
+            for _ in range(5):
+                custom_limiter.record("gmail_send_email", ctx)
+
+        # Check at t=5140 (within 7200s window, would be outside 3600s default)
+        with patch("guardllm.security.rate_limiter.time") as mock_time:
+            mock_time.time.return_value = 5140
+            result = custom_limiter.check("gmail_send_email", ctx)
+        assert result.allowed is False
+        assert "limit" in result.reason.lower() or "exceeded" in result.reason.lower()
+
+    def test_default_window_prunes_old_entries(self, ctx):
+        """Default 3600s window prunes entries older than 1 hour."""
+        from unittest.mock import patch
+        custom_limiter = RateLimiter(limits={"emails_per_hour": 5})
+        # Record 5 calls at t=0
+        with patch("guardllm.security.rate_limiter.time") as mock_time:
+            mock_time.time.return_value = 0
+            for _ in range(5):
+                custom_limiter.record("gmail_send_email", ctx)
+
+        # At t=3601, old calls are pruned (outside default 3600s window)
+        with patch("guardllm.security.rate_limiter.time") as mock_time:
+            mock_time.time.return_value = 3601
+            result = custom_limiter.check("gmail_send_email", ctx)
+        assert result.allowed is True
+
 
 class TestNovelRecipient:
     """Spec test 60: novel recipient flagged in anomalies."""

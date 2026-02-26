@@ -333,3 +333,39 @@ class TestBindingDeterminism:
             args=sample_args,
         )
         assert binding.message_hash == ""
+
+
+class TestEmptyHashRejection:
+    """Both hashes empty should be rejected (CSE bug fix)."""
+
+    def test_both_hashes_empty_rejected(self, sample_tool, sample_args):
+        """Binding with empty message_hash verified against empty hash is rejected."""
+        binding = create_binding(
+            tool=sample_tool,
+            args=sample_args,
+        )
+        assert binding.message_hash == ""
+        valid, reason = verify_binding(
+            binding=binding,
+            tool=sample_tool,
+            args=sample_args,
+            current_message_hash="",
+        )
+        assert valid is False
+        assert "empty" in reason.lower()
+
+    def test_non_empty_hash_still_works(self, sample_tool, sample_args, sample_auth_event):
+        """Binding with non-empty hash is not affected by empty-hash guard."""
+        binding = create_binding(
+            tool=sample_tool,
+            args=sample_args,
+            auth_event=sample_auth_event,
+        )
+        assert binding.message_hash != ""
+        valid, reason = verify_binding(
+            binding=binding,
+            tool=sample_tool,
+            args=sample_args,
+            current_message_hash=sample_auth_event.message_hash,
+        )
+        assert valid is True

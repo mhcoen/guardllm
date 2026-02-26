@@ -254,7 +254,7 @@ class TestCheckToolExecution:
         )
         auth = AuthorizationEvent(
             action="gmail_send_email",
-            scope={},
+            scope={"to": "alice@example.com"},
             message_hash="hash123",
             timestamp=time.time(),
             source="slash_command",
@@ -264,7 +264,7 @@ class TestCheckToolExecution:
             args={"to": "alice@example.com"},
             auth_event=auth,
         )
-        # Execute with different args → binding mismatch
+        # Execute with different args: scope violation (value mismatch)
         result = pipeline.check_tool_execution(
             tool="gmail_send_email",
             args={"to": "eve@example.com"},
@@ -273,7 +273,7 @@ class TestCheckToolExecution:
             binding=binding,
         )
         assert result.allowed is False
-        assert "mismatch" in result.reason.lower()
+        assert "scope" in result.reason.lower() or "mismatch" in result.reason.lower()
 
     def test_binding_match_allows(self, pipeline):
         ctx = SecurityContext(
@@ -282,14 +282,14 @@ class TestCheckToolExecution:
             source_id="server-1",
             policy=PolicyConfig(enable_destructive=True),
         )
+        args = {"to": "alice@example.com"}
         auth = AuthorizationEvent(
             action="gmail_send_email",
-            scope={},
+            scope=args,
             message_hash="hash123",
             timestamp=time.time(),
             source="slash_command",
         )
-        args = {"to": "alice@example.com"}
         binding = create_binding(
             tool="gmail_send_email",
             args=args,
@@ -936,3 +936,163 @@ class TestToolAllowlist:
         result = pipe.check_tool_execution("gmail_send_email", {}, ctx)
         assert result.allowed is False
         assert "requires authorization" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# Reverse scope check: args keys must be covered by auth scope
+# ---------------------------------------------------------------------------
+
+
+class TestReverseScopeCheck:
+    """Auth scope must cover all args keys (CSE bug fix)."""
+
+    def test_args_key_not_in_scope_denied(self):
+        """Args with keys not in auth scope are denied."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(enable_destructive=True),
+        )
+        auth = AuthorizationEvent(
+            action="gmail_send_email",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice@test.com"}, ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+        assert "not covered" in result.reason.lower()
+
+    def test_auth_scope_subset_of_args_denied(self):
+        """Auth scope covering some but not all args keys is denied."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(enable_destructive=True),
+        )
+        auth = AuthorizationEvent(
+            action="gmail_send_email",
+            scope={"to": "alice@test.com"},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "gmail_send_email",
+            {"to": "alice@test.com", "bcc": "eve@evil.com"},
+            ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+        assert "not covered" in result.reason.lower()
+
+    def test_matching_scope_and_args_allowed(self):
+        """Auth scope matching all args keys is allowed."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(enable_destructive=True),
+        )
+        args = {"to": "alice@test.com"}
+        auth = AuthorizationEvent(
+            action="gmail_send_email",
+            scope=args,
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "gmail_send_email", args, ctx, auth_event=auth,
+        )
+        assert result.allowed is True
+
+    def test_empty_args_with_empty_scope_allowed(self):
+        """Empty args and empty scope are compatible."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(enable_destructive=True),
+        )
+        auth = AuthorizationEvent(
+            action="gmail_send_email",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {}, ctx, auth_event=auth,
+        )
+        assert result.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# Capability scopes in client mode
+# ---------------------------------------------------------------------------
+
+
+class TestCapabilityScopesClientMode:
+    """Capability scopes restrict tools in client mode too (CSE bug fix)."""
+
+    def test_tool_not_in_capability_scopes_denied(self):
+        """Tool not in capability_scopes is denied in client mode."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(
+                enable_destructive=True,
+                capability_scopes={"search_knowledge": True},
+            ),
+        )
+        auth = AuthorizationEvent(
+            action="gmail_send_email",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {}, ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+        assert "capability scopes" in result.reason.lower()
+
+    def test_tool_in_capability_scopes_allowed(self):
+        """Tool in capability_scopes is allowed in client mode."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(
+                capability_scopes={"search_knowledge": True},
+            ),
+        )
+        result = pipe.check_tool_execution(
+            "search_knowledge", {}, ctx,
+        )
+        assert result.allowed is True
+
+    def test_none_capability_scopes_allows_all(self):
+        """None capability_scopes (default) allows all tools."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(),
+        )
+        result = pipe.check_tool_execution(
+            "any_tool", {}, ctx,
+        )
+        assert result.allowed is True
+
+    def test_empty_capability_scopes_denies_all(self):
+        """Empty dict capability_scopes denies all tools."""
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=PolicyConfig(capability_scopes={}),
+        )
+        result = pipe.check_tool_execution(
+            "any_tool", {}, ctx,
+        )
+        assert result.allowed is False

@@ -93,9 +93,10 @@ class RateLimiter:
         anomalies: List[str] = []
         limits = self._effective_limits(ctx)
 
-        # Prune old entries
+        # Prune old entries using configured window (default 3600s)
+        window = limits.get("window_seconds", 3600)
         session.action_times[action] = self._prune_old(
-            session.action_times[action], 3600  # 1 hour window
+            session.action_times[action], window
         )
         hourly_count = len(session.action_times[action])
 
@@ -106,7 +107,7 @@ class RateLimiter:
                 allowed=False,
                 reason=f"Hourly limit exceeded ({hourly_count}/{hourly_limit})",
                 remaining=0,
-                retry_after=self._seconds_until_slot(session.action_times[action]),
+                retry_after=self._seconds_until_slot(session.action_times[action], window),
             )
 
         # Check burst pattern
@@ -150,12 +151,12 @@ class RateLimiter:
         if recipient:
             session.known_recipients.add(recipient)
 
-    def _seconds_until_slot(self, times: List[float]) -> int:
+    def _seconds_until_slot(self, times: List[float], window: float = 3600) -> int:
         """Calculate seconds until the oldest entry expires from the window."""
         if not times:
             return 0
         oldest = min(times)
-        remaining = 3600 - (time.time() - oldest)
+        remaining = window - (time.time() - oldest)
         return max(1, int(remaining))
 
     def reset(self, session_id: Optional[str] = None) -> None:

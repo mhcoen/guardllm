@@ -39,6 +39,9 @@ _SECRET_PATTERNS: List[tuple[re.Pattern[str], str]] = [
     (re.compile(
         r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
     ), "Private key header"),
+    (re.compile(
+        r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"
+    ), "Bearer/JWT token"),
 ]
 
 _ENTROPY_THRESHOLD = 4.5

@@ -108,6 +108,21 @@ class TestSecretScanning:
         found = _scan_secrets(text)
         assert any("Private key" in s for s in found)
 
+    def test_bearer_jwt_token(self):
+        text = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc123"
+        found = _scan_secrets(text)
+        assert any("Bearer" in s or "JWT" in s for s in found)
+
+    def test_bearer_jwt_three_part(self):
+        text = "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdef"
+        found = _scan_secrets(text)
+        assert any("Bearer" in s or "JWT" in s for s in found)
+
+    def test_bearer_jwt_rsa(self):
+        text = "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature123"
+        found = _scan_secrets(text)
+        assert any("Bearer" in s or "JWT" in s for s in found)
+
     def test_no_secrets_in_clean_text(self):
         text = "This is a perfectly normal email body with no secrets."
         found = _scan_secrets(text)

@@ -192,7 +192,7 @@ def test_g6_commitment_args_swapped_denied():
     ctx.confirmation_handler = handler
     auth = Guard.authorize(
         action="gmail_send_email",
-        scope={"to": "alice@test.com"},
+        scope={"to": "alice@test.com", "body": "safe text"},
         user_message="send email",
         timestamp=time.time(),
     )

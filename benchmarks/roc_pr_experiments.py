@@ -1326,7 +1326,7 @@ def main() -> int:
 
     dataset_root = Path(args.dataset_root)
     cases = load_cases(args.suite, dataset_id=args.dataset_id, dataset_root=dataset_root)
-    records = build_text_records(cases, text_scope=args.text_scope)
+    records = build_text_records(cases, injection_scope=args.text_scope)
     if not records:
         print("No text records available after filtering.")
         return 1

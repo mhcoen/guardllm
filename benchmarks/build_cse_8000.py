@@ -37,6 +37,9 @@ OUTPUT_ID = "cse-8000"
 TARGET = 500   # per side per kind
 SEED = 42
 
+# Single shared RNG; initialized in build() from SEED.
+_rng = random.Random(SEED)
+
 SURFACE_KINDS = sorted([
     "source_gate", "validation", "tool_gate", "rate_limit",
     "tool_gate_auth", "binding_replay", "action_gate", "outbound_check",
@@ -199,7 +202,7 @@ def _gen_source_gate() -> None:
     # So quarantine sources are ATTACK-like.  Only ALLOW sources are benign.
 
     # Fill benign with randomized allow-tier sources
-    rng = random.Random(1001)
+    rng = _rng  # was: random.Random(1001)
     while _kind_count("source_gate", "benign") < TARGET:
         src = rng.choice(ALLOW_SOURCES)
         sid = f"{src}-{rng.randint(0, 99999):05d}"
@@ -294,7 +297,7 @@ def _gen_source_gate() -> None:
     _make("source_gate", source_type="x" * 10000, source_id="", expect_policy="block")
 
     # Fill remaining attack
-    rng_a = random.Random(1002)
+    rng_a = _rng  # was: random.Random(1002)
     all_atk_sources = QUARANTINE_SOURCES + BLOCK_SOURCES
     atk_policies = {s: "quarantine" for s in QUARANTINE_SOURCES}
     atk_policies.update({s: "block" for s in BLOCK_SOURCES})
@@ -397,7 +400,7 @@ def _gen_validation() -> None:
         _make("validation", tool="search_knowledge", args={name: val}, expect_valid=True)
 
     # Bulk benign fill
-    rng = random.Random(2001)
+    rng = _rng  # was: random.Random(2001)
     benign_tools = ALL_TOOLS + [f"unknown_tool_{i}" for i in range(10)]
     benign_args = [
         ("message", lambda r: "Hello " + "".join(r.choices(string.ascii_letters, k=r.randint(5, 30)))),
@@ -469,7 +472,7 @@ def _gen_validation() -> None:
     _make("validation", tool="search_knowledge", args={"message": "fine", "query": "x" * 1001}, expect_valid=False)
 
     # Bulk attack fill
-    rng_a = random.Random(2002)
+    rng_a = _rng  # was: random.Random(2002)
     fail_templates = [
         ("message", lambda r: "x" * (50001 + r.randint(0, 1000))),
         ("query", lambda r: "x" * (1001 + r.randint(0, 500))),
@@ -530,7 +533,7 @@ def _gen_tool_gate() -> None:
               policy={"capability_scopes": {tool: {}}, "enable_destructive": True}, expect_allowed=True)
 
     # Bulk benign
-    rng = random.Random(3001)
+    rng = _rng  # was: random.Random(3001)
     while _kind_count("tool_gate", "benign") < TARGET:
         variant = rng.randint(0, 3)
         if variant == 0:
@@ -591,7 +594,7 @@ def _gen_tool_gate() -> None:
               policy={"capability_scopes": others, "enable_destructive": True}, expect_allowed=False)
 
     # Bulk attack
-    rng_a = random.Random(3002)
+    rng_a = _rng  # was: random.Random(3002)
     while _kind_count("tool_gate", "attack") < TARGET:
         variant = rng_a.randint(0, 3)
         if variant == 0:
@@ -646,7 +649,7 @@ def _gen_rate_limit() -> None:
               sequence=["same@example.com"] * n, expect_final_allowed=True)
 
     # Bulk benign
-    rng = random.Random(4001)
+    rng = _rng  # was: random.Random(4001)
     while _kind_count("rate_limit", "benign") < TARGET:
         limit = rng.randint(10, 100)
         n_calls = rng.randint(1, min(limit, 9))
@@ -678,7 +681,7 @@ def _gen_rate_limit() -> None:
           expect_final_allowed=True, expect_any_anomaly_contains="Novel recipient")
 
     # Bulk attack
-    rng_a = random.Random(4002)
+    rng_a = _rng  # was: random.Random(4002)
     while _kind_count("rate_limit", "attack") < TARGET:
         variant = rng_a.randint(0, 2)
         if variant == 0:
@@ -741,7 +744,7 @@ def _gen_tool_gate_auth() -> None:
           message="search for test", expect_allowed=True)
 
     # Bulk benign
-    rng = random.Random(5001)
+    rng = _rng  # was: random.Random(5001)
     while _kind_count("tool_gate_auth", "benign") < TARGET:
         tool = rng.choice(ALL_TOOLS)
         pol = {"enable_destructive": True} if tool in DESTRUCTIVE else {}
@@ -790,7 +793,7 @@ def _gen_tool_gate_auth() -> None:
           message="send", expect_allowed=False)
 
     # Bulk attack
-    rng_a = random.Random(5002)
+    rng_a = _rng  # was: random.Random(5002)
     while _kind_count("tool_gate_auth", "attack") < TARGET:
         tool = rng_a.choice(ALL_TOOLS)
         pol = {"enable_destructive": True} if tool in DESTRUCTIVE else {}
@@ -879,7 +882,7 @@ def _gen_binding_replay() -> None:
               policy=pol, expect_allowed=True)
 
     # Bulk benign
-    rng = random.Random(6001)
+    rng = _rng  # was: random.Random(6001)
     while _kind_count("binding_replay", "benign") < TARGET:
         msg = "".join(rng.choices(string.ascii_letters + " ", k=rng.randint(20, 80)))
         tool = rng.choice(ALL_TOOLS)
@@ -934,7 +937,7 @@ def _gen_binding_replay() -> None:
               policy={"enable_destructive": True}, expect_allowed=False)
 
     # Bulk attack
-    rng_a = random.Random(6002)
+    rng_a = _rng  # was: random.Random(6002)
     while _kind_count("binding_replay", "attack") < TARGET:
         variant = rng_a.randint(0, 2)
         if variant == 0:
@@ -985,7 +988,7 @@ def _gen_action_gate() -> None:
               summary=f"{tool} to {recip}", expect_confirmed=True)
 
     # Bulk benign
-    rng = random.Random(7001)
+    rng = _rng  # was: random.Random(7001)
     while _kind_count("action_gate", "benign") < TARGET:
         tool = rng.choice(DESTRUCTIVE)
         recip = rng.choice(EXAMPLE_RECIPIENTS)
@@ -1017,7 +1020,7 @@ def _gen_action_gate() -> None:
               summary=f"{tool} to evil", use_handler=False, expect_confirmed=False)
 
     # Bulk attack
-    rng_a = random.Random(7002)
+    rng_a = _rng  # was: random.Random(7002)
     while _kind_count("action_gate", "attack") < TARGET:
         variant = rng_a.randint(0, 2)
         if variant == 0:
@@ -1114,7 +1117,7 @@ def _gen_outbound_check() -> None:
     times = ["2pm", "10am", "3:30pm", "noon", "9am"]
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     items = ["document", "spreadsheet", "presentation", "report", "analysis"]
-    rng = random.Random(8001)
+    rng = _rng  # was: random.Random(8001)
     for i in range(100):
         text = rng.choice(templates).format(
             topic=rng.choice(topics), time=rng.choice(times),
@@ -1124,7 +1127,7 @@ def _gen_outbound_check() -> None:
               has_quoting_directive=True, expect_allowed=True)
 
     # Low-variety tokens
-    rng_low = random.Random(8003)
+    rng_low = _rng  # was: random.Random(8003)
     for i in range(30):
         tok = "".join(rng_low.choices("abcdefghij", k=rng_low.randint(20, 40)))
         _make("outbound_check", source_type="web_content", content_type="plaintext",
@@ -1191,21 +1194,21 @@ def _gen_outbound_check() -> None:
           has_quoting_directive=True, expect_allowed=False)
 
     # High-entropy tokens (pre-validated to exceed 4.5 bits)
-    rng_ent = random.Random(8004)
+    rng_ent = _rng  # was: random.Random(8004)
     for i in range(50):
         high_ent = _make_high_entropy_token(rng_ent, length=40)
         _make("outbound_check", source_type="web_content", content_type="plaintext",
               inbound="safe", outbound=f"Token: {high_ent}", expect_allowed=False)
 
     # Hex-encoded secrets (pre-validated decoded entropy >= 4.5 bits)
-    rng_hex = random.Random(8005)
+    rng_hex = _rng  # was: random.Random(8005)
     for i in range(30):
         hex_secret = _make_high_entropy_hex(rng_hex, n_bytes=30)
         _make("outbound_check", source_type="web_content", content_type="plaintext",
               inbound="safe", outbound=f"Data: {hex_secret}", expect_allowed=False)
 
     # Bulk attack
-    rng_a = random.Random(8002)
+    rng_a = _rng  # was: random.Random(8002)
     while _kind_count("outbound_check", "attack") < TARGET:
         variant = rng_a.randint(0, 2)
         if variant == 0:
@@ -1260,6 +1263,7 @@ def build(force: bool = False) -> Path:
     global _cases, _id_counter
     _cases = []
     _id_counter = 0
+    _rng.seed(SEED)
 
     out_dir = DATASETS_ROOT / OUTPUT_ID
     if out_dir.exists() and not force:

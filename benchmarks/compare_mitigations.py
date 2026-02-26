@@ -223,14 +223,20 @@ AZURE_SIGNAL_CHOICES = (
 
 SURFACE_KINDS = {
     "tool_gate",
-    "tool_gate_auth",
+    "tool_gate_contamination",
     "validation",
-    "error_sanitize",
+    "outbound_check",
     "binding_replay",
     "action_gate",
     "source_gate",
     "rate_limit",
 }
+
+# Paper Table 2 partitions (CSE-8000).
+# Call-local kinds test checks a single tool can answer from its own input.
+# Cross-stage kinds require shared state across pipeline stages.
+CALL_LOCAL_KINDS = {"source_gate", "validation", "tool_gate", "rate_limit"}
+CROSS_STAGE_KINDS = {"tool_gate_contamination", "binding_replay", "action_gate", "outbound_check"}
 
 
 # Strict prompt-injection/jailbreak text benchmark suites.
@@ -869,6 +875,28 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         passed = int(entry["passed"])
         entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
 
+    # Partition-level aggregation (call-local vs cross-stage)
+    partitions: dict[str, dict[str, dict[str, float | int]]] = {}
+    for partition_name, partition_kinds in [
+        ("call_local", CALL_LOCAL_KINDS),
+        ("cross_stage", CROSS_STAGE_KINDS),
+    ]:
+        partition_stats: dict[str, dict[str, float | int]] = {
+            name: {"passed": 0, "total": 0, "pass_rate": 0.0} for name in strategy_names
+        }
+        for kind, strat_stats in by_kind.items():
+            if kind not in partition_kinds:
+                continue
+            for name, item in strat_stats.items():
+                entry = partition_stats[name]
+                entry["passed"] = int(entry["passed"]) + int(item["passed"])
+                entry["total"] = int(entry["total"]) + int(item["total"])
+        for name, entry in partition_stats.items():
+            total = int(entry["total"])
+            passed = int(entry["passed"])
+            entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+        partitions[partition_name] = partition_stats
+
     return {
         "count": len(surface_cases),
         "strategies": strategies,
@@ -876,6 +904,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         "macro_by_kind": macro_by_kind,
         "macro_by_kind_no_source_gate": macro_by_kind_no_source_gate,
         "by_kind": by_kind,
+        "partitions": partitions,
         "errors": surface_errors,
         "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
     }
@@ -2082,6 +2111,22 @@ def write_markdown(
                 lines.append(
                     f"| {kind} | {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% |"
                 )
+
+    partitions = surface_only.get("partitions", {})
+    if partitions:
+        lines.append("")
+        lines.append("### Partition Summary (Call-Local vs Cross-Stage)")
+        lines.append("")
+        lines.append("| partition | strategy | passed | total | pass rate |")
+        lines.append("|---|---|---:|---:|---:|")
+        for partition_name in ["call_local", "cross_stage"]:
+            partition_stats = partitions.get(partition_name, {})
+            for name, stats in partition_stats.items():
+                total = stats.get("total", 0)
+                if total > 0:
+                    lines.append(
+                        f"| {partition_name} | {name} | {stats.get('passed', 0)} | {total} | {stats.get('pass_rate', 0.0)}% |"
+                    )
 
     lines.append("")
     lines.append("## Holdout Generalization (Legacy Upstream Snapshots)")

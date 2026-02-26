@@ -388,7 +388,8 @@ def main() -> int:
 
     total = len(predictions)
     accuracy = round(((tp + tn) / total) * 100, 2) if total else 0.0
-    precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 0.0
+    # Convention: precision=100% when TP+FP=0 (no positive predictions, no errors).
+    precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 100.0
     recall = round((tp / (tp + fn)) * 100, 2) if (tp + fn) else 0.0
     f1 = round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
 

@@ -285,3 +285,129 @@ class TestConfirmAllBelow:
         assert gate.requires_confirmation(
             proposal, ctx, context_has_web_derived=True
         ) is True
+
+
+# ---------------------------------------------------------------------------
+# G6: Args-changed-after-confirmation (commitment verification)
+# ---------------------------------------------------------------------------
+
+
+class TestArgsCommitment:
+    """G6: verify_commitment detects args changes after confirmation."""
+
+    def test_args_match_passes(self):
+        """Matching args after confirmation passes verification."""
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="gmail_send_email",
+            args={"to": "alice@test.com", "body": "hello"},
+            summary="Send email",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, reason = gate.verify_commitment(
+            "gmail_send_email", {"to": "alice@test.com", "body": "hello"}
+        )
+        assert ok is True
+        assert "verified" in reason
+
+    def test_args_changed_denies(self):
+        """Changed args after confirmation fails verification."""
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="gmail_send_email",
+            args={"to": "alice@test.com", "body": "safe text"},
+            summary="Send email",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, reason = gate.verify_commitment(
+            "gmail_send_email", {"to": "alice@test.com", "body": "evil text"}
+        )
+        assert ok is False
+        assert "args changed" in reason
+
+    def test_tool_name_changed_denies(self):
+        """Different tool name fails verification."""
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="gmail_send_email",
+            args={"to": "alice@test.com"},
+            summary="Send email",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, reason = gate.verify_commitment(
+            "gmail_delete_email", {"to": "alice@test.com"}
+        )
+        assert ok is False
+        assert "no commitment" in reason
+
+    def test_no_commitment_denies(self):
+        """No prior confirmation fails verification."""
+        gate = ActionGate()
+        ok, reason = gate.verify_commitment("gmail_send_email", {"to": "x"})
+        assert ok is False
+
+    def test_extra_key_denies(self):
+        """Extra key in execution args fails verification."""
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="gmail_send_email",
+            args={"to": "alice@test.com"},
+            summary="Send email",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, _ = gate.verify_commitment(
+            "gmail_send_email", {"to": "alice@test.com", "cc": "eve@x.com"}
+        )
+        assert ok is False
+
+    def test_denied_confirmation_no_commitment(self):
+        """Denied confirmation does not store a commitment."""
+        handler = _DenyingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="gmail_send_email",
+            args={"to": "alice@test.com"},
+            summary="Send email",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, _ = gate.verify_commitment("gmail_send_email", {"to": "alice@test.com"})
+        assert ok is False

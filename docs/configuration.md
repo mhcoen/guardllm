@@ -24,6 +24,9 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - `untrusted_require_auth`: require auth event when `principal_trust == UNTRUSTED` (default `False`).
 - `confirm_all_below`: require confirmation for all tools when `principal_trust` is at or below this level.
 - `rate_limit_overrides`: per-`principal_trust` rate limit overrides, merged over defaults.
+- `contaminated_tool_policy`: tool gating when context is contaminated (`"allow"`, `"require_auth"`, or `"deny"`; default `"allow"`).
+- `auto_confirm_destructive`: auto-require confirmation for destructive tool calls (default `False`). Production deployments should set to `True`.
+- `require_source_id_for`: source types that require non-empty `source_id` (default empty frozenset). Blocks KG extraction when violated.
 
 ## SecurityContext
 

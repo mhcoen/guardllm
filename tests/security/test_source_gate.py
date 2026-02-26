@@ -143,3 +143,40 @@ class TestSourceGateOverrides:
             source_gate_overrides=overrides,
         )
         assert result.policy == ExtractionPolicy.BLOCK
+
+
+class TestRequireSourceIdFor:
+    """Tests for require_source_id_for enforcement."""
+
+    def test_required_type_empty_id_blocked(self):
+        result = check_extraction_allowed(
+            "mcp_client",
+            source_id="",
+            require_source_id_for=frozenset({"mcp_client"}),
+        )
+        assert result.policy == ExtractionPolicy.BLOCK
+        assert "source_id required" in result.reason
+
+    def test_required_type_valid_id_allowed(self):
+        result = check_extraction_allowed(
+            "mcp_client",
+            source_id="client-42",
+            require_source_id_for=frozenset({"mcp_client"}),
+        )
+        assert result.policy == ExtractionPolicy.QUARANTINE
+
+    def test_default_empty_set_allows_empty_id(self):
+        result = check_extraction_allowed(
+            "mcp_client",
+            source_id="",
+            require_source_id_for=frozenset(),
+        )
+        assert result.policy == ExtractionPolicy.QUARANTINE
+
+    def test_different_type_not_required_allows_empty(self):
+        result = check_extraction_allowed(
+            "user_input",
+            source_id="",
+            require_source_id_for=frozenset({"mcp_client"}),
+        )
+        assert result.policy == ExtractionPolicy.ALLOW

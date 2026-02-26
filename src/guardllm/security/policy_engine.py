@@ -103,9 +103,9 @@ class PolicyEngine:
     ) -> GateResult:
         """Server mode: check capability scopes."""
         scopes = ctx.policy.capability_scopes
-        if scopes:
-            # If scopes are configured, tool must be in them
-            if tool not in scopes:
+        if scopes is not None:
+            # Empty dict = deny all tools; non-empty = tool must be in set
+            if not scopes or tool not in scopes:
                 return GateResult(
                     allowed=False,
                     reason=f"Tool '{tool}' not in capability scopes",
@@ -152,6 +152,16 @@ class PolicyEngine:
                 reason=f"Destructive tool '{tool}' requires authorization",
                 confidence="none",
             )
+
+        # L9: tool_allowlist enforcement -- if configured, tool must be in list
+        if ctx.policy.tool_allowlist:
+            allowed_tools = {k[0] if isinstance(k, tuple) else k for k in ctx.policy.tool_allowlist}
+            if tool not in allowed_tools:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Tool '{tool}' not in session allowlist",
+                    confidence="none",
+                )
 
         # Non-destructive tools without auth_event are implicitly allowed
         if auth_event is None:

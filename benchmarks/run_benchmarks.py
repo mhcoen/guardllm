@@ -408,9 +408,10 @@ def run_binding_replay(case: dict[str, Any]) -> CaseResult:
         args=case["args"],
         authorization=auth,
     )
+    replay_args = case.get("replay_args", case["args"])
     replay = guard.check_tool_call(
         tool=case["tool"],
-        args=case["args"],
+        args=replay_args,
         context=ctx,
         authorization=auth,
         binding=binding,
@@ -516,6 +517,54 @@ def _run_contaminated_exfil_steps(guard: Guard, policy: PolicyConfig, case: dict
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def run_tool_gate_contamination(case: dict[str, Any]) -> CaseResult:
+    guard = Guard()
+    policy = PolicyConfig(**case.get("policy", {}))
+
+    # Ingest untrusted content to set contamination flag (cross-stage state)
+    untrusted_text = case.get("untrusted_content")
+    if untrusted_text is not None:
+        untrusted_ctx = SecurityContext(
+            mode="client",
+            source_type="web_content",
+            source_id="untrusted-source",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
+        )
+        guard.process_inbound(untrusted_text, untrusted_ctx)
+
+    # Build context for tool check
+    mode = case.get("mode", "client")
+    if mode == "server":
+        ctx = SecurityContext(
+            mode="server",
+            source_type="mcp_client",
+            source_id="client-1",
+            policy=policy,
+        )
+    else:
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="server-1",
+            policy=policy,
+        )
+
+    # Optionally provide authorization
+    auth = None
+    if "auth_action" in case:
+        auth = Guard.authorize(
+            action=case["auth_action"],
+            scope=case.get("auth_scope", {}),
+            user_message=case.get("message", "authorized message"),
+        )
+
+    result = guard.check_tool_call(case["tool"], case["args"], ctx, authorization=auth)
+    passed = result.allowed is case["expect_allowed"]
+    details = f"allowed={result.allowed} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
 def run_case(case: dict[str, Any]) -> CaseResult:
     kind = case["kind"]
     if kind == "inbound_sanitize":
@@ -524,6 +573,8 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return run_tool_gate(case)
     if kind == "tool_gate_auth":
         return run_tool_gate_auth(case)
+    if kind == "tool_gate_contamination":
+        return run_tool_gate_contamination(case)
     if kind == "outbound_check":
         return run_outbound(case)
     if kind == "validation":

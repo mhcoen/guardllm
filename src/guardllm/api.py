@@ -11,6 +11,7 @@ from guardllm.security.action_gate import ActionGate, ActionProposal
 from guardllm.security.audit import AuditLogger
 from guardllm.security.error_sanitizer import sanitize_error
 from guardllm.security.pipeline import SecurityPipeline
+from guardllm.security.policy_engine import DESTRUCTIVE_TOOLS
 from guardllm.security.request_binding import create_binding
 from guardllm.security.types import (
     AuditEvent,
@@ -325,6 +326,10 @@ class Guard:
         validate: bool = True,
     ) -> GateResult:
         """Full tool-call guard flow: validation -> policy -> optional confirmation."""
+        # L12: auto-require confirmation for destructive tools when policy says so
+        if context.policy.auto_confirm_destructive and tool in DESTRUCTIVE_TOOLS:
+            require_confirmation = True
+
         if validate:
             validation = self.validate_tool_args(tool, args)
             if not validation.valid:
@@ -360,6 +365,14 @@ class Guard:
                 return GateResult(
                     allowed=False,
                     reason="User denied confirmation",
+                    confidence="none",
+                )
+            # G6: verify args match the confirmed commitment
+            ok, reason = self._action_gate.verify_commitment(tool, args)
+            if not ok:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Commitment verification failed: {reason}",
                     confidence="none",
                 )
 

@@ -76,7 +76,8 @@ Threshold tuning:
 - L3 and L4 overlap thresholds are configurable per context via `PolicyConfig`
   (`dlp_verbatim_lcs_min`, `dlp_ngram_overlap_min`,
   `provenance_verbatim_lcs_min`, `provenance_ngram_overlap_min`).
-- Defaults preserve prior behavior (`100/0.40` for DLP, `50/0.30` for provenance).
+- DLP defaults: `dlp_verbatim_lcs_min=14`, `dlp_sensitive_lcs_min=12`, `dlp_ngram_overlap_min=0.40`.
+- Provenance defaults: `provenance_verbatim_lcs_min=50`, `provenance_ngram_overlap_min=0.30`.
 
 ## Unknown-Provenance Source Handling
 

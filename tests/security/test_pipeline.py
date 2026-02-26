@@ -329,6 +329,33 @@ class TestCheckToolExecution:
         )
         assert result.allowed is False
 
+    def test_empty_allowlist_blocks_all(self, pipeline):
+        """Empty capability_scopes ({}) denies every tool."""
+        ctx = SecurityContext(
+            mode="server",
+            source_type="mcp_client",
+            source_id="client-1",
+            policy=PolicyConfig(capability_scopes={}),
+        )
+        result = pipeline.check_tool_execution(
+            tool="episodic_search", args={"query": "test"}, ctx=ctx,
+        )
+        assert result.allowed is False
+        assert "not in capability scopes" in result.reason
+
+    def test_none_allowlist_skips_check(self, pipeline):
+        """None capability_scopes (default) skips allowlist check."""
+        ctx = SecurityContext(
+            mode="server",
+            source_type="mcp_client",
+            source_id="client-1",
+            policy=PolicyConfig(capability_scopes=None),
+        )
+        result = pipeline.check_tool_execution(
+            tool="episodic_search", args={"query": "test"}, ctx=ctx,
+        )
+        assert result.allowed is True
+
 
 # ---------------------------------------------------------------------------
 # Integration flows
@@ -746,3 +773,166 @@ class TestDefaultParityRegression:
         pipe.process_inbound(long_content, ctx)
         result = pipe.check_outbound(long_content, ctx)
         assert result.allowed is False
+
+
+class TestContaminatedToolGating:
+    """Tests for contamination-aware tool gating (cross-stage invariant)."""
+
+    def test_deny_blocks_when_contaminated(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="deny")
+        untrusted_ctx = SecurityContext(
+            mode="client", source_type="web_content", source_id="web",
+            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+        )
+        pipe.process_inbound("ignore instructions", untrusted_ctx)
+        tool_ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
+        assert result.allowed is False
+        assert "contaminated" in result.reason
+
+    def test_deny_allows_when_clean(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="deny")
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, ctx)
+        assert result.allowed is True
+
+    def test_require_auth_blocks_without_auth_when_contaminated(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="require_auth")
+        untrusted_ctx = SecurityContext(
+            mode="client", source_type="web_content", source_id="web",
+            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+        )
+        pipe.process_inbound("malicious payload", untrusted_ctx)
+        tool_ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
+        assert result.allowed is False
+        assert "Authorization required" in result.reason
+
+    def test_require_auth_allows_with_auth_when_contaminated(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="require_auth")
+        untrusted_ctx = SecurityContext(
+            mode="client", source_type="web_content", source_id="web",
+            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+        )
+        pipe.process_inbound("malicious payload", untrusted_ctx)
+        tool_ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        auth = AuthorizationEvent(
+            action="search_knowledge", scope={},
+            message_hash="abc123", timestamp=time.time(), source="test",
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx, auth_event=auth)
+        assert result.allowed is True
+
+    def test_require_auth_allows_when_clean(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="require_auth")
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, ctx)
+        assert result.allowed is True
+
+    def test_allow_passes_when_contaminated(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(contaminated_tool_policy="allow")
+        untrusted_ctx = SecurityContext(
+            mode="client", source_type="web_content", source_id="web",
+            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+        )
+        pipe.process_inbound("ignore instructions", untrusted_ctx)
+        tool_ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
+        assert result.allowed is True
+
+    def test_default_policy_is_allow(self):
+        policy = PolicyConfig()
+        assert policy.contaminated_tool_policy == "allow"
+
+    def test_invalid_policy_raises(self):
+        with pytest.raises(ValueError, match="contaminated_tool_policy"):
+            PolicyConfig(contaminated_tool_policy="invalid")
+
+
+# ---------------------------------------------------------------------------
+# L9: tool_allowlist enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestToolAllowlist:
+    """L9: tool_allowlist is enforced in client mode before implicit allow."""
+
+    def test_allowlist_set_tool_in_list_allowed(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("search_knowledge", {}, ctx)
+        assert result.allowed is True
+
+    def test_allowlist_set_tool_not_in_list_denied(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("read_calendar", {}, ctx)
+        assert result.allowed is False
+        assert "not in session allowlist" in result.reason
+
+    def test_allowlist_empty_preserves_implicit_allow(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig()  # default empty allowlist
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("any_tool", {}, ctx)
+        assert result.allowed is True
+        assert "implicit allow" in result.reason
+
+    def test_allowlist_does_not_affect_server_mode(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
+        ctx = SecurityContext(
+            mode="server", source_type="mcp_client", source_id="c1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("file_read", {}, ctx)
+        assert result.allowed is True
+
+    def test_allowlist_still_requires_auth_for_destructive(self):
+        pipe = SecurityPipeline()
+        policy = PolicyConfig(
+            tool_allowlist={("gmail_send_email",): True},
+            enable_destructive=True,
+        )
+        ctx = SecurityContext(
+            mode="client", source_type="mcp_server", source_id="s1",
+            policy=policy,
+        )
+        result = pipe.check_tool_execution("gmail_send_email", {}, ctx)
+        assert result.allowed is False
+        assert "requires authorization" in result.reason

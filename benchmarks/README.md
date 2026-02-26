@@ -29,6 +29,21 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 - Auditor checklist: `benchmarks/VERIFICATION.md`
 - Canonical summary tables/figures: `benchmarks/results.md`
 
+## Reproducing Paper Results
+
+The benchmark harness uses two scripts with distinct roles:
+
+- **`run_benchmarks.py`**: Runs GuardLLM-only evaluation (per-case pass/fail against expected outcomes).
+- **`compare_mitigations.py`**: Produces the baseline vs GuardLLM comparison table matching **paper Table 1** (CSE-8000). This is the script a reviewer needs for paper reproduction.
+
+To reproduce the paper's Table 1 (CSE comparison across 8 security kinds):
+
+```bash
+python benchmarks/compare_mitigations.py --run-id paper-repro
+```
+
+This outputs `benchmarks/runs/<run_id>/comparison.md` (Table 1 format) and `benchmarks/runs/<run_id>/comparison.json` with per-strategy, per-kind, and partition-level (call-local / cross-stage) metrics.
+
 ## Run
 
 ```bash
@@ -160,7 +175,7 @@ Supported values for `--suite`:
 Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `id`: stable case identifier
 - `suite`: suite name (`pint_style`, `bipia_style`, `agentdojo_style`)
-- `kind`: evaluator type (`inbound_sanitize`, `tool_gate`, `tool_gate_auth`, `outbound_check`, `validation`, `error_sanitize`, `binding_replay`, `action_gate`, `source_gate`, `canary_check`, `rate_limit`)
+- `kind`: evaluator type (`inbound_sanitize`, `tool_gate`, `tool_gate_auth`, `tool_gate_contamination`, `outbound_check`, `validation`, `error_sanitize`, `binding_replay`, `action_gate`, `source_gate`, `canary_check`, `rate_limit`)
 - additional fields required by that `kind`
 
 ## Current Suites
@@ -176,6 +191,7 @@ Each line in `benchmarks/cases/*.jsonl` is one JSON object with:
 - `secrets_exfil_style`
 - `multistep_agent_attack_style`
 - `unicode_evasion_style`
+- `tool_gate_contamination_style`
 - `upstream_pint`
 - `upstream_bipia`
 - `upstream_agentdojo`

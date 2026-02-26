@@ -11,10 +11,34 @@ require enhanced confirmation with a hardcoded warning.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from guardllm.security.types import SecurityContext, TrustLevel
+
+
+def canonicalize_args(args: Dict[str, Any]) -> str:
+    """Stable canonical representation of args for commitment comparison.
+
+    Sorts dict keys recursively, normalizes whitespace in string values,
+    and produces a deterministic JSON string.
+    """
+    return json.dumps(_normalize(args), sort_keys=True, separators=(",", ":"))
+
+
+def _normalize(obj: Any) -> Any:
+    """Recursively normalize a value for canonical comparison."""
+    if isinstance(obj, dict):
+        return {k: _normalize(v) for k, v in sorted(obj.items())}
+    if isinstance(obj, (list, tuple)):
+        return [_normalize(item) for item in obj]
+    if isinstance(obj, str):
+        return " ".join(obj.split())
+    if isinstance(obj, float):
+        if obj == int(obj):
+            return int(obj)
+    return obj
 
 
 @dataclass
@@ -42,9 +66,30 @@ class ActionGate:
     - Read-only tools skip the gate
     - Heightened scrutiny when class_hiding_possible
     - Cancelled actions are never executed
+    - G6: Args-changed-after-confirmation check (commitment verification)
     - INV-MUSE-7: Enhanced confirmation for ALL tool calls when
       context_has_web_derived is True (gated on muse_escalation_gate config)
     """
+
+    def __init__(self) -> None:
+        # G6: commitment storage. Key = tool_name, value = canonical args string.
+        self._commitments: Dict[str, str] = {}
+
+    def verify_commitment(
+        self, tool: str, args: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """Verify that tool+args match the last confirmed commitment (G6).
+
+        Returns (ok, reason). If no commitment exists for this tool,
+        returns (False, "no commitment found").
+        """
+        if tool not in self._commitments:
+            return False, "no commitment found"
+        committed = self._commitments[tool]
+        actual = canonicalize_args(args)
+        if committed != actual:
+            return False, "args changed after confirmation"
+        return True, "commitment verified"
 
     def requires_confirmation(
         self,
@@ -113,11 +158,16 @@ class ActionGate:
                 context_dict["web_derived_warning"] = _WEB_DERIVED_WARNING
                 context_dict["enhanced_confirmation"] = True
 
-            return await ctx.confirmation_handler.confirm(
+            # G6: capture canonical args before handler (handler may mutate args)
+            canonical_before = canonicalize_args(proposal.args)
+            confirmed = await ctx.confirmation_handler.confirm(
                 proposal.tool_name,
                 proposal.args,
                 context_dict,
             )
+            if confirmed:
+                self._commitments[proposal.tool_name] = canonical_before
+            return confirmed
 
         # No handler configured -- deny by default
         return False

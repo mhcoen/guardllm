@@ -352,6 +352,9 @@ Fields:
 - `untrusted_require_auth: bool = False`
 - `confirm_all_below: TrustLevel | None = None`
 - `rate_limit_overrides: dict[TrustLevel, dict[str, int]] = {}`
+- `contaminated_tool_policy: str = "allow"` (`"allow"` | `"require_auth"` | `"deny"`)
+- `auto_confirm_destructive: bool = False`
+- `require_source_id_for: frozenset[str] = frozenset()`
 
 ### Protocol Class: `ConfirmationHandler`
 

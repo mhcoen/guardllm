@@ -17,6 +17,7 @@ from guardllm.security.normalization import (
     deobfuscate_spelled,
     normalize_for_overlap,
 )
+from guardllm.security.types import SensitivityLevel, TrustLevel
 
 
 @dataclass
@@ -31,8 +32,8 @@ class ProvenancedSpan:
     text: str
     source_type: str          # "mcp_server", "mcp_client", "cli_user", "assistant"
     source_id: str            # Specific source identifier
-    source_trust: str          # "trusted" or "untrusted"
-    sensitivity: str = "public"  # "public", "internal", "sensitive"
+    source_trust: TrustLevel = TrustLevel.UNTRUSTED
+    sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     topic_of_origin: Optional[str] = None  # For cross-topic leak detection
 
 
@@ -71,11 +72,11 @@ class ProvenanceTracker:
 
         # Select spans to check: always untrusted, plus sensitive when contaminated
         check_spans: list[tuple[ProvenancedSpan, str]] = [
-            (s, "untrusted") for s in self._spans if s.source_trust == "untrusted"
+            (s, "untrusted") for s in self._spans if s.source_trust == TrustLevel.UNTRUSTED
         ]
         if contaminated:
             check_spans.extend(
-                (s, "sensitive") for s in self._spans if s.sensitivity == "sensitive"
+                (s, "sensitive") for s in self._spans if s.sensitivity == SensitivityLevel.SENSITIVE
             )
 
         if not check_spans:

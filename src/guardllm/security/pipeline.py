@@ -146,8 +146,8 @@ class SecurityPipeline:
             text=content,
             source_type=ctx.source_type,
             source_id=ctx.source_id,
-            source_trust=ctx.source_trust.value,
-            sensitivity=ctx.sensitivity.value,
+            source_trust=ctx.source_trust,
+            sensitivity=ctx.sensitivity,
         ))
 
         # Canary detection on inbound (exfiltration attempt)
@@ -257,11 +257,27 @@ class SecurityPipeline:
     ) -> GateResult:
         """Policy check before tool execution.
 
-        Runs: L9 (policy) -> L6 (rate limit) -> L11 (request binding).
+        Runs: contamination gate -> L9 (policy) -> L6 (rate limit) -> L11 (request binding).
 
         Client mode: calling external MCP tool.
         Server mode: executing internal tool for MCP client.
         """
+        # Contamination-aware tool gating (cross-stage invariant)
+        if self._context_contaminated:
+            ctp = ctx.policy.contaminated_tool_policy
+            if ctp == "deny":
+                return GateResult(
+                    allowed=False,
+                    reason="Tool call denied: context contaminated",
+                    confidence="none",
+                )
+            if ctp == "require_auth" and auth_event is None:
+                return GateResult(
+                    allowed=False,
+                    reason="Authorization required: context contaminated",
+                    confidence="none",
+                )
+
         # L9: Policy engine check
         policy_result = self._policy.check_tool_execution(
             tool, args, auth_event, ctx
@@ -305,4 +321,5 @@ class SecurityPipeline:
             ctx.source_id,
             source_trust=ctx.source_trust,
             source_gate_overrides=ctx.policy.source_gate_overrides,
+            require_source_id_for=ctx.policy.require_source_id_for,
         )

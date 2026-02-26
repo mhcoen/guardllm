@@ -110,8 +110,8 @@ class PolicyConfig:
     directive_patterns: Dict[str, Any] = field(default_factory=dict)
     enable_destructive: bool = False
 
-    # Server mode
-    capability_scopes: Dict[str, Any] = field(default_factory=dict)
+    # Server mode (None = no allowlist, {} = deny all tools)
+    capability_scopes: Optional[Dict[str, Any]] = None
     client_id: Optional[str] = None
 
     # Shared
@@ -137,8 +137,20 @@ class PolicyConfig:
     confirm_all_below: Optional[TrustLevel] = None
     # Per-principal_trust rate limit overrides, merged over DEFAULT_LIMITS
     rate_limit_overrides: Dict[TrustLevel, Dict[str, int]] = field(default_factory=dict)
+    # Contamination-aware tool gating: "allow" | "require_auth" | "deny"
+    contaminated_tool_policy: str = "allow"
+    # L12: auto-require confirmation for destructive tool calls
+    auto_confirm_destructive: bool = False
+    # Source types that require non-empty source_id
+    require_source_id_for: FrozenSet[str] = frozenset()
 
     def __post_init__(self) -> None:
+        _VALID_CONTAMINATED_TOOL_POLICIES = {"allow", "require_auth", "deny"}
+        if self.contaminated_tool_policy not in _VALID_CONTAMINATED_TOOL_POLICIES:
+            raise ValueError(
+                f"Invalid contaminated_tool_policy: '{self.contaminated_tool_policy}'. "
+                f"Valid values: {sorted(_VALID_CONTAMINATED_TOOL_POLICIES)}"
+            )
         _VALID_RATE_LIMIT_KEYS = {
             "emails_per_hour",
             "burst_threshold",

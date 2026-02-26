@@ -2448,10 +2448,11 @@ def main() -> int:
         default=None,
         help="Path to Llama Guard 4 results.json to merge into injection comparison.",
     )
+    parser.add_argument("--dataset-id", default="canonical-v1", help="Dataset to load (default: canonical-v1)")
     args = parser.parse_args()
     ensure_cache_dir()
 
-    cases = load_cases(args.suite, dataset_id="canonical-v1")
+    cases = load_cases(args.suite, dataset_id=args.dataset_id)
     if not cases:
         print("No benchmark cases found.")
         return 1

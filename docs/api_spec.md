@@ -333,7 +333,7 @@ Method:
 ### Dataclass: `PolicyConfig`
 
 Fields:
-- `tool_allowlist: dict[tuple, Any] = {}`
+- `tool_allowlist: dict[tuple, Any] | None = None` (`None` = no allowlist, fall through; `{}` = deny all tools)
 - `directive_patterns: dict[str, Any] = {}`
 - `enable_destructive: bool = False`
 - `capability_scopes: dict[str, Any] | None = None` (`None` = no allowlist; `{}` = deny all tools)

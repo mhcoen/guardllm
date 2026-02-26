@@ -105,8 +105,8 @@ class AuthorizationEvent:
 class PolicyConfig:
     """Policy configuration for a security context."""
 
-    # Client mode
-    tool_allowlist: Dict[tuple, Any] = field(default_factory=dict)
+    # Client mode (None = no allowlist; dict including {} = deny unless listed)
+    tool_allowlist: Optional[Dict[tuple, Any]] = None
     directive_patterns: Dict[str, Any] = field(default_factory=dict)
     enable_destructive: bool = False
 

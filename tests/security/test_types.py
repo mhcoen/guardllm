@@ -197,7 +197,7 @@ class TestSecurityContext:
             source_id="s1",
         )
         assert isinstance(ctx.policy, PolicyConfig)
-        assert ctx.policy.tool_allowlist == {}
+        assert ctx.policy.tool_allowlist is None
         assert ctx.policy.enable_destructive is False
         assert ctx.policy.dlp_verbatim_lcs_min == 14
         assert ctx.policy.dlp_ngram_overlap_min == 0.40

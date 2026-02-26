@@ -153,8 +153,9 @@ class PolicyEngine:
                 confidence="none",
             )
 
-        # L9: tool_allowlist enforcement -- if configured, tool must be in list
-        if ctx.policy.tool_allowlist:
+        # L9: tool_allowlist enforcement
+        # None = no allowlist (disabled); dict (including empty {}) = deny unless listed
+        if ctx.policy.tool_allowlist is not None:
             allowed_tools = {k[0] if isinstance(k, tuple) else k for k in ctx.policy.tool_allowlist}
             if tool not in allowed_tools:
                 return GateResult(

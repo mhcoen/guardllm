@@ -126,9 +126,10 @@ Runtime behavior for `roc_pr_experiments.py`:
 
 Current comparison strategies:
 - `guardllm`: full GuardLLM controls
+- `surface_stack`: point-tool stack baseline (Casbin + JSON Schema + Redis + OPA). This is the paper Table 1 baseline.
 - `isolation_only`: inbound isolation-only baseline
 - `source_gate_only`: source-gate-only baseline
-- `no_defense`: allow-all baseline
+- `no_defense`: allow-all lower-bound control
 
 ## Import official exports
 
@@ -432,7 +433,7 @@ Recommended policy for this repo:
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
 - Upstream snapshots are expected to come from official exports/checkpoints pinned by commit/tag in provenance metadata.
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.
-- `compare_mitigations.py` compares `guardllm` against a `no_defense` baseline on identical cases and includes pinned export reference stats.
+- `compare_mitigations.py` compares `guardllm` against baseline strategies (point-tool stack `surface_stack` for Table 1, `no_defense` as lower-bound control) and includes pinned export reference stats.
 - Azure category moderation is intentionally excluded from the injection benchmark; Prompt Shields integration is tracked separately.
 - Bedrock Guardrails can be compared on the injection-detection subset by providing a guardrail ID/version and AWS profile/region.
 - The comparison report's "Official Reference" section summarizes pinned export dataset stats; it is not a direct upstream leaderboard scrape.

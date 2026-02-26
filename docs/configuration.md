@@ -5,7 +5,7 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 ## PolicyConfig
 
 `PolicyConfig` fields:
-- `tool_allowlist`: client-mode allowlist map for tool authorization policy.
+- `tool_allowlist`: client-mode allowlist map for tool authorization policy (`None` = no allowlist, fall through; `{}` = deny all tools; `{tool: ...}` = allow listed tools only).
 - `directive_patterns`: optional adapter-side directive rules.
 - `enable_destructive`: enable destructive tools (default `False`).
 - `capability_scopes`: server-mode allowed tool scope mapping (`None` = no allowlist; `{}` = deny all tools).

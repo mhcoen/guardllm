@@ -670,6 +670,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             "retry_after_positive": not final_allowed,
         }
 
+    # surface_stack: "point-tool stack" baseline in the paper (Table 1).
+    # Composition: Casbin RBAC + JSON Schema + Redis rate-limit + OPA policy.
     def predict_surface_stack(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
         if kind == "validation":
@@ -2007,6 +2009,12 @@ def write_markdown(
             parts.append(f"{s['passed']}/{s['total']} ({s['pass_rate']}%)")
         delta = round(row["guardllm"]["pass_rate"] - row["no_defense"]["pass_rate"], 2)
         lines.append(f"| {row['suite']} | " + " | ".join(parts) + f" | {delta}% |")
+    lines.append("")
+    lines.append(
+        "Note: `no_defense` is the allow-all lower-bound control. "
+        "For the paper Table 1 baseline (point-tool stack), see "
+        "`surface_stack` in the Non-Text Comparison section below."
+    )
 
     lines.append("")
     lines.append("## Overall")
@@ -2143,7 +2151,12 @@ def write_markdown(
         )
 
     lines.append("")
-    lines.append("## Non-Text Comparison")
+    lines.append("## Non-Text Comparison (Table 1 Baseline)")
+    lines.append("")
+    lines.append(
+        "**Table 1 baseline**: `surface_stack` "
+        "(Casbin RBAC + JSON Schema + Redis rate-limit + OPA policy)"
+    )
     lines.append("")
     lines.append(f"- Record count: `{surface_only.get('count', 0)}`")
     deps = surface_only.get("deps", {})
@@ -2155,11 +2168,29 @@ def write_markdown(
     lines.append("| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     macro = surface_only.get("macro_by_kind", {})
-    for name, stats in surface_only.get("strategies", {}).items():
+    surface_strategies = surface_only.get("strategies", {})
+    for name, stats in surface_strategies.items():
+        label = f"{name} **(Table 1 baseline)**" if name == "surface_stack" else name
         lines.append(
-            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
+            f"| {label} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
             f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
             f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
+        )
+    # GuardLLM vs surface_stack delta (the paper's Table 1 comparison)
+    gl_surface = surface_strategies.get("guardllm_surface", {})
+    ss_stats = surface_strategies.get("surface_stack", {})
+    if gl_surface and ss_stats:
+        gl_f1 = gl_surface.get("f1", 0.0)
+        ss_f1 = ss_stats.get("f1", 0.0)
+        gl_rate = gl_surface.get("pass_rate", 0.0)
+        ss_rate = ss_stats.get("pass_rate", 0.0)
+        lines.append("")
+        lines.append(
+            f"GuardLLM vs surface_stack (Table 1 baseline): "
+            f"F1 {gl_f1:.4f} vs {ss_f1:.4f} "
+            f"(delta {round(gl_f1 - ss_f1, 4):+.4f}), "
+            f"pass rate {gl_rate}% vs {ss_rate}% "
+            f"(delta {round(gl_rate - ss_rate, 2):+.2f}%)"
         )
     lines.append("")
     lines.append("Excluding `source_gate`:")

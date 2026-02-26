@@ -223,7 +223,7 @@ AZURE_SIGNAL_CHOICES = (
 
 SURFACE_KINDS = {
     "tool_gate",
-    "tool_gate_contamination",
+    "tool_gate_auth",
     "validation",
     "outbound_check",
     "binding_replay",
@@ -236,7 +236,7 @@ SURFACE_KINDS = {
 # Call-local kinds test checks a single tool can answer from its own input.
 # Cross-stage kinds require shared state across pipeline stages.
 CALL_LOCAL_KINDS = {"source_gate", "validation", "tool_gate", "rate_limit"}
-CROSS_STAGE_KINDS = {"tool_gate_contamination", "binding_replay", "action_gate", "outbound_check"}
+CROSS_STAGE_KINDS = {"tool_gate_auth", "binding_replay", "action_gate", "outbound_check"}
 
 
 # Strict prompt-injection/jailbreak text benchmark suites.
@@ -486,7 +486,7 @@ def _is_surface_case(case: dict[str, Any]) -> bool:
 
 def _eval_surface_prediction(case: dict[str, Any], pred: dict[str, Any]) -> bool:
     kind = str(case.get("kind"))
-    if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "binding_replay"}:
+    if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay"}:
         return bool(pred.get("allowed")) is bool(case.get("expect_allowed"))
     if kind == "validation":
         return bool(pred.get("valid")) is bool(case.get("expect_valid"))
@@ -588,6 +588,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
                 return {"valid": True}
             except Exception:
                 return {"valid": False}
+        if kind == "outbound_check":
+            return {"allowed": True}  # No DLP capability in schema validation
         if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "binding_replay"}:
             # Schema-only does not handle policy; allow if args look syntactically valid.
             to = str(case.get("args", {}).get("to", ""))
@@ -626,12 +628,14 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             return {"code": "internal_error"}
         if kind == "rate_limit":
             return {"final_allowed": True, "anomalies": [], "retry_after_positive": False}
+        if kind == "outbound_check":
+            return {"allowed": True}  # No DLP capability in OPA
         return {}
 
     def predict_rate_limit_redis(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
         if kind != "rate_limit":
-            if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "binding_replay"}:
+            if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay"}:
                 return {"allowed": True}
             if kind == "validation":
                 return {"valid": True}
@@ -676,6 +680,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             return predict_rate_limit_redis(case)
         if kind == "error_sanitize":
             return {"code": "internal_error"}
+        if kind == "outbound_check":
+            return {"allowed": True}  # No DLP capability in surface stack
         return {}
 
     def _is_valid_email(value: str) -> bool:
@@ -710,6 +716,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         destructive = bool(case.get("policy", {}).get("enable_destructive", False))
         subject = "trusted_sender" if destructive and to.endswith("@example.com") else "reader"
 
+        if kind == "outbound_check":
+            return {"allowed": True}  # No DLP capability in Casbin RBAC
         if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination"}:
             allowed = bool(casbin_enforcer.enforce(subject, tool, "execute"))
             if kind == "tool_gate_auth":
@@ -750,6 +758,8 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         destructive = bool(case.get("policy", {}).get("enable_destructive", False))
         if kind == "validation":
             return {"valid": _strict_validate_args(tool, args)}
+        if kind == "outbound_check":
+            return {"allowed": True}  # No DLP capability in strict schema stack
         if kind == "tool_gate":
             valid = _strict_validate_args(tool, args)
             if tool == "search_knowledge":
@@ -803,30 +813,74 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             return {"code": "internal_error"}
         return {}
 
+    def _init_counters() -> dict[str, int]:
+        return {"passed": 0, "total": 0, "tp": 0, "fp": 0, "fn": 0, "tn": 0}
+
+    def _add_f1_metrics(entry: dict[str, Any]) -> None:
+        """Add pass_rate, precision, recall, f1 to a counters dict in-place."""
+        total = entry["total"]
+        passed = entry["passed"]
+        tp, fp, fn, tn = entry["tp"], entry["fp"], entry["fn"], entry["tn"]
+        entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+        entry["precision"] = round(tp / (tp + fp), 4) if (tp + fp) else (1.0 if fn == 0 else 0.0)
+        entry["recall"] = round(tp / (tp + fn), 4) if (tp + fn) else 0.0
+        f1_p, f1_r = entry["precision"], entry["recall"]
+        entry["f1"] = round(2 * f1_p * f1_r / (f1_p + f1_r), 4) if (f1_p + f1_r) else 0.0
+
     strategies = {
-        "guardllm_surface": {"passed": 0, "total": len(surface_cases)},
-        "no_defense_surface": {"passed": 0, "total": len(surface_cases)},
-        "schema_jsonschema": {"passed": 0, "total": len(surface_cases)},
-        "policy_opa": {"passed": 0, "total": len(surface_cases)},
-        "casbin_rbac": {"passed": 0, "total": len(surface_cases)},
-        "strict_schema_stack": {"passed": 0, "total": len(surface_cases)},
-        "redis_rate_limit": {"passed": 0, "total": len(surface_cases)},
-        "surface_stack": {"passed": 0, "total": len(surface_cases)},
+        "guardllm_surface": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "no_defense_surface": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "schema_jsonschema": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "policy_opa": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "casbin_rbac": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "strict_schema_stack": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "redis_rate_limit": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "surface_stack": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
     }
     by_kind: dict[str, dict[str, dict[str, int]]] = {}
 
     for case in surface_cases:
         cid = case["id"]
         kind = str(case.get("kind"))
+        is_attack = _is_attack_like_case(case)
         kind_entry = by_kind.setdefault(kind, {})
-        if run_case(case).passed:
+
+        guardllm_passed = run_case(case).passed
+        if guardllm_passed:
             strategies["guardllm_surface"]["passed"] += 1
-            kind_entry.setdefault("guardllm_surface", {"passed": 0, "total": 0})["passed"] += 1
-        if no_defense_predictions[cid]:
+            kind_entry.setdefault("guardllm_surface", _init_counters())["passed"] += 1
+        kind_entry.setdefault("guardllm_surface", _init_counters())["total"] += 1
+        # TP/FP/FN/TN for guardllm
+        if is_attack and guardllm_passed:
+            strategies["guardllm_surface"]["tp"] += 1
+            kind_entry["guardllm_surface"]["tp"] += 1
+        elif is_attack and not guardllm_passed:
+            strategies["guardllm_surface"]["fn"] += 1
+            kind_entry["guardllm_surface"]["fn"] += 1
+        elif not is_attack and guardllm_passed:
+            strategies["guardllm_surface"]["tn"] += 1
+            kind_entry["guardllm_surface"]["tn"] += 1
+        else:
+            strategies["guardllm_surface"]["fp"] += 1
+            kind_entry["guardllm_surface"]["fp"] += 1
+
+        no_def_passed = no_defense_predictions[cid]
+        if no_def_passed:
             strategies["no_defense_surface"]["passed"] += 1
-            kind_entry.setdefault("no_defense_surface", {"passed": 0, "total": 0})["passed"] += 1
-        kind_entry.setdefault("guardllm_surface", {"passed": 0, "total": 0})["total"] += 1
-        kind_entry.setdefault("no_defense_surface", {"passed": 0, "total": 0})["total"] += 1
+            kind_entry.setdefault("no_defense_surface", _init_counters())["passed"] += 1
+        kind_entry.setdefault("no_defense_surface", _init_counters())["total"] += 1
+        if is_attack and no_def_passed:
+            strategies["no_defense_surface"]["tp"] += 1
+            kind_entry["no_defense_surface"]["tp"] += 1
+        elif is_attack and not no_def_passed:
+            strategies["no_defense_surface"]["fn"] += 1
+            kind_entry["no_defense_surface"]["fn"] += 1
+        elif not is_attack and no_def_passed:
+            strategies["no_defense_surface"]["tn"] += 1
+            kind_entry["no_defense_surface"]["tn"] += 1
+        else:
+            strategies["no_defense_surface"]["fp"] += 1
+            kind_entry["no_defense_surface"]["fp"] += 1
 
         for name, pred_fn in [
             ("schema_jsonschema", predict_schema),
@@ -837,25 +891,37 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             ("surface_stack", predict_surface_stack),
         ]:
             pred = pred_fn(case)
-            kind_stats = kind_entry.setdefault(name, {"passed": 0, "total": 0})
+            kind_stats = kind_entry.setdefault(name, _init_counters())
             kind_stats["total"] += 1
-            if _eval_surface_prediction(case, pred):
+            passed = _eval_surface_prediction(case, pred)
+            if passed:
                 strategies[name]["passed"] += 1
                 kind_stats["passed"] += 1
+            if is_attack and passed:
+                strategies[name]["tp"] += 1
+                kind_stats["tp"] += 1
+            elif is_attack and not passed:
+                strategies[name]["fn"] += 1
+                kind_stats["fn"] += 1
+            elif not is_attack and passed:
+                strategies[name]["tn"] += 1
+                kind_stats["tn"] += 1
+            else:
+                strategies[name]["fp"] += 1
+                kind_stats["fp"] += 1
 
     for entry in strategies.values():
-        total = entry["total"]
-        passed = entry["passed"]
-        entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+        _add_f1_metrics(entry)
 
     for _, strat_stats in by_kind.items():
         for _, item in strat_stats.items():
-            total = item["total"]
-            item["pass_rate"] = round((item["passed"] / total) * 100, 2) if total else 0.0
+            _add_f1_metrics(item)
 
     strategy_names = list(strategies.keys())
     no_source_gate: dict[str, dict[str, float | int]] = {
-        name: {"passed": 0, "total": 0, "pass_rate": 0.0} for name in strategy_names
+        name: {"passed": 0, "total": 0, "pass_rate": 0.0, "tp": 0, "fp": 0, "fn": 0, "tn": 0,
+               "precision": 0.0, "recall": 0.0, "f1": 0.0}
+        for name in strategy_names
     }
     macro_by_kind: dict[str, float] = {}
     macro_by_kind_no_source_gate: dict[str, float] = {}
@@ -872,12 +938,10 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             continue
         for name, item in strat_stats.items():
             entry = no_source_gate[name]
-            entry["passed"] = int(entry["passed"]) + int(item["passed"])
-            entry["total"] = int(entry["total"]) + int(item["total"])
+            for key in ("passed", "total", "tp", "fp", "fn", "tn"):
+                entry[key] = int(entry[key]) + int(item[key])
     for name, entry in no_source_gate.items():
-        total = int(entry["total"])
-        passed = int(entry["passed"])
-        entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+        _add_f1_metrics(entry)
 
     # Partition-level aggregation (call-local vs cross-stage)
     partitions: dict[str, dict[str, dict[str, float | int]]] = {}
@@ -886,19 +950,19 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         ("cross_stage", CROSS_STAGE_KINDS),
     ]:
         partition_stats: dict[str, dict[str, float | int]] = {
-            name: {"passed": 0, "total": 0, "pass_rate": 0.0} for name in strategy_names
+            name: {"passed": 0, "total": 0, "pass_rate": 0.0, "tp": 0, "fp": 0, "fn": 0, "tn": 0,
+                   "precision": 0.0, "recall": 0.0, "f1": 0.0}
+            for name in strategy_names
         }
         for kind, strat_stats in by_kind.items():
             if kind not in partition_kinds:
                 continue
             for name, item in strat_stats.items():
                 entry = partition_stats[name]
-                entry["passed"] = int(entry["passed"]) + int(item["passed"])
-                entry["total"] = int(entry["total"]) + int(item["total"])
+                for key in ("passed", "total", "tp", "fp", "fn", "tn"):
+                    entry[key] = int(entry[key]) + int(item[key])
         for name, entry in partition_stats.items():
-            total = int(entry["total"])
-            passed = int(entry["passed"])
-            entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
+            _add_f1_metrics(entry)
         partitions[partition_name] = partition_stats
 
     return {
@@ -2088,33 +2152,39 @@ def write_markdown(
         lines.append(f"- Pydantic available: `{deps.get('pydantic_available', False)}`")
     for k, v in surface_only.get("errors", {}).items():
         lines.append(f"- {k} error: `{v}`")
-    lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
-    lines.append("|---|---:|---:|---:|---:|")
+    lines.append("| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     macro = surface_only.get("macro_by_kind", {})
     for name, stats in surface_only.get("strategies", {}).items():
         lines.append(
-            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro.get(name, 0.0)}% |"
+            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
+            f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
+            f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
         )
     lines.append("")
     lines.append("Excluding `source_gate`:")
     lines.append("")
-    lines.append("| strategy | passed | total | micro pass rate | macro-by-kind |")
-    lines.append("|---|---:|---:|---:|---:|")
+    lines.append("| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     macro_no_source = surface_only.get("macro_by_kind_no_source_gate", {})
     for name, stats in surface_only.get("strategies_no_source_gate", {}).items():
         lines.append(
-            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% | {macro_no_source.get(name, 0.0)}% |"
+            f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
+            f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
+            f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
         )
     by_kind = surface_only.get("by_kind", {})
     if by_kind:
         lines.append("")
-        lines.append("| surface kind | strategy | passed | total | pass rate |")
-        lines.append("|---|---|---:|---:|---:|")
+        lines.append("| surface kind | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for kind in sorted(by_kind.keys()):
             kind_stats = by_kind[kind]
             for name, stats in kind_stats.items():
                 lines.append(
-                    f"| {kind} | {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% |"
+                    f"| {kind} | {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
+                    f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
+                    f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
                 )
 
     partitions = surface_only.get("partitions", {})
@@ -2122,15 +2192,17 @@ def write_markdown(
         lines.append("")
         lines.append("### Partition Summary (Call-Local vs Cross-Stage)")
         lines.append("")
-        lines.append("| partition | strategy | passed | total | pass rate |")
-        lines.append("|---|---|---:|---:|---:|")
+        lines.append("| partition | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for partition_name in ["call_local", "cross_stage"]:
             partition_stats = partitions.get(partition_name, {})
             for name, stats in partition_stats.items():
                 total = stats.get("total", 0)
                 if total > 0:
                     lines.append(
-                        f"| {partition_name} | {name} | {stats.get('passed', 0)} | {total} | {stats.get('pass_rate', 0.0)}% |"
+                        f"| {partition_name} | {name} | {stats.get('passed', 0)} | {total} | {stats.get('pass_rate', 0.0)}% "
+                        f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
+                        f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
                     )
 
     lines.append("")

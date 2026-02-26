@@ -187,6 +187,48 @@ class Guard:
         )
         return result
 
+    def process_inbound_compound(
+        self,
+        spans: list[tuple[str, SecurityContext]],
+        compound_id: str | None = None,
+    ) -> list[ProcessedContent]:
+        """Process multiple spans of a compound message with different provenance.
+
+        Each span is processed independently through the existing inbound
+        pipeline.  Session state (contamination, DLP buffers, provenance)
+        accumulates across all spans.  If any span has
+        source_trust == UNTRUSTED, the session contamination flag is set,
+        widening downstream egress checks for the entire session.
+
+        Args:
+            spans: (content, SecurityContext) pairs, one per provenance span.
+            compound_id: Links spans for provenance and audit.  Generated
+                from a hash of all span contents when None.
+
+        Returns:
+            List of ProcessedContent, one per input span, in order.
+        """
+        if compound_id is None:
+            h = hashlib.sha256()
+            for content, _ in spans:
+                h.update(content.encode())
+            compound_id = h.hexdigest()[:16]
+
+        results: list[ProcessedContent] = []
+        for content, ctx in spans:
+            result = self.process_inbound(content, ctx)
+            results.append(result)
+
+        self._audit(
+            AuditEvent(
+                event_type="compound_inbound_processed",
+                action_summary=f"Processed {len(spans)} spans",
+                request_id=compound_id,
+                warnings=[w for r in results for w in r.warnings] or None,
+            )
+        )
+        return results
+
     def check_tool_call(
         self,
         tool: str,

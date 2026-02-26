@@ -56,6 +56,12 @@ Inbound path:
 5. Record provenance spans (L4)
 6. Check canary presence in inbound payloads (L5)
 
+Compound ingress (`process_inbound_compound`):
+- Accepts a list of (content, SecurityContext) spans representing a single message with mixed provenance (e.g., a trusted envelope wrapping a forwarded untrusted payload).
+- Each span is processed independently through the pipeline above. Session state (contamination, DLP buffers, provenance) accumulates across all spans.
+- Core invariant: a trusted transport does not upgrade embedded untrusted content. Forwarding cannot launder untrusted content into trusted extraction.
+- If any span has `source_trust == UNTRUSTED`, the session contamination flag is set, widening downstream egress and tool-call checks for the entire session.
+
 L0 encoded payload handling:
 - Base64 and URL-encoded segments are decoded and scored with the prompt-injection detector.
 - This avoids relying only on fixed suspicious keyword lists.

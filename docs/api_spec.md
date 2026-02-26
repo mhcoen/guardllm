@@ -185,6 +185,23 @@ Pipeline behavior:
 - Tracks provenance and warnings.
 - Emits audit event `inbound_processed` if audit logger is configured.
 
+### Method: `process_inbound_compound`
+
+```python
+guard.process_inbound_compound(
+    spans: list[tuple[str, SecurityContext]],
+    compound_id: str | None = None,
+) -> list[ProcessedContent]
+```
+
+Pipeline behavior:
+- Processes each span independently through the existing `process_inbound` path.
+- Session state (contamination, DLP buffers, provenance) accumulates across all spans.
+- If any span has `source_trust == UNTRUSTED`, the session contamination flag is set, widening downstream egress checks for the entire session.
+- Source gate evaluates extraction policy per span independently; a trusted envelope does not upgrade an untrusted forwarded payload.
+- `compound_id` links spans for provenance and audit. If `None`, generated from a hash of all span contents (16-char hex prefix).
+- Emits per-span `inbound_processed` audit events plus one `compound_inbound_processed` summary event with the `compound_id` as `request_id`.
+
 ### Method: `check_tool_call`
 
 ```python

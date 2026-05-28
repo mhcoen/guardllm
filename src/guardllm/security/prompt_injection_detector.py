@@ -5,12 +5,10 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import List
 
 from bs4 import BeautifulSoup, Comment
 
 from guardllm.security.types import ContentType
-
 
 _URL_RE = re.compile(r"https?://\S+", re.I)
 _INDEX_RE = re.compile(r"(?:\[\s*\d{1,4}\s*\]|\(\s*\d{1,4}\s*\)|#\s*\d{1,4}\b)")
@@ -37,7 +35,9 @@ _ACTION_TARGET_RE = re.compile(
     r"\b(add to cart|upvote|leave a comment|open a new tab|go to url_ref|read (the )?(document|file)|find (an )?(existing )?(document|file)|fill out (the )?form|complete (the )?form|type (the )?task|click index_ref)\b",
     re.I,
 )
-_URGENCY_RE = re.compile(r"\b(alert|urgent|very important|critical|immediately|without delay)\b", re.I)
+_URGENCY_RE = re.compile(
+    r"\b(alert|urgent|very important|critical|immediately|without delay)\b", re.I
+)
 
 _CLICK_INDEX_RE = re.compile(r"\bplease click index_ref\b", re.I)
 _SECRET_SOLICIT_RE = re.compile(
@@ -78,8 +78,8 @@ class PromptInjectionSignal:
 
     is_attack: bool
     score: float
-    warnings: List[str] = field(default_factory=list)
-    matched_rules: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    matched_rules: list[str] = field(default_factory=list)
 
 
 def _normalize_text(text: str) -> str:
@@ -135,9 +135,7 @@ def _score_clause(clause: str) -> tuple[float, list[str]]:
         score += 0.35
         matched.append("urgent_goal_hijack")
 
-    atom_count = sum(
-        [imperative, override, concealment, sensitive, action_target, urgency]
-    )
+    atom_count = sum([imperative, override, concealment, sensitive, action_target, urgency])
     if atom_count >= 3:
         score += 0.25
         matched.append("multi_signal_composition")
@@ -155,9 +153,7 @@ def _score_clause(clause: str) -> tuple[float, list[str]]:
 def _scan_text(text: str) -> tuple[float, list[str]]:
     normalized = _normalize_text(text)
     clauses = [
-        c.strip()
-        for c in re.split(r"[.!?;\n]+|\bthen\b|\bafter that\b", normalized)
-        if c.strip()
+        c.strip() for c in re.split(r"[.!?;\n]+|\bthen\b|\bafter that\b", normalized) if c.strip()
     ]
     if not clauses:
         clauses = [normalized]
@@ -212,7 +208,11 @@ def _scan_html_hidden_channels(html: str) -> tuple[float, list[str]]:
     for el in soup.find_all(True):
         attrs = getattr(el, "attrs", None) or {}
         style = str(attrs.get("style", ""))
-        cls = " ".join(attrs.get("class", []) if isinstance(attrs.get("class"), list) else [str(attrs.get("class", ""))])
+        cls = " ".join(
+            attrs.get("class", [])
+            if isinstance(attrs.get("class"), list)
+            else [str(attrs.get("class", ""))]
+        )
         has_hidden_style = any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS)
         has_hidden_class = any(h in cls.lower() for h in _HIDDEN_CLASS_HINTS)
         if has_hidden_style or has_hidden_class:
@@ -246,9 +246,7 @@ def detect_prompt_injection(content: str, content_type: ContentType) -> PromptIn
     is_attack = full_score >= 0.45
     warnings: list[str] = []
     if is_attack:
-        warnings.append(
-            "Prompt-injection indicators detected: " + ", ".join(sorted(set(matched)))
-        )
+        warnings.append("Prompt-injection indicators detected: " + ", ".join(sorted(set(matched))))
     elif full_score >= 0.25:
         warnings.append(
             "Potential prompt-injection signal detected: " + ", ".join(sorted(set(matched)))

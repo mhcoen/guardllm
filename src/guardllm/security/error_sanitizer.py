@@ -7,7 +7,7 @@ internal state (no stack traces, file paths, SQL, or model names).
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class RateLimitError(Exception):
@@ -20,7 +20,6 @@ class RateLimitError(Exception):
 
 class InvalidHandleError(Exception):
     """Raised when a thread handle is invalid or expired."""
-    pass
 
 
 class InvalidParamsError(Exception):
@@ -33,16 +32,14 @@ class InvalidParamsError(Exception):
 
 class PermissionDeniedError(Exception):
     """Raised when a tool is not available to the client."""
-    pass
 
 
 class UnauthorizedError(Exception):
     """Raised when the capability token is invalid."""
-    pass
 
 
 # Error code mapping: exception type → (code, message template)
-_ERROR_MAP: Dict[type, tuple[str, str]] = {
+_ERROR_MAP: dict[type, tuple[str, str]] = {
     UnauthorizedError: ("unauthorized", "Invalid or expired token"),
     PermissionDeniedError: ("permission_denied", "Tool not available"),
     InvalidHandleError: ("invalid_handle", "Invalid or expired thread handle"),
@@ -53,8 +50,8 @@ _ERROR_MAP: Dict[type, tuple[str, str]] = {
 
 def sanitize_error(
     exception: Exception,
-    retry_after: Optional[int] = None,
-) -> Dict[str, Any]:
+    retry_after: int | None = None,
+) -> dict[str, Any]:
     """Map an exception to a sanitized error response.
 
     Rules (spec §12.6):

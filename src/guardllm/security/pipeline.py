@@ -6,14 +6,7 @@ Parameterized by SecurityContext rather than branching on direction.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from guardllm.security.canary import detect_canary, generate_canary
-from guardllm.security.source_gate import (
-    check_extraction_allowed,
-    ExtractionPolicy,
-    SourceGateResult,
-)
 from guardllm.security.isolation import wrap_untrusted
 from guardllm.security.normalization import normalize_confusables
 from guardllm.security.outbound_dlp import OutboundDLP
@@ -23,6 +16,10 @@ from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
 from guardllm.security.rate_limiter import RateLimiter
 from guardllm.security.request_binding import verify_binding
 from guardllm.security.sanitizer import sanitize
+from guardllm.security.source_gate import (
+    SourceGateResult,
+    check_extraction_allowed,
+)
 from guardllm.security.types import (
     AuthorizationEvent,
     Binding,
@@ -46,8 +43,8 @@ class SecurityPipeline:
 
     def __init__(
         self,
-        audit_logger: Optional[object] = None,
-        canary_session_id: Optional[str] = None,
+        audit_logger: object | None = None,
+        canary_session_id: str | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> None:
         self._sanitizer = sanitize
@@ -58,7 +55,7 @@ class SecurityPipeline:
         self._audit_logger = audit_logger
         self._principal_trust = principal_trust
         self._context_contaminated: bool = False
-        self._canary: Optional[str] = None
+        self._canary: str | None = None
         if canary_session_id:
             self._canary = generate_canary(canary_session_id)
 
@@ -142,13 +139,15 @@ class SecurityPipeline:
             self._dlp.ingest_sensitive(content)
 
         # Add provenance span
-        self._provenance.add_span(ProvenancedSpan(
-            text=content,
-            source_type=ctx.source_type,
-            source_id=ctx.source_id,
-            source_trust=ctx.source_trust,
-            sensitivity=ctx.sensitivity,
-        ))
+        self._provenance.add_span(
+            ProvenancedSpan(
+                text=content,
+                source_type=ctx.source_type,
+                source_id=ctx.source_id,
+                source_trust=ctx.source_trust,
+                sensitivity=ctx.sensitivity,
+            )
+        )
 
         # Canary detection on inbound (exfiltration attempt)
         if self._canary and detect_canary(content, self._canary):
@@ -196,7 +195,9 @@ class SecurityPipeline:
 
         # L3: DLP scan (coarse pre-filter, higher thresholds)
         dlp_result = self._dlp.check(
-            content, ctx, has_quoting_directive,
+            content,
+            ctx,
+            has_quoting_directive,
             contaminated=self._context_contaminated,
         )
         if not dlp_result.allowed:
@@ -211,9 +212,7 @@ class SecurityPipeline:
             contaminated=self._context_contaminated,
         )
         if not prov_allowed:
-            contamination_triggered = (
-                "sensitive" in prov_reason and self._context_contaminated
-            )
+            contamination_triggered = "sensitive" in prov_reason and self._context_contaminated
             reason = prov_reason
             if contamination_triggered and ctx.policy.contaminated_action == "confirm":
                 reason = f"Confirmation required: {prov_reason}"
@@ -256,9 +255,9 @@ class SecurityPipeline:
         tool: str,
         args: dict,
         ctx: SecurityContext,
-        auth_event: Optional[AuthorizationEvent] = None,
-        binding: Optional[Binding] = None,
-        message_hash: Optional[str] = None,
+        auth_event: AuthorizationEvent | None = None,
+        binding: Binding | None = None,
+        message_hash: str | None = None,
     ) -> GateResult:
         """Policy check before tool execution.
 
@@ -289,9 +288,7 @@ class SecurityPipeline:
                 )
 
         # L9: Policy engine check
-        policy_result = self._policy.check_tool_execution(
-            tool, args, auth_event, ctx
-        )
+        policy_result = self._policy.check_tool_execution(tool, args, auth_event, ctx)
         if not policy_result.allowed:
             return policy_result
 
@@ -306,12 +303,8 @@ class SecurityPipeline:
 
         # L11: Request binding verification
         if binding is not None:
-            msg_hash = message_hash or (
-                auth_event.message_hash if auth_event else ""
-            )
-            bind_ok, bind_reason = verify_binding(
-                binding, tool, args, msg_hash
-            )
+            msg_hash = message_hash or (auth_event.message_hash if auth_event else "")
+            bind_ok, bind_reason = verify_binding(binding, tool, args, msg_hash)
             if not bind_ok:
                 return GateResult(
                     allowed=False,

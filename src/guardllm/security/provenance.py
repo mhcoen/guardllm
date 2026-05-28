@@ -8,7 +8,6 @@ messages without explicit user authorization.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from guardllm.security.normalization import (
     compute_lcs_length,
@@ -30,11 +29,11 @@ class ProvenancedSpan:
     """
 
     text: str
-    source_type: str          # "mcp_server", "mcp_client", "cli_user", "assistant"
-    source_id: str            # Specific source identifier
+    source_type: str  # "mcp_server", "mcp_client", "cli_user", "assistant"
+    source_id: str  # Specific source identifier
     source_trust: TrustLevel = TrustLevel.UNTRUSTED
     sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
-    topic_of_origin: Optional[str] = None  # For cross-topic leak detection
+    topic_of_origin: str | None = None  # For cross-topic leak detection
 
 
 class ProvenanceTracker:
@@ -48,7 +47,7 @@ class ProvenanceTracker:
     """
 
     def __init__(self) -> None:
-        self._spans: List[ProvenancedSpan] = []
+        self._spans: list[ProvenancedSpan] = []
 
     def add_span(self, span: ProvenancedSpan) -> None:
         """Register a provenance span."""

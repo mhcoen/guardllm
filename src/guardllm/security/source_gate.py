@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, FrozenSet, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from guardllm.security.types import ExtractionPolicy
 
@@ -22,25 +22,25 @@ logger = logging.getLogger(__name__)
 class SourceGateResult:
     policy: ExtractionPolicy
     reason: str
-    source_origin: str           # Provenance tag for kg_assertions
+    source_origin: str  # Provenance tag for kg_assertions
 
 
 # Source-type to policy mapping (spec Part 4 table)
 _SOURCE_POLICY = {
-    "user_input":           ExtractionPolicy.ALLOW,
-    "assistant_response":   ExtractionPolicy.ALLOW,
-    "cli":                  ExtractionPolicy.ALLOW,
-    "email_content":        ExtractionPolicy.BLOCK,
-    "calendar_content":     ExtractionPolicy.BLOCK,
-    "web_content":          ExtractionPolicy.BLOCK,
-    "rag_content":          ExtractionPolicy.BLOCK,
-    "tool_output":          ExtractionPolicy.BLOCK,
-    "mcp_client":           ExtractionPolicy.QUARANTINE,
+    "user_input": ExtractionPolicy.ALLOW,
+    "assistant_response": ExtractionPolicy.ALLOW,
+    "cli": ExtractionPolicy.ALLOW,
+    "email_content": ExtractionPolicy.BLOCK,
+    "calendar_content": ExtractionPolicy.BLOCK,
+    "web_content": ExtractionPolicy.BLOCK,
+    "rag_content": ExtractionPolicy.BLOCK,
+    "tool_output": ExtractionPolicy.BLOCK,
+    "mcp_client": ExtractionPolicy.QUARANTINE,
     # user_indexed_email: user explicitly asked to index email content
-    "user_indexed_email":   ExtractionPolicy.QUARANTINE,
-    "user_indexed_web":     ExtractionPolicy.QUARANTINE,
+    "user_indexed_email": ExtractionPolicy.QUARANTINE,
+    "user_indexed_web": ExtractionPolicy.QUARANTINE,
     # web_synthesis: muse-mode responses shaped by untrusted web sources
-    "web_synthesis":        ExtractionPolicy.QUARANTINE,
+    "web_synthesis": ExtractionPolicy.QUARANTINE,
 }
 
 
@@ -48,9 +48,9 @@ def check_extraction_allowed(
     source_type: str,
     source_id: str = "",
     *,
-    source_trust: Optional[TrustLevel] = None,
-    source_gate_overrides: Optional[Dict[Any, ExtractionPolicy]] = None,
-    require_source_id_for: FrozenSet[str] = frozenset(),
+    source_trust: TrustLevel | None = None,
+    source_gate_overrides: dict[Any, ExtractionPolicy] | None = None,
+    require_source_id_for: frozenset[str] = frozenset(),
 ) -> SourceGateResult:
     """Check whether KG extraction is allowed for this source.
 
@@ -67,7 +67,12 @@ def check_extraction_allowed(
         SourceGateResult with policy, reason, and provenance tag.
     """
     # Log warning for empty source_id on common source types
-    if not source_id and source_type in ("mcp_server", "mcp_client", "web_content", "email_content"):
+    if not source_id and source_type in (
+        "mcp_server",
+        "mcp_client",
+        "web_content",
+        "email_content",
+    ):
         logger.warning(
             "source_id missing for source_type=%s; provenance origin will "
             "collapse to source_type, rate limit session may be shared",
@@ -83,7 +88,7 @@ def check_extraction_allowed(
         )
 
     # Check policy overrides first
-    policy: Optional[ExtractionPolicy] = None
+    policy: ExtractionPolicy | None = None
     if source_gate_overrides and source_trust is not None:
         policy = source_gate_overrides.get((source_type, source_trust))
 

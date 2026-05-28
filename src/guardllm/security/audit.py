@@ -10,7 +10,7 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from guardllm.security.types import AuditEvent
 
@@ -27,7 +27,7 @@ class AuditLogger:
     hash), user input text.
     """
 
-    def __init__(self, log_path: Optional[str | Path] = None):
+    def __init__(self, log_path: str | Path | None = None):
         """Initialize the audit logger.
 
         Args:
@@ -35,7 +35,7 @@ class AuditLogger:
                 stored in memory only (useful for testing).
         """
         self._log_path = Path(log_path) if log_path else None
-        self._events: List[Dict[str, Any]] = []
+        self._events: list[dict[str, Any]] = []
 
     def log(self, event: AuditEvent) -> str:
         """Log a security event.
@@ -76,8 +76,8 @@ class AuditLogger:
     def log_quick(
         self,
         event_type: str,
-        tool_name: Optional[str] = None,
-        session_id: Optional[str] = None,
+        tool_name: str | None = None,
+        session_id: str | None = None,
         **kwargs: Any,
     ) -> str:
         """Convenience method for common logging patterns.
@@ -101,10 +101,10 @@ class AuditLogger:
 
     def get_events(
         self,
-        event_type: Optional[str] = None,
-        session_id: Optional[str] = None,
+        event_type: str | None = None,
+        session_id: str | None = None,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve logged events (most recent first).
 
         Args:

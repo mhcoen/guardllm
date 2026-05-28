@@ -12,9 +12,8 @@ import base64
 import re
 import unicodedata
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
 
-from bs4 import BeautifulSoup, Comment, Tag
+from bs4 import BeautifulSoup, Comment
 
 from guardllm.security.prompt_injection_detector import detect_prompt_injection
 from guardllm.security.types import ContentType, SanitizationResult
@@ -25,14 +24,37 @@ from guardllm.security.types import ContentType, SanitizationResult
 
 _STRIP_ELEMENTS = {"style", "script", "head", "meta", "link", "noscript"}
 
-_ALLOWED_TAGS = frozenset({
-    "p", "div", "span", "br", "hr",
-    "b", "strong", "i", "em", "u",
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "a", "ul", "ol", "li",
-    "table", "tr", "td", "th",
-    "blockquote", "pre", "code",
-})
+_ALLOWED_TAGS = frozenset(
+    {
+        "p",
+        "div",
+        "span",
+        "br",
+        "hr",
+        "b",
+        "strong",
+        "i",
+        "em",
+        "u",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "a",
+        "ul",
+        "ol",
+        "li",
+        "table",
+        "tr",
+        "td",
+        "th",
+        "blockquote",
+        "pre",
+        "code",
+    }
+)
 
 _EVENT_HANDLER_RE = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 
@@ -42,25 +64,25 @@ _URL_ENCODED_RE = re.compile(r"(%[0-9A-Fa-f]{2}){4,}")
 # Unicode: zero-width and invisible characters
 _ZERO_WIDTH_RE = re.compile(
     "["
-    "\u200B-\u200D"   # Zero-width space / non-joiner / joiner
-    "\u2060"          # Word joiner
-    "\uFEFF"          # BOM / zero-width no-break space
-    "\u00AD"          # Soft hyphen
+    "\u200b-\u200d"  # Zero-width space / non-joiner / joiner
+    "\u2060"  # Word joiner
+    "\ufeff"  # BOM / zero-width no-break space
+    "\u00ad"  # Soft hyphen
     "]"
 )
 
 _BIDI_RE = re.compile(
     "["
-    "\u202A-\u202E"   # LRE, RLE, PDF, LRO, RLO
-    "\u2066-\u2069"   # LRI, RLI, FSI, PDI
+    "\u202a-\u202e"  # LRE, RLE, PDF, LRO, RLO
+    "\u2066-\u2069"  # LRI, RLI, FSI, PDI
     "]"
 )
 
 _TAG_CHAR_RE = re.compile(r"[\U000E0001-\U000E007F]")
 
-_INTERLINEAR_RE = re.compile("[\uFFF9-\uFFFB]")
+_INTERLINEAR_RE = re.compile("[\ufff9-\ufffb]")
 
-_OBJECT_REPLACEMENT_RE = re.compile("\uFFFC")
+_OBJECT_REPLACEMENT_RE = re.compile("\ufffc")
 
 # Mixed script detection: a word containing both Latin and Cyrillic characters
 _LATIN_RE = re.compile(r"[\u0041-\u024F]")
@@ -73,7 +95,7 @@ _ALLOWED_HEADERS = frozenset({"from", "to", "cc", "subject", "date"})
 # CSS hidden-style detection (section 1.1)
 # ---------------------------------------------------------------------------
 
-_HIDDEN_PATTERNS: List[Tuple[re.Pattern, str]] = [
+_HIDDEN_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"display\s*:\s*none", re.I), "display:none"),
     (re.compile(r"visibility\s*:\s*hidden", re.I), "visibility:hidden"),
     (re.compile(r"opacity\s*:\s*0(?:[;\s\"]|$)", re.I), "opacity:0"),
@@ -84,13 +106,13 @@ _HIDDEN_PATTERNS: List[Tuple[re.Pattern, str]] = [
 ]
 
 
-def _parse_css_value(style: str, prop: str) -> Optional[str]:
+def _parse_css_value(style: str, prop: str) -> str | None:
     """Extract the value of a CSS property from an inline style string."""
     m = re.search(rf"{prop}\s*:\s*([^;\"']+)", style, re.I)
     return m.group(1).strip() if m else None
 
 
-def _px_val(val: Optional[str]) -> Optional[float]:
+def _px_val(val: str | None) -> float | None:
     """Parse a CSS length value to pixels (very rough: treats bare numbers and px)."""
     if val is None:
         return None
@@ -98,7 +120,7 @@ def _px_val(val: Optional[str]) -> Optional[float]:
     return float(m.group(1)) if m else None
 
 
-def _is_hidden_style(style: str) -> Tuple[bool, Optional[str]]:
+def _is_hidden_style(style: str) -> tuple[bool, str | None]:
     """Check if an inline style uses CSS hiding techniques.
 
     Returns (is_hidden, reason) where reason describes the technique.
@@ -162,12 +184,13 @@ def _is_hidden_style(style: str) -> Tuple[bool, Optional[str]]:
 # HTML sanitization (section 1.1)
 # ---------------------------------------------------------------------------
 
-def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
+
+def _sanitize_html(html: str) -> tuple[str, list[str], int, bool]:
     """Extract plaintext from HTML, stripping dangerous elements.
 
     Returns (plaintext, warnings, chars_stripped, class_hiding_possible).
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
     chars_stripped = 0
     class_hiding_possible = False
 
@@ -269,7 +292,9 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
             ):
                 value = el_attrs.get(attr)
                 if value:
-                    removed_attr_payloads += len(" ".join(value) if isinstance(value, list) else str(value))
+                    removed_attr_payloads += len(
+                        " ".join(value) if isinstance(value, list) else str(value)
+                    )
                 attrs_to_remove.append(attr)
             # Remove style (already processed for hiding)
             elif attr_lower == "style":
@@ -285,8 +310,7 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
             try:
                 if getattr(el, "attrs", None) and attr in el.attrs:
                     del el[attr]
-            except Exception:
-                # Malformed tags can have non-dict attrs; ignore and continue sanitizing.
+            except Exception:  # noqa: S110 - sanitizer must not fail closed on malformed tag attrs
                 pass
 
         # Unwrap non-allowed tags (preserve inner content)
@@ -306,12 +330,13 @@ def _sanitize_html(html: str) -> Tuple[str, List[str], int, bool]:
 # Unicode sanitization (section 1.2)
 # ---------------------------------------------------------------------------
 
-def _sanitize_unicode(text: str) -> Tuple[str, List[str], int, List[str]]:
+
+def _sanitize_unicode(text: str) -> tuple[str, list[str], int, list[str]]:
     """Strip invisible Unicode and detect mixed-script words.
 
     Returns (cleaned, warnings, chars_stripped, mixed_script_words).
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
     chars_stripped = 0
 
     # Strip zero-width characters
@@ -341,7 +366,7 @@ def _sanitize_unicode(text: str) -> Tuple[str, List[str], int, List[str]]:
     new_text = unicodedata.normalize("NFC", new_text)
 
     # Mixed-script detection (Latin + Cyrillic in same word)
-    mixed_script_words: List[str] = []
+    mixed_script_words: list[str] = []
     for word in re.findall(r"\S+", new_text):
         has_latin = bool(_LATIN_RE.search(word))
         has_cyrillic = bool(_CYRILLIC_RE.search(word))
@@ -361,12 +386,13 @@ def _sanitize_unicode(text: str) -> Tuple[str, List[str], int, List[str]]:
 # Encoded payload detection (section 1.3)
 # ---------------------------------------------------------------------------
 
-def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
+
+def _detect_encoded_payloads(text: str) -> tuple[list[str], bool]:
     """Detect base64 and URL-encoded suspicious payloads.
 
     Returns (warnings, encoded_detected). Detection only, no stripping.
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
     detected = False
 
     # Base64 blocks
@@ -378,12 +404,14 @@ def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
             decoded = base64.b64decode(padded, validate=True).decode("utf-8", errors="ignore")
             signal = detect_prompt_injection(decoded, ContentType.PLAINTEXT)
             if signal.score >= 0.25:
-                detail = ", ".join(signal.matched_rules[:3]) if signal.matched_rules else "suspicious directives"
-                warnings.append(
-                    f"Base64 decoded payload flagged ({detail})"
+                detail = (
+                    ", ".join(signal.matched_rules[:3])
+                    if signal.matched_rules
+                    else "suspicious directives"
                 )
+                warnings.append(f"Base64 decoded payload flagged ({detail})")
                 detected = True
-        except Exception:
+        except Exception:  # noqa: S112 - skip undecodable candidates; bypass would not improve detection
             continue
 
     # URL-encoded sequences
@@ -393,12 +421,14 @@ def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
             decoded = urllib.parse.unquote(candidate)
             signal = detect_prompt_injection(decoded, ContentType.PLAINTEXT)
             if signal.score >= 0.25:
-                detail = ", ".join(signal.matched_rules[:3]) if signal.matched_rules else "suspicious directives"
-                warnings.append(
-                    f"URL-encoded payload flagged ({detail})"
+                detail = (
+                    ", ".join(signal.matched_rules[:3])
+                    if signal.matched_rules
+                    else "suspicious directives"
                 )
+                warnings.append(f"URL-encoded payload flagged ({detail})")
                 detected = True
-        except Exception:
+        except Exception:  # noqa: S112 - skip undecodable candidates; bypass would not improve detection
             continue
 
     return warnings, detected
@@ -408,13 +438,14 @@ def _detect_encoded_payloads(text: str) -> Tuple[List[str], bool]:
 # Email header sanitization (section 1.5)
 # ---------------------------------------------------------------------------
 
-def sanitize_headers(headers: Dict[str, str]) -> Dict[str, str]:
+
+def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
     """Pass through only safe email headers.
 
     Preserves: From, To, Cc, Subject, Date.
     Strips: X-* headers, Received chains, and all others.
     """
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     for key, value in headers.items():
         if key.lower() in _ALLOWED_HEADERS:
             result[key] = value
@@ -425,16 +456,17 @@ def sanitize_headers(headers: Dict[str, str]) -> Dict[str, str]:
 # Display parity / summary (section 1.7)
 # ---------------------------------------------------------------------------
 
+
 def _build_summary(
     html_chars_stripped: int,
     unicode_chars_stripped: int,
-    warnings: List[str],
+    warnings: list[str],
     class_hiding_possible: bool,
     encoded_detected: bool,
-    mixed_script_words: List[str],
+    mixed_script_words: list[str],
 ) -> str:
     """Build a human-readable sanitization summary."""
-    parts: List[str] = []
+    parts: list[str] = []
 
     total_stripped = html_chars_stripped + unicode_chars_stripped
     if total_stripped:
@@ -452,8 +484,7 @@ def _build_summary(
 
     if mixed_script_words:
         parts.append(
-            f"Mixed-script words: {len(mixed_script_words)} "
-            f"({', '.join(mixed_script_words[:5])})"
+            f"Mixed-script words: {len(mixed_script_words)} ({', '.join(mixed_script_words[:5])})"
         )
 
     warning_count = len(warnings)
@@ -469,28 +500,25 @@ def _build_summary(
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def sanitize(content: str, content_type: ContentType) -> SanitizationResult:
     """Sanitize content based on its type.
 
     For HTML: runs full HTML pipeline then Unicode pipeline.
     For PLAINTEXT: skips HTML, runs Unicode pipeline only.
     """
-    all_warnings: List[str] = []
+    all_warnings: list[str] = []
     html_chars_stripped = 0
     class_hiding_possible = False
     text = content
 
     # HTML pipeline
     if content_type == ContentType.HTML:
-        text, html_warnings, html_chars_stripped, class_hiding_possible = (
-            _sanitize_html(content)
-        )
+        text, html_warnings, html_chars_stripped, class_hiding_possible = _sanitize_html(content)
         all_warnings.extend(html_warnings)
 
     # Unicode pipeline (always runs)
-    text, unicode_warnings, unicode_chars_stripped, mixed_script_words = (
-        _sanitize_unicode(text)
-    )
+    text, unicode_warnings, unicode_chars_stripped, mixed_script_words = _sanitize_unicode(text)
     all_warnings.extend(unicode_warnings)
 
     # Encoded payload detection (always runs)

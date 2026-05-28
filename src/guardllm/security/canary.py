@@ -16,11 +16,7 @@ import secrets
 # - use EPISODIC_CANARY_SECRET when configured
 # - otherwise generate a process-local random secret
 _ENV_SECRET = os.environ.get("EPISODIC_CANARY_SECRET")
-_DEFAULT_SECRET = (
-    _ENV_SECRET.encode("utf-8")
-    if _ENV_SECRET
-    else secrets.token_bytes(32)
-)
+_DEFAULT_SECRET = _ENV_SECRET.encode("utf-8") if _ENV_SECRET else secrets.token_bytes(32)
 
 
 def generate_canary(session_id: str, secret: bytes = _DEFAULT_SECRET) -> str:

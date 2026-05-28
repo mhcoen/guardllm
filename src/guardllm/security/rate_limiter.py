@@ -10,7 +10,6 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
 
 from guardllm.security.types import RateLimitResult, SecurityContext
 
@@ -20,16 +19,14 @@ class _SessionCounters:
     """Tracks actions within time windows for a single session."""
 
     # action_type -> list of timestamps
-    action_times: Dict[str, List[float]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
-    known_recipients: Set[str] = field(default_factory=set)
+    action_times: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    known_recipients: set[str] = field(default_factory=set)
 
 
 # Default limits from spec §9
 DEFAULT_LIMITS = {
     "emails_per_hour": 10,
-    "burst_threshold": 3,       # actions in burst_window_seconds
+    "burst_threshold": 3,  # actions in burst_window_seconds
     "burst_window_seconds": 10,
     "novel_recipient_flag": True,
 }
@@ -43,21 +40,21 @@ class RateLimiter:
     dimensions.
     """
 
-    def __init__(self, limits: Optional[Dict] = None):
+    def __init__(self, limits: dict | None = None):
         self._limits = limits or DEFAULT_LIMITS
-        self._sessions: Dict[str, _SessionCounters] = {}
+        self._sessions: dict[str, _SessionCounters] = {}
 
     def _get_session(self, session_id: str) -> _SessionCounters:
         if session_id not in self._sessions:
             self._sessions[session_id] = _SessionCounters()
         return self._sessions[session_id]
 
-    def _prune_old(self, times: List[float], window_seconds: float) -> List[float]:
+    def _prune_old(self, times: list[float], window_seconds: float) -> list[float]:
         """Remove timestamps older than the window."""
         cutoff = time.time() - window_seconds
         return [t for t in times if t > cutoff]
 
-    def _effective_limits(self, ctx: SecurityContext) -> Dict:
+    def _effective_limits(self, ctx: SecurityContext) -> dict:
         """Merge principal_trust overrides with base limits.
 
         Override wins for any key present. Base limits fill in the rest.
@@ -74,8 +71,8 @@ class RateLimiter:
         self,
         action: str,
         ctx: SecurityContext,
-        recipient: Optional[str] = None,
-        session_id: Optional[str] = None,
+        recipient: str | None = None,
+        session_id: str | None = None,
     ) -> RateLimitResult:
         """Check if an action is within rate limits.
 
@@ -90,14 +87,12 @@ class RateLimiter:
         """
         sid = session_id or ctx.source_id
         session = self._get_session(sid)
-        anomalies: List[str] = []
+        anomalies: list[str] = []
         limits = self._effective_limits(ctx)
 
         # Prune old entries using configured window (default 3600s)
         window = limits.get("window_seconds", 3600)
-        session.action_times[action] = self._prune_old(
-            session.action_times[action], window
-        )
+        session.action_times[action] = self._prune_old(session.action_times[action], window)
         hourly_count = len(session.action_times[action])
 
         # Check hourly limit
@@ -115,9 +110,7 @@ class RateLimiter:
         burst_window = limits.get("burst_window_seconds", 10)
         recent = self._prune_old(session.action_times[action], burst_window)
         if len(recent) >= burst_threshold:
-            anomalies.append(
-                f"Rapid burst: {len(recent)} actions in {burst_window}s"
-            )
+            anomalies.append(f"Rapid burst: {len(recent)} actions in {burst_window}s")
 
         # Check novel recipient
         if (
@@ -138,8 +131,8 @@ class RateLimiter:
         self,
         action: str,
         ctx: SecurityContext,
-        recipient: Optional[str] = None,
-        session_id: Optional[str] = None,
+        recipient: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         """Record a completed action for rate tracking.
 
@@ -151,7 +144,7 @@ class RateLimiter:
         if recipient:
             session.known_recipients.add(recipient)
 
-    def _seconds_until_slot(self, times: List[float], window: float = 3600) -> int:
+    def _seconds_until_slot(self, times: list[float], window: float = 3600) -> int:
         """Calculate seconds until the oldest entry expires from the window."""
         if not times:
             return 0
@@ -159,7 +152,7 @@ class RateLimiter:
         remaining = window - (time.time() - oldest)
         return max(1, int(remaining))
 
-    def reset(self, session_id: Optional[str] = None) -> None:
+    def reset(self, session_id: str | None = None) -> None:
         """Reset counters. If session_id given, reset only that session."""
         if session_id:
             self._sessions.pop(session_id, None)

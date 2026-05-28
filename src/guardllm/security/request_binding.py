@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Optional
 
 from guardllm.security.types import AuthorizationEvent, Binding
 
@@ -23,8 +22,8 @@ def _canonical_args(args: dict) -> str:
 def create_binding(
     tool: str,
     args: dict,
-    auth_event: Optional[AuthorizationEvent] = None,
-    message_hash: Optional[str] = None,
+    auth_event: AuthorizationEvent | None = None,
+    message_hash: str | None = None,
     ttl: float = 120.0,
 ) -> Binding:
     """Create a binding for a proposed tool execution.

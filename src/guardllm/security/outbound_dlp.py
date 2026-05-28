@@ -10,7 +10,6 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
-from typing import Deque, List
 
 from guardllm.security.normalization import (
     compute_lcs_length,
@@ -26,7 +25,7 @@ from guardllm.security.types import OutboundResult, SecurityContext
 # Secret patterns
 # ---------------------------------------------------------------------------
 
-_SECRET_PATTERNS: List[tuple[re.Pattern[str], str]] = [
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"sk[-_][A-Za-z0-9]{20,}"), "OpenAI API key"),
     (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,}"), "OpenAI project key"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key"),
@@ -36,12 +35,11 @@ _SECRET_PATTERNS: List[tuple[re.Pattern[str], str]] = [
     (re.compile(r"ghs_[A-Za-z0-9]{36,}"), "GitHub app token"),
     (re.compile(r"ghr_[A-Za-z0-9]{36,}"), "GitHub refresh token"),
     (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}"), "Slack token"),
-    (re.compile(
-        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
-    ), "Private key header"),
-    (re.compile(
-        r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"
-    ), "Bearer/JWT token"),
+    (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "Private key header"),
+    (
+        re.compile(r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"),
+        "Bearer/JWT token",
+    ),
 ]
 
 _ENTROPY_THRESHOLD = 4.5
@@ -59,9 +57,7 @@ def _shannon_entropy(s: str) -> float:
     for ch in s:
         freq[ch] = freq.get(ch, 0) + 1
     length = len(s)
-    return -sum(
-        (c / length) * math.log2(c / length) for c in freq.values()
-    )
+    return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
 def _shannon_entropy_bytes(data: bytes) -> float:
@@ -72,14 +68,12 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     for b in data:
         freq[b] = freq.get(b, 0) + 1
     length = len(data)
-    return -sum(
-        (c / length) * math.log2(c / length) for c in freq.values()
-    )
+    return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
-def _scan_secrets(text: str) -> List[str]:
+def _scan_secrets(text: str) -> list[str]:
     """Scan text for known secret patterns and high-entropy strings."""
-    found: List[str] = []
+    found: list[str] = []
     for pattern, label in _SECRET_PATTERNS:
         if pattern.search(text):
             found.append(label)
@@ -113,6 +107,7 @@ def _scan_secrets(text: str) -> List[str]:
 # OutboundDLP
 # ---------------------------------------------------------------------------
 
+
 class OutboundDLP:
     """Outbound content exfiltration detector.
 
@@ -132,8 +127,8 @@ class OutboundDLP:
     """
 
     def __init__(self, buffer_max: int = 50) -> None:
-        self._buffer: Deque[str] = deque(maxlen=buffer_max)
-        self._sensitive_buffer: Deque[str] = deque(maxlen=buffer_max)
+        self._buffer: deque[str] = deque(maxlen=buffer_max)
+        self._sensitive_buffer: deque[str] = deque(maxlen=buffer_max)
 
     def ingest_untrusted(self, content: str) -> None:
         """Normalize and buffer untrusted content for later DLP checks."""
@@ -219,7 +214,7 @@ class OutboundDLP:
         # it must not block on its own.
         echo_max_lcs = 0
         echo_max_ngram = 0.0
-        for variant, strip_seps, label in variants:
+        for variant, strip_seps, _label in variants:
             for buffered in self._buffer:
                 buf = deobfuscate_separated(buffered) if strip_seps else buffered
                 lcs_len = compute_lcs_length(variant, buf)
@@ -229,9 +224,7 @@ class OutboundDLP:
                 if ngram > echo_max_ngram:
                     echo_max_ngram = ngram
 
-        echo_detected = (
-            echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold
-        )
+        echo_detected = echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold
 
         # Step 3: Sensitive-leak check (BLOCK trigger).
         # Outbound vs sensitive buffer at base threshold. Echo does not
@@ -245,7 +238,7 @@ class OutboundDLP:
                         result = OutboundResult(
                             allowed=False,
                             reason=f"Verbatim overlap ({lcs_len} chars){label} with "
-                                   f"ingested sensitive content",
+                            f"ingested sensitive content",
                             overlap_pct=0.0,
                             contamination_triggered=True,
                             echo_detected=echo_detected,
@@ -259,7 +252,7 @@ class OutboundDLP:
                         result = OutboundResult(
                             allowed=False,
                             reason=f"N-gram overlap ({overlap:.0%}){label} with "
-                                   f"ingested sensitive content",
+                            f"ingested sensitive content",
                             overlap_pct=overlap,
                             contamination_triggered=True,
                             echo_detected=echo_detected,

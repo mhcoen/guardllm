@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import time
-from typing import Optional
 
 from guardllm.security import profiles
 from guardllm.security.action_gate import ActionGate, ActionProposal
@@ -23,7 +22,6 @@ from guardllm.security.types import (
     PolicyConfig,
     ProcessedContent,
     SecurityContext,
-    SensitivityLevel,
     TrustLevel,
 )
 from guardllm.security.validation import ValidationResult, validate_arguments
@@ -35,8 +33,8 @@ class Guard:
     def __init__(
         self,
         *,
-        canary_session_id: Optional[str] = None,
-        audit_logger: Optional[object] = None,
+        canary_session_id: str | None = None,
+        audit_logger: object | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> None:
         self._pipeline = SecurityPipeline(
@@ -58,10 +56,10 @@ class Guard:
         scope: dict,
         *,
         source: str = "api",
-        user_message: Optional[str] = None,
-        message_hash: Optional[str] = None,
-        session_id: Optional[str] = None,
-        timestamp: Optional[float] = None,
+        user_message: str | None = None,
+        message_hash: str | None = None,
+        session_id: str | None = None,
+        timestamp: float | None = None,
     ) -> AuthorizationEvent:
         """Build an authorization event for a tool call."""
         msg_hash = message_hash
@@ -83,9 +81,9 @@ class Guard:
         tool: str,
         args: dict,
         *,
-        authorization: Optional[AuthorizationEvent] = None,
-        user_message: Optional[str] = None,
-        message_hash: Optional[str] = None,
+        authorization: AuthorizationEvent | None = None,
+        user_message: str | None = None,
+        message_hash: str | None = None,
         ttl: float = 120.0,
     ) -> Binding:
         """Create a request binding to protect against replay."""
@@ -106,7 +104,7 @@ class Guard:
         *,
         source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
-        policy: Optional[PolicyConfig] = None,
+        policy: PolicyConfig | None = None,
     ) -> SecurityContext:
         return profiles.mcp_server_response(
             server_id=server_id,
@@ -121,7 +119,7 @@ class Guard:
         *,
         source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
-        policy: Optional[PolicyConfig] = None,
+        policy: PolicyConfig | None = None,
     ) -> SecurityContext:
         return profiles.mcp_client_request(
             client_id=client_id,
@@ -135,7 +133,7 @@ class Guard:
         document_id: str,
         *,
         content_type: ContentType = ContentType.PLAINTEXT,
-        policy: Optional[PolicyConfig] = None,
+        policy: PolicyConfig | None = None,
     ) -> SecurityContext:
         return profiles.untrusted_document(
             document_id=document_id,
@@ -148,7 +146,7 @@ class Guard:
         *,
         source_id: str = "web",
         content_type: ContentType = ContentType.HTML,
-        policy: Optional[PolicyConfig] = None,
+        policy: PolicyConfig | None = None,
     ) -> SecurityContext:
         return profiles.web_query_result(
             source_id=source_id,
@@ -161,7 +159,7 @@ class Guard:
         *,
         source_id: str = "internal",
         content_type: ContentType = ContentType.PLAINTEXT,
-        policy: Optional[PolicyConfig] = None,
+        policy: PolicyConfig | None = None,
     ) -> SecurityContext:
         return profiles.internal_sensitive(
             source_id=source_id,
@@ -235,10 +233,10 @@ class Guard:
         args: dict,
         context: SecurityContext,
         *,
-        authorization: Optional[AuthorizationEvent] = None,
-        binding: Optional[Binding] = None,
-        user_message: Optional[str] = None,
-        message_hash: Optional[str] = None,
+        authorization: AuthorizationEvent | None = None,
+        binding: Binding | None = None,
+        user_message: str | None = None,
+        message_hash: str | None = None,
     ) -> GateResult:
         """Run policy/rate-limit/binding checks for a tool call."""
         msg_hash = message_hash
@@ -304,7 +302,7 @@ class Guard:
         )
         return result
 
-    def sanitize_exception(self, exception: Exception, retry_after: Optional[int] = None) -> dict:
+    def sanitize_exception(self, exception: Exception, retry_after: int | None = None) -> dict:
         """Return a sanitized outward-safe error payload."""
         result = sanitize_error(exception, retry_after=retry_after)
         self._audit(
@@ -322,7 +320,7 @@ class Guard:
         context: SecurityContext,
         *,
         summary: str,
-        proposal_context: Optional[dict] = None,
+        proposal_context: dict | None = None,
         heightened_scrutiny: bool = False,
         context_has_web_derived: bool = False,
     ) -> bool:
@@ -356,12 +354,12 @@ class Guard:
         args: dict,
         context: SecurityContext,
         *,
-        summary: Optional[str] = None,
-        proposal_context: Optional[dict] = None,
-        authorization: Optional[AuthorizationEvent] = None,
-        binding: Optional[Binding] = None,
-        user_message: Optional[str] = None,
-        message_hash: Optional[str] = None,
+        summary: str | None = None,
+        proposal_context: dict | None = None,
+        authorization: AuthorizationEvent | None = None,
+        binding: Binding | None = None,
+        user_message: str | None = None,
+        message_hash: str | None = None,
         context_has_web_derived: bool = False,
         require_confirmation: bool = False,
         heightened_scrutiny: bool = False,

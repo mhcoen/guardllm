@@ -7,7 +7,6 @@ verification) with server-mode capability token authorization.
 from __future__ import annotations
 
 import time
-from typing import FrozenSet, Optional
 
 from guardllm.security.types import (
     AuthorizationEvent,
@@ -17,24 +16,26 @@ from guardllm.security.types import (
 )
 
 # Tools that can modify external state (spec §6)
-DESTRUCTIVE_TOOLS: FrozenSet[str] = frozenset({
-    "gmail_send_email",
-    "gmail_delete_email",
-    "gmail_modify_labels",
-    "calendar_create_event",
-    "calendar_delete_event",
-    "slack_send_message",
-    "slack_delete_message",
-    "file_write",
-    "file_delete",
-    "shell_execute",
-    # mcp-gsuite tools (v1.1)
-    "delete_calendar_event",
-    "delete_gmail_draft",
-    "create_calendar_event",
-    "reply_gmail_email",
-    "create_gmail_draft",
-})
+DESTRUCTIVE_TOOLS: frozenset[str] = frozenset(
+    {
+        "gmail_send_email",
+        "gmail_delete_email",
+        "gmail_modify_labels",
+        "calendar_create_event",
+        "calendar_delete_event",
+        "slack_send_message",
+        "slack_delete_message",
+        "file_write",
+        "file_delete",
+        "shell_execute",
+        # mcp-gsuite tools (v1.1)
+        "delete_calendar_event",
+        "delete_gmail_draft",
+        "create_calendar_event",
+        "reply_gmail_email",
+        "create_gmail_draft",
+    }
+)
 
 
 class PolicyEngine:
@@ -47,19 +48,18 @@ class PolicyEngine:
     def __init__(
         self,
         auth_ttl: float = 300.0,
-        destructive_tools: Optional[FrozenSet[str]] = None,
+        destructive_tools: frozenset[str] | None = None,
     ) -> None:
         self._auth_ttl = auth_ttl
         self._destructive_tools = (
-            destructive_tools if destructive_tools is not None
-            else DESTRUCTIVE_TOOLS
+            destructive_tools if destructive_tools is not None else DESTRUCTIVE_TOOLS
         )
 
     def check_tool_execution(
         self,
         tool: str,
         args: dict,
-        auth_event: Optional[AuthorizationEvent],
+        auth_event: AuthorizationEvent | None,
         ctx: SecurityContext,
     ) -> GateResult:
         """Policy check before tool execution.
@@ -68,10 +68,7 @@ class PolicyEngine:
         server/client mode-specific logic.
         """
         # Principal-trust deny list: block before any scope/auth check
-        if (
-            ctx.principal_trust == TrustLevel.UNTRUSTED
-            and tool in ctx.policy.untrusted_deny_tools
-        ):
+        if ctx.principal_trust == TrustLevel.UNTRUSTED and tool in ctx.policy.untrusted_deny_tools:
             return GateResult(
                 allowed=False,
                 reason=f"Tool '{tool}' denied for untrusted principal",
@@ -98,7 +95,7 @@ class PolicyEngine:
         self,
         tool: str,
         args: dict,
-        auth_event: Optional[AuthorizationEvent],
+        auth_event: AuthorizationEvent | None,
         ctx: SecurityContext,
     ) -> GateResult:
         """Server mode: check capability scopes."""
@@ -131,7 +128,7 @@ class PolicyEngine:
         self,
         tool: str,
         args: dict,
-        auth_event: Optional[AuthorizationEvent],
+        auth_event: AuthorizationEvent | None,
         ctx: SecurityContext,
     ) -> GateResult:
         """Client mode: verify authorization event."""
@@ -185,10 +182,7 @@ class PolicyEngine:
         if auth_event.action != tool:
             return GateResult(
                 allowed=False,
-                reason=(
-                    f"Action mismatch: authorized='{auth_event.action}', "
-                    f"executing='{tool}'"
-                ),
+                reason=(f"Action mismatch: authorized='{auth_event.action}', executing='{tool}'"),
                 confidence="none",
             )
 
@@ -203,10 +197,7 @@ class PolicyEngine:
             if args[key] != value:
                 return GateResult(
                     allowed=False,
-                    reason=(
-                        f"Scope violation: '{key}' expected "
-                        f"'{value}', got '{args[key]}'"
-                    ),
+                    reason=(f"Scope violation: '{key}' expected '{value}', got '{args[key]}'"),
                     confidence="none",
                 )
 
@@ -215,10 +206,7 @@ class PolicyEngine:
         if uncovered:
             return GateResult(
                 allowed=False,
-                reason=(
-                    f"Args key(s) {sorted(uncovered)} not covered by "
-                    f"authorization scope"
-                ),
+                reason=(f"Args key(s) {sorted(uncovered)} not covered by authorization scope"),
                 confidence="none",
             )
 
@@ -227,10 +215,7 @@ class PolicyEngine:
         if elapsed > self._auth_ttl:
             return GateResult(
                 allowed=False,
-                reason=(
-                    f"Authorization expired ({elapsed:.0f}s > "
-                    f"{self._auth_ttl:.0f}s TTL)"
-                ),
+                reason=(f"Authorization expired ({elapsed:.0f}s > {self._auth_ttl:.0f}s TTL)"),
                 confidence="none",
             )
 

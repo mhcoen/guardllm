@@ -10,12 +10,12 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, FrozenSet, List, Optional, Tuple
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class TrustLevel(Enum):
     TRUSTED = "trusted"
@@ -33,7 +33,7 @@ class TrustLevel(Enum):
         return _TRUST_RANK[self] <= _TRUST_RANK[other]
 
 
-_TRUST_RANK: Dict[TrustLevel, int] = {
+_TRUST_RANK: dict[TrustLevel, int] = {
     TrustLevel.UNTRUSTED: 0,
     TrustLevel.SEMI_TRUSTED: 1,
     TrustLevel.TRUSTED: 2,
@@ -56,9 +56,9 @@ class ContentType(Enum):
 class ExtractionPolicy(Enum):
     """KG extraction policy for a source type (Layer 2)."""
 
-    ALLOW = "allow"              # Extract normally, no quarantine
-    QUARANTINE = "quarantine"    # Extract but quarantine all triples
-    BLOCK = "block"              # Do not extract
+    ALLOW = "allow"  # Extract normally, no quarantine
+    QUARANTINE = "quarantine"  # Extract but quarantine all triples
+    BLOCK = "block"  # Do not extract
 
 
 class SensitivityLevel(Enum):
@@ -70,6 +70,7 @@ class SensitivityLevel(Enum):
 # ---------------------------------------------------------------------------
 # Authorization
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class AuthorizationEvent:
@@ -84,12 +85,12 @@ class AuthorizationEvent:
     events.
     """
 
-    action: str                    # Tool name, e.g. "gmail_send_email"
-    scope: dict                    # Action-specific constraints
-    message_hash: str              # SHA-256 of the user message
-    timestamp: float               # time.time() when event was created
-    source: str                    # "regex_directive", "slash_command", etc.
-    session_id: Optional[str] = None
+    action: str  # Tool name, e.g. "gmail_send_email"
+    scope: dict  # Action-specific constraints
+    message_hash: str  # SHA-256 of the user message
+    timestamp: float  # time.time() when event was created
+    source: str  # "regex_directive", "slash_command", etc.
+    session_id: str | None = None
 
     def binding_hash(self) -> str:
         """Hash for request binding verification."""
@@ -101,48 +102,51 @@ class AuthorizationEvent:
 # Security context
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PolicyConfig:
     """Policy configuration for a security context."""
 
     # Client mode (None = no allowlist; dict including {} = deny unless listed)
-    tool_allowlist: Optional[Dict[tuple, Any]] = None
-    directive_patterns: Dict[str, Any] = field(default_factory=dict)
+    tool_allowlist: dict[tuple, Any] | None = None
+    directive_patterns: dict[str, Any] = field(default_factory=dict)
     enable_destructive: bool = False
 
     # Server mode (None = no allowlist, {} = deny all tools)
-    capability_scopes: Optional[Dict[str, Any]] = None
-    client_id: Optional[str] = None
+    capability_scopes: dict[str, Any] | None = None
+    client_id: str | None = None
 
     # Shared
-    rate_limits: Dict[str, Any] = field(default_factory=dict)
-    argument_limits: Dict[str, Any] = field(default_factory=dict)
+    rate_limits: dict[str, Any] = field(default_factory=dict)
+    argument_limits: dict[str, Any] = field(default_factory=dict)
     escalation_gate_enabled: bool = True
     contaminated_action: str = "block"
     # Tunable overlap thresholds
-    dlp_verbatim_lcs_min: int = 14       # untrusted-echo LCS threshold
+    dlp_verbatim_lcs_min: int = 14  # untrusted-echo LCS threshold
     dlp_ngram_overlap_min: float = 0.40
-    dlp_sensitive_lcs_min: int = 12      # sensitive-leak LCS threshold (lower)
+    dlp_sensitive_lcs_min: int = 12  # sensitive-leak LCS threshold (lower)
     provenance_verbatim_lcs_min: int = 50
     provenance_ngram_overlap_min: float = 0.30
 
     # Two-axis trust model fields (Phase 1 scaffolding, Phase 2 consumers)
     # Override source gate policy keyed by (source_type, source_trust)
-    source_gate_overrides: Dict[Tuple[str, TrustLevel], ExtractionPolicy] = field(default_factory=dict)
+    source_gate_overrides: dict[tuple[str, TrustLevel], ExtractionPolicy] = field(
+        default_factory=dict
+    )
     # Tools denied when principal_trust == UNTRUSTED
-    untrusted_deny_tools: FrozenSet[str] = frozenset()
+    untrusted_deny_tools: frozenset[str] = frozenset()
     # Require auth event when principal_trust == UNTRUSTED
     untrusted_require_auth: bool = False
     # Require confirmation for all tools when principal_trust <= this level
-    confirm_all_below: Optional[TrustLevel] = None
+    confirm_all_below: TrustLevel | None = None
     # Per-principal_trust rate limit overrides, merged over DEFAULT_LIMITS
-    rate_limit_overrides: Dict[TrustLevel, Dict[str, int]] = field(default_factory=dict)
+    rate_limit_overrides: dict[TrustLevel, dict[str, int]] = field(default_factory=dict)
     # Contamination-aware tool gating: "allow" | "require_auth" | "deny"
     contaminated_tool_policy: str = "allow"
     # L12: auto-require confirmation for destructive tool calls
     auto_confirm_destructive: bool = False
     # Source types that require non-empty source_id
-    require_source_id_for: FrozenSet[str] = frozenset()
+    require_source_id_for: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         _VALID_CONTAMINATED_TOOL_POLICIES = {"allow", "require_auth", "deny"}
@@ -177,39 +181,37 @@ class ConfirmationHandler:
 class SecurityContext:
     """Configures the security pipeline for a specific data flow."""
 
-    mode: str                      # "client" or "server"
-    source_type: str               # "mcp_server", "mcp_client", "cli_user"
-    source_id: str                 # server_id or client_id
+    mode: str  # "client" or "server"
+    source_type: str  # "mcp_server", "mcp_client", "cli_user"
+    source_id: str  # server_id or client_id
     source_trust: TrustLevel = TrustLevel.UNTRUSTED
     principal_trust: TrustLevel = TrustLevel.UNTRUSTED
     sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     content_type: ContentType = ContentType.PLAINTEXT
     policy: PolicyConfig = field(default_factory=PolicyConfig)
-    confirmation_handler: Optional[ConfirmationHandler] = None
+    confirmation_handler: ConfirmationHandler | None = None
 
     def __post_init__(self) -> None:
         if self.source_trust == TrustLevel.SEMI_TRUSTED:
-            raise ValueError(
-                "source_trust does not allow SEMI_TRUSTED; "
-                "use TRUSTED or UNTRUSTED"
-            )
+            raise ValueError("source_trust does not allow SEMI_TRUSTED; use TRUSTED or UNTRUSTED")
 
 
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SanitizationResult:
     """Output of the sanitizer (Layer 0)."""
 
     cleaned_text: str
-    warnings: List[str] = field(default_factory=list)
-    sanitization_summary: Optional[str] = None
+    warnings: list[str] = field(default_factory=list)
+    sanitization_summary: str | None = None
     chars_stripped: int = 0
     class_hiding_possible: bool = False
     encoded_detected: bool = False
-    mixed_script_words: List[str] = field(default_factory=list)
+    mixed_script_words: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -217,11 +219,11 @@ class ProcessedContent:
     """Output of the full inbound pipeline."""
 
     content: str
-    sanitization: Optional[SanitizationResult] = None
+    sanitization: SanitizationResult | None = None
     isolated: bool = False
     source_type: str = ""
     source_id: str = ""
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -230,7 +232,7 @@ class GateResult:
 
     allowed: bool
     reason: str
-    matched_directive: Optional[str] = None
+    matched_directive: str | None = None
     confidence: str = "none"  # "explicit" | "implicit" | "none"
 
 
@@ -241,7 +243,7 @@ class OutboundResult:
     allowed: bool
     reason: str
     overlap_pct: float = 0.0
-    secrets_found: List[str] = field(default_factory=list)
+    secrets_found: list[str] = field(default_factory=list)
     provenance_blocked: bool = False
     contamination_triggered: bool = False
     echo_detected: bool = False
@@ -254,9 +256,9 @@ class RateLimitResult:
 
     allowed: bool
     reason: str
-    anomalies: List[str] = field(default_factory=list)
-    remaining: Optional[int] = None
-    retry_after: Optional[int] = None
+    anomalies: list[str] = field(default_factory=list)
+    remaining: int | None = None
+    retry_after: int | None = None
 
 
 @dataclass
@@ -264,8 +266,8 @@ class ValidationResult:
     """Output of argument validation."""
 
     valid: bool
-    errors: List[str] = field(default_factory=list)
-    field_name: Optional[str] = None
+    errors: list[str] = field(default_factory=list)
+    field_name: str | None = None
 
 
 @dataclass
@@ -289,16 +291,16 @@ class AuditEvent:
     """Structured audit log event (Part 11)."""
 
     event_type: str
-    tool_name: Optional[str] = None
-    action_summary: Optional[str] = None
-    content_hash: Optional[str] = None
-    user_confirmed: Optional[bool] = None
-    firewall_result: Optional[Dict[str, Any]] = None
-    dlp_result: Optional[Dict[str, Any]] = None
-    provenance_result: Optional[Dict[str, Any]] = None
-    rate_limit_result: Optional[Dict[str, Any]] = None
-    binding_result: Optional[Dict[str, Any]] = None
-    warnings: Optional[List[str]] = None
-    session_id: Optional[str] = None
-    timestamp: Optional[float] = None
-    request_id: Optional[str] = None
+    tool_name: str | None = None
+    action_summary: str | None = None
+    content_hash: str | None = None
+    user_confirmed: bool | None = None
+    firewall_result: dict[str, Any] | None = None
+    dlp_result: dict[str, Any] | None = None
+    provenance_result: dict[str, Any] | None = None
+    rate_limit_result: dict[str, Any] | None = None
+    binding_result: dict[str, Any] | None = None
+    warnings: list[str] | None = None
+    session_id: str | None = None
+    timestamp: float | None = None
+    request_id: str | None = None

@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
-from guardllm.security.types import SecurityContext, TrustLevel
+from guardllm.security.types import SecurityContext
 
 
-def canonicalize_args(args: Dict[str, Any]) -> str:
+def canonicalize_args(args: dict[str, Any]) -> str:
     """Stable canonical representation of args for commitment comparison.
 
     Sorts dict keys recursively, normalizes whitespace in string values,
@@ -31,7 +31,7 @@ def _normalize(obj: Any) -> Any:
     """Recursively normalize a value for canonical comparison."""
     if isinstance(obj, dict):
         return {k: _normalize(v) for k, v in sorted(obj.items())}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [_normalize(item) for item in obj]
     if isinstance(obj, str):
         return " ".join(obj.split())
@@ -46,16 +46,14 @@ class ActionProposal:
     """A proposed action awaiting user confirmation."""
 
     tool_name: str
-    args: Dict[str, Any]
-    summary: str                   # Human-readable action summary
-    context: Dict[str, Any]        # Additional context for display
+    args: dict[str, Any]
+    summary: str  # Human-readable action summary
+    context: dict[str, Any]  # Additional context for display
     heightened_scrutiny: bool = False  # True if class_hiding_possible
 
 
 # Hardcoded warning text — NOT LLM-generated (INV-MUSE-7)
-_WEB_DERIVED_WARNING = (
-    "\u26a0\ufe0f  Your conversation context includes content from web search."
-)
+_WEB_DERIVED_WARNING = "\u26a0\ufe0f  Your conversation context includes content from web search."
 
 
 class ActionGate:
@@ -73,11 +71,9 @@ class ActionGate:
 
     def __init__(self) -> None:
         # G6: commitment storage. Key = tool_name, value = canonical args string.
-        self._commitments: Dict[str, str] = {}
+        self._commitments: dict[str, str] = {}
 
-    def verify_commitment(
-        self, tool: str, args: Dict[str, Any]
-    ) -> Tuple[bool, str]:
+    def verify_commitment(self, tool: str, args: dict[str, Any]) -> tuple[bool, str]:
         """Verify that tool+args match the last confirmed commitment (G6).
 
         Returns (ok, reason). If no commitment exists for this tool,
@@ -136,7 +132,7 @@ class ActionGate:
                 confirmation with hardcoded web-content warning (INV-MUSE-7)
         """
         if ctx.confirmation_handler is not None:
-            context_dict: Dict[str, Any] = {
+            context_dict: dict[str, Any] = {
                 **proposal.context,
                 "summary": proposal.summary,
                 "heightened_scrutiny": proposal.heightened_scrutiny,
@@ -151,10 +147,7 @@ class ActionGate:
                 context_dict["trust_gated_confirmation"] = True
 
             # INV-MUSE-7: Enhanced confirmation when web-derived content present
-            if (
-                context_has_web_derived
-                and ctx.policy.escalation_gate_enabled
-            ):
+            if context_has_web_derived and ctx.policy.escalation_gate_enabled:
                 context_dict["web_derived_warning"] = _WEB_DERIVED_WARNING
                 context_dict["enhanced_confirmation"] = True
 

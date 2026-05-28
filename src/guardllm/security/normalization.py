@@ -11,17 +11,16 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Dict
 
 # Zero-width and invisible characters (spec §1.2)
 _INVISIBLE_RE = re.compile(
     "["
-    "\u00AD"          # Soft hyphen
-    "\u200B-\u200D"   # Zero-width space/non-joiner/joiner
-    "\u2060"          # Word joiner
-    "\uFEFF"          # BOM / zero-width no-break space
-    "\uFFFC"          # Object replacement character
-    "\uFFF9-\uFFFB"   # Interlinear annotation markers
+    "\u00ad"  # Soft hyphen
+    "\u200b-\u200d"  # Zero-width space/non-joiner/joiner
+    "\u2060"  # Word joiner
+    "\ufeff"  # BOM / zero-width no-break space
+    "\ufffc"  # Object replacement character
+    "\ufff9-\ufffb"  # Interlinear annotation markers
     "]",
     flags=re.UNICODE,
 )
@@ -32,8 +31,8 @@ _TAG_CHAR_RE = re.compile(r"[\U000E0001-\U000E007F]")
 # Bidi controls
 _BIDI_RE = re.compile(
     "["
-    "\u202A-\u202E"   # LRE, RLE, PDF, LRO, RLO
-    "\u2066-\u2069"   # LRI, RLI, FSI, PDI
+    "\u202a-\u202e"  # LRE, RLE, PDF, LRO, RLO
+    "\u2066-\u2069"  # LRI, RLI, FSI, PDI
     "]"
 )
 
@@ -45,7 +44,8 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # Unicode TR39 confusable normalization
 # ---------------------------------------------------------------------------
 
-def _build_confusable_table() -> Dict[int, str]:
+
+def _build_confusable_table() -> dict[int, str]:
     """Build a translation table mapping non-ASCII confusables to ASCII.
 
     Uses the confusables library (Unicode TR39 data) to map each non-ASCII
@@ -57,7 +57,7 @@ def _build_confusable_table() -> Dict[int, str]:
     except ImportError:
         return {}
 
-    table: Dict[int, str] = {}
+    table: dict[int, str] = {}
     for char, confusables_list in CONFUSABLE_MAP.items():
         if len(char) != 1 or ord(char) < 128:
             continue
@@ -79,7 +79,7 @@ def _build_confusable_table() -> Dict[int, str]:
 
 
 # Built once at import time (2252 mappings from TR39 data)
-_CONFUSABLE_TABLE: Dict[int, str] = _build_confusable_table()
+_CONFUSABLE_TABLE: dict[int, str] = _build_confusable_table()
 
 
 def normalize_confusables(text: str) -> str:
@@ -185,8 +185,8 @@ def compute_ngram_overlap(a: str, b: str, n: int = 5) -> float:
     """
     if len(b) < n or len(a) < n:
         return 0.0
-    b_grams = {b[i:i + n] for i in range(len(b) - n + 1)}
-    a_grams = {a[i:i + n] for i in range(len(a) - n + 1)}
+    b_grams = {b[i : i + n] for i in range(len(b) - n + 1)}
+    a_grams = {a[i : i + n] for i in range(len(a) - n + 1)}
     if not b_grams:
         return 0.0
     overlap = b_grams & a_grams
@@ -203,7 +203,7 @@ def deobfuscate_reversed(text: str) -> str:
     return text[::-1]
 
 
-_SPELLED_SEPARATORS = ['-', ' ', '.', ',', '|', '/', ':', ';']
+_SPELLED_SEPARATORS = ["-", " ", ".", ",", "|", "/", ":", ";"]
 
 
 def deobfuscate_spelled(text: str) -> str:
@@ -214,14 +214,14 @@ def deobfuscate_spelled(text: str) -> str:
     """
     for sep in _SPELLED_SEPARATORS:
         esc = re.escape(sep)
-        char = f'[^{esc}\\s]' if sep != ' ' else r'\S'
-        pattern = re.compile(f'({char}){esc}(?:{char}{esc}){{2,}}{char}')
-        text = pattern.sub(lambda m, s=sep: m.group(0).replace(s, ''), text)
+        char = f"[^{esc}\\s]" if sep != " " else r"\S"
+        pattern = re.compile(f"({char}){esc}(?:{char}{esc}){{2,}}{char}")
+        text = pattern.sub(lambda m, s=sep: m.group(0).replace(s, ""), text)
     return text
 
 
 # Regex for stripping separator characters inserted between token chunks
-_SEPARATOR_STRIP_RE = re.compile(r'[\s\-_./,;:|]+')
+_SEPARATOR_STRIP_RE = re.compile(r"[\s\-_./,;:|]+")
 
 
 def deobfuscate_separated(text: str) -> str:
@@ -233,4 +233,4 @@ def deobfuscate_separated(text: str) -> str:
     produces ``skabcdef1234`` which can then be matched via LCS against
     the original.
     """
-    return _SEPARATOR_STRIP_RE.sub('', text)
+    return _SEPARATOR_STRIP_RE.sub("", text)

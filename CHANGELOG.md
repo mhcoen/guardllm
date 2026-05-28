@@ -4,6 +4,9 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Changed
+- Regenerated `benchmarks/checkpoints/official-baseline.json` to reflect the current corpus. The prior checkpoint (captured Feb 22 2026 at `fc842dc`) predated several legitimate additions and intentional behavior changes: the `error_sanitize_suite`, `tool_gate_contamination_style`, and `upstream_wainjectbench` suites were added; `mcp_protocol_abuse_style` grew from 5 to 8 cases (all pass); the Feb-24 TR39 confusable normalization (`8ced9ae`) and the auth-scope fix in this release shifted ~30 `upstream_mcpbench` results. The remaining failed-case IDs in the checkpoint reflect known upstream data quirks (whitespace and curly-quote mismatches between `input` and `expect_contains` in mcpbench/wainjectbench JSONL) plus the intentional FP cost of homoglyph hardening on non-ASCII text. CI gate is now green against this baseline.
+
 ### Added
 - `SECURITY.md` vulnerability reporting policy with disclosure timeline and scope.
 - `CONTRIBUTING.md` developer guide covering setup, tests, benchmarks, and security-sensitive review expectations.

@@ -4,7 +4,6 @@ import pytest
 
 from guardllm.security.source_gate import (
     ExtractionPolicy,
-    SourceGateResult,
     check_extraction_allowed,
 )
 from guardllm.security.types import TrustLevel
@@ -83,9 +82,7 @@ class TestSourceGatePolicy:
         assert result.source_origin == "mcp:claude-code"
 
     def test_quarantine_user_indexed_with_source_id(self):
-        result = check_extraction_allowed(
-            "user_indexed_email", source_id="sender@example.com"
-        )
+        result = check_extraction_allowed("user_indexed_email", source_id="sender@example.com")
         assert result.source_origin == "mcp:sender@example.com"
 
     def test_web_synthesis_quarantined(self):

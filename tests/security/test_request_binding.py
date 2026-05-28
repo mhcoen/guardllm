@@ -13,7 +13,7 @@ import time
 import pytest
 
 from guardllm.security.request_binding import create_binding, verify_binding
-from guardllm.security.types import AuthorizationEvent, Binding
+from guardllm.security.types import AuthorizationEvent
 
 
 @pytest.fixture
@@ -44,9 +44,7 @@ def sample_tool():
 class TestValidBinding:
     """Spec test 50: valid binding with matching context -> verified."""
 
-    def test_create_and_verify_same_context(
-        self, sample_tool, sample_args, sample_auth_event
-    ):
+    def test_create_and_verify_same_context(self, sample_tool, sample_args, sample_auth_event):
         """Binding created and verified with identical context succeeds."""
         binding = create_binding(
             tool=sample_tool,

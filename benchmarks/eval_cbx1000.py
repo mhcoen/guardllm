@@ -63,11 +63,12 @@ def run_case(case: dict) -> dict:
     transform_prog = meta.get("transform_program", [])
     if isinstance(transform_prog, str):
         import ast
+
         transform_prog = ast.literal_eval(transform_prog)
 
     transform = "unknown"
     for step in transform_prog:
-        if step.startswith("select(") or step.startswith("emit("):
+        if step.startswith(("select(", "emit(")):
             continue
         if step == "none":
             transform = "none"
@@ -94,6 +95,7 @@ def run_case(case: dict) -> dict:
 
 def main():
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--path", default="artifacts/cbx1000/cbx_1000_v1_seed20260222.jsonl")
     args = ap.parse_args()
@@ -123,7 +125,7 @@ def main():
     for i, case in enumerate(cases):
         results.append(run_case(case))
         if (i + 1) % 200 == 0:
-            print(f"  {i+1}/{len(cases)}...", file=sys.stderr)
+            print(f"  {i + 1}/{len(cases)}...", file=sys.stderr)
 
     # Report
     expected_block = [r for r in results if r["expected_guard"] == "BLOCK"]
@@ -139,9 +141,9 @@ def main():
 
     echo_count = sum(1 for r in results if r["echo_detected"])
 
-    print(f"\n{'='*70}")
-    print(f"CBX-1000 EVALUATION RESULTS")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("CBX-1000 EVALUATION RESULTS")
+    print(f"{'=' * 70}")
     print(f"Total cases: {len(results)}")
     print(f"\n  Expected BLOCK ({len(expected_block)}): blocked {blocked_of_eb}, FN {len(fn)}")
     print(f"  Expected ALLOW ({len(expected_allow)}): allowed {allowed_of_ea}, FP {len(fp)}")
@@ -149,7 +151,7 @@ def main():
     print(f"  Echo detected: {echo_count} / {len(results)}")
 
     # Per-case_kind breakdown
-    print(f"\n  Per-case_kind:")
+    print("\n  Per-case_kind:")
     kind_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0, "fn": 0, "fp": 0})
     for r in results:
         k = kind_stats[r["case_kind"]]
@@ -161,15 +163,26 @@ def main():
             k["fp"] += 1
 
     print(f"  {'Kind':<16} {'Tot':>5} {'Blk':>5} {'Alw':>5} {'FN':>4} {'FP':>4}")
-    print(f"  {'-'*50}")
+    print(f"  {'-' * 50}")
     for kind in sorted(kind_stats.keys()):
         k = kind_stats[kind]
-        print(f"  {kind:<16} {k['total']:>5} {k['blocked']:>5} {k['allowed']:>5} {k['fn']:>4} {k['fp']:>4}")
+        print(
+            f"  {kind:<16} {k['total']:>5} {k['blocked']:>5} {k['allowed']:>5} {k['fn']:>4} {k['fp']:>4}"
+        )
 
     # Per-transform breakdown
-    transform_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0,
-                                            "exp_block": 0, "fn": 0,
-                                            "exp_allow": 0, "fp": 0, "rl": 0})
+    transform_stats = defaultdict(
+        lambda: {
+            "total": 0,
+            "blocked": 0,
+            "allowed": 0,
+            "exp_block": 0,
+            "fn": 0,
+            "exp_allow": 0,
+            "fp": 0,
+            "rl": 0,
+        }
+    )
     for r in results:
         t = r["transform"]
         s = transform_stats[t]
@@ -186,13 +199,17 @@ def main():
         else:
             s["rl"] += 1
 
-    print(f"\n  Per-transform:")
-    print(f"  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}")
-    print(f"  {'-'*78}")
+    print("\n  Per-transform:")
+    print(
+        f"  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}"
+    )
+    print(f"  {'-' * 78}")
     for t in sorted(transform_stats.keys()):
         s = transform_stats[t]
-        print(f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
-              f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}")
+        print(
+            f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
+            f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}"
+        )
 
     # FN details
     if fn:
@@ -211,12 +228,12 @@ def main():
             print(f"    ... and {len(fp) - 10} more")
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     if len(fn) == 0 and len(fp) == 0:
         print(f"PASS: {blocked_of_eb}/{len(expected_block)} attacks blocked, 0 FN, 0 FP")
     else:
         print(f"RESULT: {blocked_of_eb}/{len(expected_block)} blocked, {len(fn)} FN, {len(fp)} FP")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":

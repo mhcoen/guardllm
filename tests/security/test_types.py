@@ -14,18 +14,11 @@ import pytest
 
 from guardllm.security.types import (
     AuthorizationEvent,
-    AuditEvent,
     Binding,
     ContentType,
-    GateResult,
-    OutboundResult,
     PolicyConfig,
-    ProcessedContent,
-    RateLimitResult,
-    SanitizationResult,
     SecurityContext,
     TrustLevel,
-    ValidationResult,
 )
 
 
@@ -81,36 +74,36 @@ class TestAuthorizationEvent:
 
     def test_binding_hash_changes_with_action(self):
         """binding_hash() changes when action differs."""
-        base = dict(
-            scope={"to": "alice@test.com"},
-            message_hash="hash1",
-            timestamp=1.0,
-            source="test",
-        )
+        base = {
+            "scope": {"to": "alice@test.com"},
+            "message_hash": "hash1",
+            "timestamp": 1.0,
+            "source": "test",
+        }
         event1 = AuthorizationEvent(action="gmail_send_email", **base)
         event2 = AuthorizationEvent(action="gmail_read_email", **base)
         assert event1.binding_hash() != event2.binding_hash()
 
     def test_binding_hash_changes_with_scope(self):
         """binding_hash() changes when scope differs."""
-        base = dict(
-            action="gmail_send_email",
-            message_hash="hash1",
-            timestamp=1.0,
-            source="test",
-        )
+        base = {
+            "action": "gmail_send_email",
+            "message_hash": "hash1",
+            "timestamp": 1.0,
+            "source": "test",
+        }
         event1 = AuthorizationEvent(scope={"to": "alice@test.com"}, **base)
         event2 = AuthorizationEvent(scope={"to": "bob@test.com"}, **base)
         assert event1.binding_hash() != event2.binding_hash()
 
     def test_binding_hash_changes_with_message_hash(self):
         """binding_hash() changes when message_hash differs."""
-        base = dict(
-            action="gmail_send_email",
-            scope={"to": "alice@test.com"},
-            timestamp=1.0,
-            source="test",
-        )
+        base = {
+            "action": "gmail_send_email",
+            "scope": {"to": "alice@test.com"},
+            "timestamp": 1.0,
+            "source": "test",
+        }
         event1 = AuthorizationEvent(message_hash="hash_a", **base)
         event2 = AuthorizationEvent(message_hash="hash_b", **base)
         assert event1.binding_hash() != event2.binding_hash()

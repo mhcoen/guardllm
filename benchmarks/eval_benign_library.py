@@ -72,6 +72,7 @@ def run_case(case: dict) -> dict:
 
 def main():
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--path", default="artifacts/suites/benign_library_N2000_seed20260222.jsonl")
     args = ap.parse_args()
@@ -99,15 +100,15 @@ def main():
     for i, case in enumerate(cases):
         results.append(run_case(case))
         if (i + 1) % 500 == 0:
-            print(f"  {i+1}/{len(cases)}...", file=sys.stderr)
+            print(f"  {i + 1}/{len(cases)}...", file=sys.stderr)
 
     # Report
     total_fp = sum(1 for r in results if r["observed"] == "BLOCK")
     total_allow = sum(1 for r in results if r["observed"] == "ALLOW")
 
-    print(f"\n{'='*70}")
-    print(f"FALSE-POSITIVE MEASUREMENT LIBRARY RESULTS")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("FALSE-POSITIVE MEASUREMENT LIBRARY RESULTS")
+    print(f"{'=' * 70}")
     print(f"Total cases: {len(results)}")
     print(f"Total ALLOW (correct): {total_allow}")
     print(f"Total BLOCK (false positive): {total_fp}")
@@ -123,9 +124,9 @@ def main():
         else:
             s["allow"] += 1
 
-    print(f"\nPer-stratum breakdown:")
+    print("\nPer-stratum breakdown:")
     print(f"  {'Stratum':<42} {'Total':>5} {'Allow':>5} {'FP':>4} {'Rate':>7}")
-    print(f"  {'-'*68}")
+    print(f"  {'-' * 68}")
     for stratum in sorted(stratum_stats.keys()):
         s = stratum_stats[stratum]
         rate = s["fp"] / s["total"] * 100 if s["total"] else 0
@@ -134,16 +135,16 @@ def main():
     # FP details
     fp_cases = [r for r in results if r["observed"] == "BLOCK"]
     if fp_cases:
-        print(f"\nFalse positive details:")
+        print("\nFalse positive details:")
         for r in fp_cases[:20]:
             print(f"  {r['id']}: stratum={r['stratum']}")
             print(f"    reason: {r['reason'][:120]}")
             if r["secrets_found"]:
                 print(f"    secrets: {r['secrets_found']}")
             if r["provenance_blocked"]:
-                print(f"    provenance_blocked: True")
+                print("    provenance_blocked: True")
             if r["contamination_triggered"]:
-                print(f"    contamination_triggered: True")
+                print("    contamination_triggered: True")
         if len(fp_cases) > 20:
             print(f"  ... and {len(fp_cases) - 20} more")
 
@@ -160,7 +161,7 @@ def main():
                 cause_counts["other"] += 1
         print(f"\nFP causes: {dict(cause_counts)}")
     else:
-        print(f"\nNo false positives detected.")
+        print("\nNo false positives detected.")
 
 
 if __name__ == "__main__":

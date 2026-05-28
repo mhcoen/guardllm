@@ -87,10 +87,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "B"]
-"benchmarks/**" = ["S", "E402"]
-"examples/**" = ["S", "E402"]
-"tutorials/**" = ["S", "E402"]
-"scripts/**" = ["S"]
+"benchmarks/**" = ["S", "B", "E402", "F841"]
+"examples/**" = ["S", "B", "E402", "F841"]
+"tutorials/**" = ["S", "B", "E402", "F841"]
+"scripts/**" = ["S", "B"]
 
 [tool.ruff.format]
 quote-style = "double"

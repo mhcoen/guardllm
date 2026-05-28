@@ -166,9 +166,16 @@ def main():
     # InjecAgent
     inj = repo_dir / "injecagent"
     if inj.exists():
-        for p in [inj / "data" / "attacker_cases_ds.jsonl", inj / "data" / "attacker_cases_dh.jsonl"]:
+        for p in [
+            inj / "data" / "attacker_cases_ds.jsonl",
+            inj / "data" / "attacker_cases_dh.jsonl",
+        ]:
             if p.exists():
-                all_texts.extend(read_jsonl_texts(p, ["Attacker Instruction", "attack", "attacker_prompt", "prompt", "text"]))
+                all_texts.extend(
+                    read_jsonl_texts(
+                        p, ["Attacker Instruction", "attack", "attacker_prompt", "prompt", "text"]
+                    )
+                )
         print(f"  InjecAgent: {len(all_texts)} texts so far", file=sys.stderr)
 
     # AgentDojo

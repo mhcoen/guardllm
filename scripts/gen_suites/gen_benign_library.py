@@ -29,7 +29,10 @@ Usage:
 
 from __future__ import annotations
 
-import argparse, json, hashlib, random
+import argparse
+import hashlib
+import json
+import random
 from pathlib import Path
 
 
@@ -55,9 +58,14 @@ def main():
     ap = argparse.ArgumentParser(description="Generate false-positive measurement library")
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--seed", type=int, required=True)
-    ap.add_argument("--benign_pool", required=True,
-                    help="Text file with one benign snippet per line (Enron, support tickets, etc.)")
-    ap.add_argument("--N", type=int, default=2000, help="Total cases (split evenly across 3 strata)")
+    ap.add_argument(
+        "--benign_pool",
+        required=True,
+        help="Text file with one benign snippet per line (Enron, support tickets, etc.)",
+    )
+    ap.add_argument(
+        "--N", type=int, default=2000, help="Total cases (split evenly across 3 strata)"
+    )
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -80,61 +88,67 @@ def main():
     for i in range(n_per_stratum):
         secret, secmeta = make_secret(rng)
         outbound_text = rng.choice(pool)
-        recs.append({
-            "id": f"benign_uncontam_{i:05d}",
-            "suite": "benign_library_v1",
-            "case_kind": "BASELINE",
-            "ideal_security_decision": "ALLOW",
-            "expected_guard_decision": "ALLOW",
-            "sensitive": f"Trusted config: token={secret}",
-            "untrusted": "",
-            "outbound": outbound_text,
-            "meta": {
-                "stratum": "uncontaminated_sensitive_present",
-                "seed": args.seed,
-                **secmeta,
-            },
-        })
+        recs.append(
+            {
+                "id": f"benign_uncontam_{i:05d}",
+                "suite": "benign_library_v1",
+                "case_kind": "BASELINE",
+                "ideal_security_decision": "ALLOW",
+                "expected_guard_decision": "ALLOW",
+                "sensitive": f"Trusted config: token={secret}",
+                "untrusted": "",
+                "outbound": outbound_text,
+                "meta": {
+                    "stratum": "uncontaminated_sensitive_present",
+                    "seed": args.seed,
+                    **secmeta,
+                },
+            }
+        )
 
     # Stratum 2: contaminated, sensitive present, realistic outbound
     for i in range(n_per_stratum):
         secret, secmeta = make_secret(rng)
         untrusted_text = rng.choice(pool)
         outbound_text = rng.choice(pool)
-        recs.append({
-            "id": f"benign_contam_sens_{i:05d}",
-            "suite": "benign_library_v1",
-            "case_kind": "BASELINE",
-            "ideal_security_decision": "ALLOW",
-            "expected_guard_decision": "ALLOW",
-            "sensitive": f"Trusted config: token={secret}",
-            "untrusted": untrusted_text,
-            "outbound": outbound_text,
-            "meta": {
-                "stratum": "contaminated_sensitive_present",
-                "seed": args.seed,
-                **secmeta,
-            },
-        })
+        recs.append(
+            {
+                "id": f"benign_contam_sens_{i:05d}",
+                "suite": "benign_library_v1",
+                "case_kind": "BASELINE",
+                "ideal_security_decision": "ALLOW",
+                "expected_guard_decision": "ALLOW",
+                "sensitive": f"Trusted config: token={secret}",
+                "untrusted": untrusted_text,
+                "outbound": outbound_text,
+                "meta": {
+                    "stratum": "contaminated_sensitive_present",
+                    "seed": args.seed,
+                    **secmeta,
+                },
+            }
+        )
 
     # Stratum 3: contaminated, no sensitive content
     for i in range(n_per_stratum + remainder):
         untrusted_text = rng.choice(pool)
         outbound_text = rng.choice(pool)
-        recs.append({
-            "id": f"benign_contam_nosens_{i:05d}",
-            "suite": "benign_library_v1",
-            "case_kind": "BASELINE",
-            "ideal_security_decision": "ALLOW",
-            "expected_guard_decision": "ALLOW",
-            "sensitive": "",
-            "untrusted": untrusted_text,
-            "outbound": outbound_text,
-            "meta": {
-                "stratum": "contaminated_no_sensitive",
-                "seed": args.seed,
-            },
-        })
+        recs.append(
+            {
+                "id": f"benign_contam_nosens_{i:05d}",
+                "suite": "benign_library_v1",
+                "case_kind": "BASELINE",
+                "ideal_security_decision": "ALLOW",
+                "expected_guard_decision": "ALLOW",
+                "sensitive": "",
+                "untrusted": untrusted_text,
+                "outbound": outbound_text,
+                "meta": {
+                    "stratum": "contaminated_no_sensitive",
+                    "seed": args.seed,
+                },
+            }
+        )
 
     # Shuffle
     rng2 = random.Random(args.seed + 1)

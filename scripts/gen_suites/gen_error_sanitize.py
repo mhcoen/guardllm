@@ -26,17 +26,40 @@ SUITE_NAME = "error_sanitize_suite"
 ERROR_SPEC: list[tuple[str, str, int, dict[str, list]]] = [
     # (error_name, expect_code, count, varying_fields)
     ("PermissionDeniedError", "permission_denied", 93, {}),
-    ("InvalidParamsError", "invalid_params", 93, {
-        "field_name": [
-            "email", "password", "thread_handle", "query", "api_key",
-            "database_url", "username", "session_id", "file_path",
-            "model_name", "prompt", "temperature", "max_tokens",
-            "tool_name", "source_name", "recipient", "subject",
-        ],
-    }),
-    ("RateLimitError", "rate_limited", 93, {
-        "retry_after": [30, 60, 120, 300],
-    }),
+    (
+        "InvalidParamsError",
+        "invalid_params",
+        93,
+        {
+            "field_name": [
+                "email",
+                "password",
+                "thread_handle",
+                "query",
+                "api_key",
+                "database_url",
+                "username",
+                "session_id",
+                "file_path",
+                "model_name",
+                "prompt",
+                "temperature",
+                "max_tokens",
+                "tool_name",
+                "source_name",
+                "recipient",
+                "subject",
+            ],
+        },
+    ),
+    (
+        "RateLimitError",
+        "rate_limited",
+        93,
+        {
+            "retry_after": [30, 60, 120, 300],
+        },
+    ),
     ("UnauthorizedError", "unauthorized", 93, {}),
     ("InvalidHandleError", "invalid_handle", 93, {}),
     ("FileNotFoundError", "internal_error", 46, {}),
@@ -60,7 +83,7 @@ def generate(outdir: Path, seed: int) -> Path:
     case_idx = 0
 
     for error_name, expect_code, count, varying in ERROR_SPEC:
-        for i in range(count):
+        for _i in range(count):
             case: dict = {
                 "id": f"{SUITE_NAME}_{case_idx:04d}",
                 "suite": SUITE_NAME,

@@ -20,51 +20,107 @@ from pathlib import Path
 # with placeholders filled from word pools.
 
 NAMES = [
-    "Alice Chen", "Bob Martinez", "Carol Williams", "David Kim",
-    "Eva Singh", "Frank O'Brien", "Grace Tanaka", "Henry Dubois",
-    "Iris Patel", "James Wilson", "Karen Nakamura", "Leo Rossi",
-    "Maria Gonzalez", "Nate Thompson", "Olivia Park", "Paul Fischer",
-    "Quinn Okafor", "Rachel Stein", "Sam Johansson", "Tina Huang",
+    "Alice Chen",
+    "Bob Martinez",
+    "Carol Williams",
+    "David Kim",
+    "Eva Singh",
+    "Frank O'Brien",
+    "Grace Tanaka",
+    "Henry Dubois",
+    "Iris Patel",
+    "James Wilson",
+    "Karen Nakamura",
+    "Leo Rossi",
+    "Maria Gonzalez",
+    "Nate Thompson",
+    "Olivia Park",
+    "Paul Fischer",
+    "Quinn Okafor",
+    "Rachel Stein",
+    "Sam Johansson",
+    "Tina Huang",
 ]
 
 PRODUCTS = [
-    "Dashboard Pro", "DataSync", "CloudVault", "MetricsHub",
-    "TaskRunner", "PageBuilder", "FormWizard", "ReportEngine",
-    "AlertManager", "QueryOptimizer", "CacheLayer", "LogStream",
-    "AuthProxy", "FileSync", "WebMonitor", "APIGateway",
+    "Dashboard Pro",
+    "DataSync",
+    "CloudVault",
+    "MetricsHub",
+    "TaskRunner",
+    "PageBuilder",
+    "FormWizard",
+    "ReportEngine",
+    "AlertManager",
+    "QueryOptimizer",
+    "CacheLayer",
+    "LogStream",
+    "AuthProxy",
+    "FileSync",
+    "WebMonitor",
+    "APIGateway",
 ]
 
 STATUSES = ["completed", "in_progress", "pending", "resolved", "scheduled"]
 
 DEPARTMENTS = [
-    "Engineering", "Sales", "Marketing", "Customer Support",
-    "Product", "Legal", "Finance", "Operations", "HR", "QA",
+    "Engineering",
+    "Sales",
+    "Marketing",
+    "Customer Support",
+    "Product",
+    "Legal",
+    "Finance",
+    "Operations",
+    "HR",
+    "QA",
 ]
 
 ACTIONS = [
-    "updated the configuration", "reviewed the deployment",
-    "approved the budget request", "submitted the quarterly report",
-    "closed the open ticket", "merged the feature branch",
-    "escalated the priority", "scheduled the maintenance window",
-    "archived the old records", "published the release notes",
+    "updated the configuration",
+    "reviewed the deployment",
+    "approved the budget request",
+    "submitted the quarterly report",
+    "closed the open ticket",
+    "merged the feature branch",
+    "escalated the priority",
+    "scheduled the maintenance window",
+    "archived the old records",
+    "published the release notes",
 ]
 
 TOPICS = [
-    "Q4 revenue projections", "API latency improvements",
-    "customer onboarding flow", "database migration plan",
-    "security audit findings", "mobile app redesign",
-    "vendor contract renewal", "team capacity planning",
-    "infrastructure scaling", "documentation updates",
-    "performance benchmarks", "error rate analysis",
-    "feature flag rollout", "load testing results",
-    "compliance requirements", "integration roadmap",
+    "Q4 revenue projections",
+    "API latency improvements",
+    "customer onboarding flow",
+    "database migration plan",
+    "security audit findings",
+    "mobile app redesign",
+    "vendor contract renewal",
+    "team capacity planning",
+    "infrastructure scaling",
+    "documentation updates",
+    "performance benchmarks",
+    "error rate analysis",
+    "feature flag rollout",
+    "load testing results",
+    "compliance requirements",
+    "integration roadmap",
 ]
 
 SERVICES = [
-    "postgres-primary", "redis-cache-01", "nginx-lb",
-    "api-gateway-west", "worker-queue-03", "elasticsearch-cluster",
-    "kafka-broker-02", "prometheus-server", "grafana-dashboard",
-    "vault-secret-mgr", "consul-discovery", "envoy-proxy",
+    "postgres-primary",
+    "redis-cache-01",
+    "nginx-lb",
+    "api-gateway-west",
+    "worker-queue-03",
+    "elasticsearch-cluster",
+    "kafka-broker-02",
+    "prometheus-server",
+    "grafana-dashboard",
+    "vault-secret-mgr",
+    "consul-discovery",
+    "envoy-proxy",
 ]
 
 ERROR_MSGS = [
@@ -81,8 +137,16 @@ ERROR_MSGS = [
 ]
 
 CITIES = [
-    "San Francisco", "New York", "London", "Tokyo", "Berlin",
-    "Toronto", "Sydney", "Singapore", "Amsterdam", "Dublin",
+    "San Francisco",
+    "New York",
+    "London",
+    "Tokyo",
+    "Berlin",
+    "Toronto",
+    "Sydney",
+    "Singapore",
+    "Amsterdam",
+    "Dublin",
 ]
 
 
@@ -97,17 +161,21 @@ def generate_log_lines(rng: random.Random, n: int) -> list[str]:
         if level == "ERROR":
             msg = rng.choice(ERROR_MSGS)
         else:
-            msg = rng.choice([
-                f"request processed in {rng.randint(5, 500)}ms",
-                f"connection pool: {rng.randint(1, 50)}/{rng.randint(50, 100)} active",
-                f"cache hit ratio: {rng.uniform(0.7, 0.99):.2f}",
-                f"processed {rng.randint(100, 50000)} records in batch",
-                f"health check passed ({rng.randint(1, 10)}ms)",
-                f"configuration reloaded successfully",
-                f"scheduled task completed: cleanup_old_sessions",
-                f"new connection from {rng.randint(10, 192)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(1, 254)}",
-            ])
-        lines.append(f"2025-01-{rng.randint(1, 28):02d}T{hour:02d}:{minute:02d}:{second:02d}Z [{level}] {service}: {msg}")
+            msg = rng.choice(
+                [
+                    f"request processed in {rng.randint(5, 500)}ms",
+                    f"connection pool: {rng.randint(1, 50)}/{rng.randint(50, 100)} active",
+                    f"cache hit ratio: {rng.uniform(0.7, 0.99):.2f}",
+                    f"processed {rng.randint(100, 50000)} records in batch",
+                    f"health check passed ({rng.randint(1, 10)}ms)",
+                    "configuration reloaded successfully",
+                    "scheduled task completed: cleanup_old_sessions",
+                    f"new connection from {rng.randint(10, 192)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(1, 254)}",
+                ]
+            )
+        lines.append(
+            f"2025-01-{rng.randint(1, 28):02d}T{hour:02d}:{minute:02d}:{second:02d}Z [{level}] {service}: {msg}"
+        )
     return lines
 
 
@@ -118,13 +186,15 @@ def generate_emails(rng: random.Random, n: int) -> list[str]:
         topic = rng.choice(TOPICS)
         product = rng.choice(PRODUCTS)
         dept = rng.choice(DEPARTMENTS)
-        body = rng.choice([
-            f"Hi team, I wanted to share an update on {topic}. The {dept} team has completed their review of {product} and we are on track for the planned timeline. Let me know if you have questions.",
-            f"Following up on our discussion about {topic}. I have attached the latest metrics from {product}. The {dept} team will present their findings at the next standup.",
-            f"Quick note: the {topic} initiative is moving to the next phase. {dept} has signed off on the {product} integration. No blockers at this time.",
-            f"Reminder: the {topic} review meeting is scheduled for next Tuesday. Please review the {product} dashboard before then. {dept} will lead the discussion.",
-            f"Good news: {product} metrics for {topic} show a 15% improvement this quarter. {dept} will include this in the executive summary.",
-        ])
+        body = rng.choice(
+            [
+                f"Hi team, I wanted to share an update on {topic}. The {dept} team has completed their review of {product} and we are on track for the planned timeline. Let me know if you have questions.",
+                f"Following up on our discussion about {topic}. I have attached the latest metrics from {product}. The {dept} team will present their findings at the next standup.",
+                f"Quick note: the {topic} initiative is moving to the next phase. {dept} has signed off on the {product} integration. No blockers at this time.",
+                f"Reminder: the {topic} review meeting is scheduled for next Tuesday. Please review the {product} dashboard before then. {dept} will lead the discussion.",
+                f"Good news: {product} metrics for {topic} show a 15% improvement this quarter. {dept} will include this in the executive summary.",
+            ]
+        )
         lines.append(f"From: {sender} ({dept}) - Re: {topic} - {body}")
     return lines
 
@@ -136,14 +206,16 @@ def generate_tickets(rng: random.Random, n: int) -> list[str]:
         name = rng.choice(NAMES)
         product = rng.choice(PRODUCTS)
         status = rng.choice(STATUSES)
-        desc = rng.choice([
-            f"User reports that {product} login page loads slowly during peak hours. Cleared cache and restarted the service. Monitoring for recurrence.",
-            f"Feature request: add export to CSV functionality in {product} reports section. Multiple customers have asked for this in the last month.",
-            f"Bug: {product} displays incorrect timezone for users in {rng.choice(CITIES)}. The offset calculation does not account for daylight saving time.",
-            f"Scheduled maintenance for {product} backend services on Saturday 2am-4am UTC. Expected downtime: 15 minutes for database migration.",
-            f"Customer {name} requested API rate limit increase for {product}. Current limit: 1000 req/min. Requested: 5000 req/min. Approved by {rng.choice(DEPARTMENTS)}.",
-            f"Integration issue between {product} and {rng.choice(PRODUCTS)}: webhook delivery failing intermittently. Root cause: DNS resolution timeout. Applied fix.",
-        ])
+        desc = rng.choice(
+            [
+                f"User reports that {product} login page loads slowly during peak hours. Cleared cache and restarted the service. Monitoring for recurrence.",
+                f"Feature request: add export to CSV functionality in {product} reports section. Multiple customers have asked for this in the last month.",
+                f"Bug: {product} displays incorrect timezone for users in {rng.choice(CITIES)}. The offset calculation does not account for daylight saving time.",
+                f"Scheduled maintenance for {product} backend services on Saturday 2am-4am UTC. Expected downtime: 15 minutes for database migration.",
+                f"Customer {name} requested API rate limit increase for {product}. Current limit: 1000 req/min. Requested: 5000 req/min. Approved by {rng.choice(DEPARTMENTS)}.",
+                f"Integration issue between {product} and {rng.choice(PRODUCTS)}: webhook delivery failing intermittently. Root cause: DNS resolution timeout. Applied fix.",
+            ]
+        )
         lines.append(f"TICKET-{tid} [{status}] {product} - Assigned to: {name} - {desc}")
     return lines
 
@@ -151,13 +223,17 @@ def generate_tickets(rng: random.Random, n: int) -> list[str]:
 def generate_api_responses(rng: random.Random, n: int) -> list[str]:
     lines = []
     for _ in range(n):
-        lines.append(rng.choice([
-            f'{{"status":"ok","data":{{"users":{rng.randint(100, 10000)},"active":{rng.randint(50, 5000)},"region":"{rng.choice(CITIES)}"}}}}',
-            f'{{"result":"success","items_processed":{rng.randint(1, 1000)},"duration_ms":{rng.randint(10, 5000)},"cache_hit":{"true" if rng.random() > 0.5 else "false"}}}',
-            f'{{"event":"deployment","service":"{rng.choice(SERVICES)}","version":"v{rng.randint(1,5)}.{rng.randint(0,20)}.{rng.randint(0,99)}","status":"healthy"}}',
-            f'{{"metrics":{{"cpu":{rng.uniform(5, 85):.1f},"memory":{rng.uniform(20, 90):.1f},"disk":{rng.uniform(10, 80):.1f}}},"host":"{rng.choice(SERVICES)}"}}',
-            f'{{"query":"SELECT count(*) FROM events WHERE date > \'2025-01-01\'","rows_returned":{rng.randint(0, 100000)},"execution_time_ms":{rng.randint(1, 800)}}}',
-        ]))
+        lines.append(
+            rng.choice(
+                [
+                    f'{{"status":"ok","data":{{"users":{rng.randint(100, 10000)},"active":{rng.randint(50, 5000)},"region":"{rng.choice(CITIES)}"}}}}',
+                    f'{{"result":"success","items_processed":{rng.randint(1, 1000)},"duration_ms":{rng.randint(10, 5000)},"cache_hit":{"true" if rng.random() > 0.5 else "false"}}}',
+                    f'{{"event":"deployment","service":"{rng.choice(SERVICES)}","version":"v{rng.randint(1, 5)}.{rng.randint(0, 20)}.{rng.randint(0, 99)}","status":"healthy"}}',
+                    f'{{"metrics":{{"cpu":{rng.uniform(5, 85):.1f},"memory":{rng.uniform(20, 90):.1f},"disk":{rng.uniform(10, 80):.1f}}},"host":"{rng.choice(SERVICES)}"}}',
+                    f'{{"query":"SELECT count(*) FROM events WHERE date > \'2025-01-01\'","rows_returned":{rng.randint(0, 100000)},"execution_time_ms":{rng.randint(1, 800)}}}',
+                ]
+            )
+        )
     return lines
 
 
@@ -180,14 +256,18 @@ def generate_doc_snippets(rng: random.Random, n: int) -> list[str]:
     lines = []
     for _ in range(n):
         product = rng.choice(PRODUCTS)
-        lines.append(rng.choice([
-            f"{product} Configuration Guide: To set up the connection pool, configure max_connections in the settings file. Recommended value for production: 50-100 connections per node.",
-            f"{product} API Reference: The /v2/search endpoint accepts query parameters: q (required), limit (default 25), offset (default 0), sort_by (relevance or date).",
-            f"{product} Release Notes v{rng.randint(2,8)}.{rng.randint(0,15)}: Improved query performance by 30%. Fixed pagination bug in list view. Added support for bulk operations.",
-            f"{product} Troubleshooting: If the service fails to start, check that the required environment variables are set: DATABASE_URL, REDIS_URL, and LOG_LEVEL.",
-            f"{product} Architecture: The system uses a three-tier architecture with a load balancer, application servers, and a distributed database cluster across {rng.randint(2, 5)} availability zones.",
-            f"{product} Security: All API endpoints require authentication via Bearer tokens. Tokens expire after {rng.choice([1, 4, 8, 24])} hours and must be refreshed using the /auth/refresh endpoint.",
-        ]))
+        lines.append(
+            rng.choice(
+                [
+                    f"{product} Configuration Guide: To set up the connection pool, configure max_connections in the settings file. Recommended value for production: 50-100 connections per node.",
+                    f"{product} API Reference: The /v2/search endpoint accepts query parameters: q (required), limit (default 25), offset (default 0), sort_by (relevance or date).",
+                    f"{product} Release Notes v{rng.randint(2, 8)}.{rng.randint(0, 15)}: Improved query performance by 30%. Fixed pagination bug in list view. Added support for bulk operations.",
+                    f"{product} Troubleshooting: If the service fails to start, check that the required environment variables are set: DATABASE_URL, REDIS_URL, and LOG_LEVEL.",
+                    f"{product} Architecture: The system uses a three-tier architecture with a load balancer, application servers, and a distributed database cluster across {rng.randint(2, 5)} availability zones.",
+                    f"{product} Security: All API endpoints require authentication via Bearer tokens. Tokens expire after {rng.choice([1, 4, 8, 24])} hours and must be refreshed using the /auth/refresh endpoint.",
+                ]
+            )
+        )
     return lines
 
 

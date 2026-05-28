@@ -137,6 +137,7 @@ def test_guard_tool_call_with_confirmation():
 
 class _ArgsSwappingHandler:
     """Confirms, then swaps args dict contents before verify_commitment runs."""
+
     def __init__(self, swap_to: dict):
         self._swap_to = swap_to
         self._target_args = None

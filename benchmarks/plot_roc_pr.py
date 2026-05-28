@@ -41,34 +41,58 @@ def _map_xy(x: float, y: float, x0: float, y0: float, w: float, h: float) -> tup
     return px, py
 
 
-def _draw_axes(lines: list[str], title: str, xlabel: str, ylabel: str, x0: float, y0: float, w: float, h: float) -> None:
-    lines.append(f'<text x="{x0}" y="34" font-family="Arial" font-size="24" font-weight="bold">{title}</text>')
-    lines.append(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" fill="#fafafa" stroke="#dddddd"/>')
+def _draw_axes(
+    lines: list[str], title: str, xlabel: str, ylabel: str, x0: float, y0: float, w: float, h: float
+) -> None:
+    lines.append(
+        f'<text x="{x0}" y="34" font-family="Arial" font-size="24" font-weight="bold">{title}</text>'
+    )
+    lines.append(
+        f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" fill="#fafafa" stroke="#dddddd"/>'
+    )
     for i in range(6):
         t = i / 5.0
         gx = x0 + t * w
         gy = y0 + t * h
-        lines.append(f'<line x1="{gx}" y1="{y0}" x2="{gx}" y2="{y0+h}" stroke="#eeeeee" />')
-        lines.append(f'<line x1="{x0}" y1="{gy}" x2="{x0+w}" y2="{gy}" stroke="#eeeeee" />')
-        lines.append(f'<text x="{gx-10}" y="{y0+h+18}" font-family="Arial" font-size="11" fill="#555">{t:.1f}</text>')
-        lines.append(f'<text x="{x0-30}" y="{y0+h-(t*h)+4}" font-family="Arial" font-size="11" fill="#555">{t:.1f}</text>')
-    lines.append(f'<line x1="{x0}" y1="{y0+h}" x2="{x0+w}" y2="{y0+h}" stroke="#333"/>')
-    lines.append(f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0+h}" stroke="#333"/>')
-    lines.append(f'<text x="{x0+w/2-45}" y="{y0+h+38}" font-family="Arial" font-size="14">{xlabel}</text>')
+        lines.append(f'<line x1="{gx}" y1="{y0}" x2="{gx}" y2="{y0 + h}" stroke="#eeeeee" />')
+        lines.append(f'<line x1="{x0}" y1="{gy}" x2="{x0 + w}" y2="{gy}" stroke="#eeeeee" />')
+        lines.append(
+            f'<text x="{gx - 10}" y="{y0 + h + 18}" font-family="Arial" font-size="11" fill="#555">{t:.1f}</text>'
+        )
+        lines.append(
+            f'<text x="{x0 - 30}" y="{y0 + h - (t * h) + 4}" font-family="Arial" font-size="11" fill="#555">{t:.1f}</text>'
+        )
+    lines.append(f'<line x1="{x0}" y1="{y0 + h}" x2="{x0 + w}" y2="{y0 + h}" stroke="#333"/>')
+    lines.append(f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + h}" stroke="#333"/>')
     lines.append(
-        f'<text x="{x0-55}" y="{y0+h/2}" font-family="Arial" font-size="13" transform="rotate(-90 {x0-55} {y0+h/2})">{ylabel}</text>'
+        f'<text x="{x0 + w / 2 - 45}" y="{y0 + h + 38}" font-family="Arial" font-size="14">{xlabel}</text>'
+    )
+    lines.append(
+        f'<text x="{x0 - 55}" y="{y0 + h / 2}" font-family="Arial" font-size="13" transform="rotate(-90 {x0 - 55} {y0 + h / 2})">{ylabel}</text>'
     )
 
 
 def _draw_legend(lines: list[str], labels: list[tuple[str, str]], x: float, y: float) -> None:
-    lines.append(f'<rect x="{x}" y="{y}" width="290" height="{52 + 22*len(labels)}" fill="#fff" stroke="#ddd"/>')
-    lines.append(f'<text x="{x+10}" y="{y+16}" font-family="Arial" font-size="12" font-weight="bold">Methods</text>')
+    lines.append(
+        f'<rect x="{x}" y="{y}" width="290" height="{52 + 22 * len(labels)}" fill="#fff" stroke="#ddd"/>'
+    )
+    lines.append(
+        f'<text x="{x + 10}" y="{y + 16}" font-family="Arial" font-size="12" font-weight="bold">Methods</text>'
+    )
     for i, (name, color) in enumerate(labels):
         yy = y + 52 + i * 20
-        lines.append(f'<line x1="{x+10}" y1="{yy-4}" x2="{x+28}" y2="{yy-4}" stroke="{color}" stroke-width="3"/>')
-        lines.append(f'<text x="{x+34}" y="{yy}" font-family="Arial" font-size="11">{name}</text>')
-    lines.append(f'<circle cx="{x+16}" cy="{y+34}" r="4.5" fill="#555" stroke="#fff" stroke-width="1"/>')
-    lines.append(f'<text x="{x+34}" y="{y+38}" font-family="Arial" font-size="11">Circle = default test operating point</text>')
+        lines.append(
+            f'<line x1="{x + 10}" y1="{yy - 4}" x2="{x + 28}" y2="{yy - 4}" stroke="{color}" stroke-width="3"/>'
+        )
+        lines.append(
+            f'<text x="{x + 34}" y="{yy}" font-family="Arial" font-size="11">{name}</text>'
+        )
+    lines.append(
+        f'<circle cx="{x + 16}" cy="{y + 34}" r="4.5" fill="#555" stroke="#fff" stroke-width="1"/>'
+    )
+    lines.append(
+        f'<text x="{x + 34}" y="{y + 38}" font-family="Arial" font-size="11">Circle = default test operating point</text>'
+    )
 
 
 def _dedupe_points(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -150,7 +174,9 @@ def render_curve(
                     )
                     for x, y in xy:
                         px, py = _map_xy(x, y, x0, y0, w, h)
-                        lines.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="2.8" fill="{color}" opacity="0.85" />')
+                        lines.append(
+                            f'<circle cx="{px:.2f}" cy="{py:.2f}" r="2.8" fill="{color}" opacity="0.85" />'
+                        )
                     name = f"{name} ({len(xy)} pts)"
                     legend[-1] = (name, color)
         # Always plot default test point (single-point methods and tuned methods).
@@ -163,13 +189,19 @@ def render_curve(
                 x = float(dpt.get("recall", 0.0))
                 y = float(dpt.get("precision", 0.0))
             px, py = _map_xy(x, y, x0, y0, w, h)
-            lines.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="4.5" fill="{color}" stroke="#fff" stroke-width="1"/>')
-            lines.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="8.5" fill="none" stroke="{color}" opacity="0.25" />')
+            lines.append(
+                f'<circle cx="{px:.2f}" cy="{py:.2f}" r="4.5" fill="{color}" stroke="#fff" stroke-width="1"/>'
+            )
+            lines.append(
+                f'<circle cx="{px:.2f}" cy="{py:.2f}" r="8.5" fill="none" stroke="{color}" opacity="0.25" />'
+            )
 
     if curve_type == "roc":
         x1, y1 = _map_xy(0.0, 0.0, x0, y0, w, h)
         x2, y2 = _map_xy(1.0, 1.0, x0, y0, w, h)
-        lines.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#999" stroke-dasharray="6,6"/>')
+        lines.append(
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#999" stroke-dasharray="6,6"/>'
+        )
 
     _draw_legend(lines, legend, 910, 90)
     lines.append("</svg>")
@@ -178,7 +210,9 @@ def render_curve(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-id", default=None, help="Run id under benchmarks/runs/. Default: runs/LATEST.txt")
+    parser.add_argument(
+        "--run-id", default=None, help="Run id under benchmarks/runs/. Default: runs/LATEST.txt"
+    )
     parser.add_argument("--input", default=None)
     parser.add_argument("--out-roc", default=None)
     parser.add_argument("--out-pr", default=None)
@@ -190,7 +224,11 @@ def main() -> int:
     )
     args = parser.parse_args()
     run_id = str(args.run_id) if args.run_id else read_latest_pointer()
-    if run_id and not (RUNS_ROOT / run_id / "roc_pr_experiments.json").exists() and args.input is None:
+    if (
+        run_id
+        and not (RUNS_ROOT / run_id / "roc_pr_experiments.json").exists()
+        and args.input is None
+    ):
         # Fallback to most recently modified run containing roc_pr_experiments.json.
         candidates = sorted(
             [p for p in RUNS_ROOT.glob("*/roc_pr_experiments.json") if p.is_file()],
@@ -210,7 +248,7 @@ def main() -> int:
 
     with in_path.open() as f:
         payload = json.load(f)
-    include = set(str(x) for x in args.include_method) if args.include_method else None
+    include = {str(x) for x in args.include_method} if args.include_method else None
     render_curve(payload, curve_type="roc", out_path=out_roc, include_methods=include)
     render_curve(payload, curve_type="pr", out_path=out_pr, include_methods=include)
     print(f"wrote: {out_roc}")

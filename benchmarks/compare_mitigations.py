@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any
 from urllib import error, request
 
-from guardllm import Guard
 from output_layout import (
     CACHE_ROOT,
     RUNS_ROOT,
@@ -33,17 +32,19 @@ from output_layout import (
     read_latest_pointer,
     write_latest_pointer,
 )
-from guardllm.security.source_gate import check_extraction_allowed
 from run_benchmarks import (  # noqa: F401
     BENCH_ROOT,
-    CaseResult,
     UPSTREAM_MANIFEST,
+    CaseResult,
+    _content_type,
+    _context_for_source,
     load_cases,
     run_case,
     summarize,
-    _content_type,
-    _context_for_source,
 )
+
+from guardllm import Guard
+from guardllm.security.source_gate import check_extraction_allowed
 
 OPENAI_POLICY_CACHE = CACHE_ROOT / "openai_policy_adapter_cache.jsonl"
 OPENAI_POLICY_PROMPT_VERSION = "v1"
@@ -190,10 +191,43 @@ class TextRecord:
 
 
 _MISS_STOPWORDS = {
-    "the", "and", "for", "with", "that", "this", "from", "into", "your", "you",
-    "are", "was", "have", "has", "will", "would", "could", "should", "can",
-    "all", "any", "not", "but", "just", "about", "please", "then", "them",
-    "they", "their", "our", "out", "what", "when", "where", "which", "while",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "into",
+    "your",
+    "you",
+    "are",
+    "was",
+    "have",
+    "has",
+    "will",
+    "would",
+    "could",
+    "should",
+    "can",
+    "all",
+    "any",
+    "not",
+    "but",
+    "just",
+    "about",
+    "please",
+    "then",
+    "them",
+    "they",
+    "their",
+    "our",
+    "out",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
 }
 
 _FN_EXPLICIT_OVERRIDE_RE = re.compile(
@@ -277,7 +311,14 @@ def run_case_no_defense(case: dict[str, Any]) -> CaseResult:
         if "expect_class_hiding_possible" in case and bool(case["expect_class_hiding_possible"]):
             passed = False
 
-    elif kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay", "action_gate"}:
+    elif kind in {
+        "tool_gate",
+        "tool_gate_auth",
+        "tool_gate_contamination",
+        "outbound_check",
+        "binding_replay",
+        "action_gate",
+    }:
         passed = bool(case.get("expect_allowed", case.get("expect_confirmed", False)))
 
     elif kind == "validation":
@@ -385,7 +426,13 @@ def _is_attack_like_case(case: dict[str, Any]) -> bool:
         if bool(case.get("expect_class_hiding_possible", False)):
             return True
         return False
-    if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay"}:
+    if kind in {
+        "tool_gate",
+        "tool_gate_auth",
+        "tool_gate_contamination",
+        "outbound_check",
+        "binding_replay",
+    }:
         return not bool(case.get("expect_allowed", True))
     if kind == "action_gate":
         return not bool(case.get("expect_confirmed", True))
@@ -410,7 +457,7 @@ def _is_attack_like_case(case: dict[str, Any]) -> bool:
 
 def full_suite_breakdown(cases: list[dict[str, Any]], results: list[CaseResult]) -> dict[str, Any]:
     attack_total = attack_passed = benign_total = benign_passed = 0
-    for case, result in zip(cases, results):
+    for case, result in zip(cases, results, strict=False):
         if _is_attack_like_case(case):
             attack_total += 1
             attack_passed += 1 if result.passed else 0
@@ -420,10 +467,14 @@ def full_suite_breakdown(cases: list[dict[str, Any]], results: list[CaseResult])
     return {
         "attack_total": attack_total,
         "attack_passed": attack_passed,
-        "attack_success_rate": round((attack_passed / attack_total) * 100, 2) if attack_total else 0.0,
+        "attack_success_rate": round((attack_passed / attack_total) * 100, 2)
+        if attack_total
+        else 0.0,
         "benign_total": benign_total,
         "benign_passed": benign_passed,
-        "benign_correct_rate": round((benign_passed / benign_total) * 100, 2) if benign_total else 0.0,
+        "benign_correct_rate": round((benign_passed / benign_total) * 100, 2)
+        if benign_total
+        else 0.0,
     }
 
 
@@ -486,7 +537,13 @@ def _is_surface_case(case: dict[str, Any]) -> bool:
 
 def _eval_surface_prediction(case: dict[str, Any], pred: dict[str, Any]) -> bool:
     kind = str(case.get("kind"))
-    if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay"}:
+    if kind in {
+        "tool_gate",
+        "tool_gate_auth",
+        "tool_gate_contamination",
+        "outbound_check",
+        "binding_replay",
+    }:
         return bool(pred.get("allowed")) is bool(case.get("expect_allowed"))
     if kind == "validation":
         return bool(pred.get("valid")) is bool(case.get("expect_valid"))
@@ -514,13 +571,11 @@ def run_surface_strategies(cases: list[dict[str, Any]]) -> dict[str, Any]:
         return {"count": 0, "strategies": {}}
 
     # Reuse historical no-defense behavior for surface kinds.
-    no_defense_predictions = {
-        c["id"]: run_case_no_defense(c).passed for c in surface_cases
-    }
+    no_defense_predictions = {c["id"]: run_case_no_defense(c).passed for c in surface_cases}
 
     # OPA-backed policy adapter.
     opa_program = _policy_opa_program()
-    redis_state_prefix = f"guardbench:{int(time.time()*1000)}"
+    redis_state_prefix = f"guardbench:{int(time.time() * 1000)}"
     surface_errors: dict[str, str] = {}
 
     casbin_enforcer = None
@@ -579,7 +634,9 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             if tool == "gmail_send_email":
                 schema = {
                     "type": "object",
-                    "properties": {"to": {"type": "string", "pattern": r"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}},
+                    "properties": {
+                        "to": {"type": "string", "pattern": r"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}
+                    },
                     "required": ["to"],
                     "additionalProperties": True,
                 }
@@ -635,7 +692,13 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
     def predict_rate_limit_redis(case: dict[str, Any]) -> dict[str, Any]:
         kind = case["kind"]
         if kind != "rate_limit":
-            if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "outbound_check", "binding_replay"}:
+            if kind in {
+                "tool_gate",
+                "tool_gate_auth",
+                "tool_gate_contamination",
+                "outbound_check",
+                "binding_replay",
+            }:
                 return {"allowed": True}
             if kind == "validation":
                 return {"valid": True}
@@ -654,12 +717,20 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         final_allowed = True
         for idx, recipient in enumerate(seq, start=1):
             key = f"{redis_state_prefix}:{action}:{recipient}"
-            proc = subprocess.run(["redis-cli", "INCR", key], capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                ["redis-cli", "INCR", key], capture_output=True, text=True, check=False
+            )
             count = int(proc.stdout.strip() or "0") if proc.returncode == 0 else idx
-            subprocess.run(["redis-cli", "EXPIRE", key, "3600"], capture_output=True, text=True, check=False)
+            subprocess.run(
+                ["redis-cli", "EXPIRE", key, "3600"], capture_output=True, text=True, check=False
+            )
             if count > per_hour:
                 final_allowed = False
-            if bool(limits.get("novel_recipient_flag", False)) and idx > 1 and recipient != seq[idx - 2]:
+            if (
+                bool(limits.get("novel_recipient_flag", False))
+                and idx > 1
+                and recipient != seq[idx - 2]
+            ):
                 anomalies.append("Novel recipient")
             burst = int(limits.get("burst_threshold", 1000000))
             if idx > burst:
@@ -676,7 +747,14 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         kind = case["kind"]
         if kind == "validation":
             return predict_schema(case)
-        if kind in {"tool_gate", "tool_gate_auth", "tool_gate_contamination", "binding_replay", "action_gate", "source_gate"}:
+        if kind in {
+            "tool_gate",
+            "tool_gate_auth",
+            "tool_gate_contamination",
+            "binding_replay",
+            "action_gate",
+            "source_gate",
+        }:
             return predict_policy_opa(case)
         if kind == "rate_limit":
             return predict_rate_limit_redis(case)
@@ -696,10 +774,13 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             thread_handle = args.get("thread_handle")
             if query is not None and (not isinstance(query, str) or len(query) > 1024):
                 return False
-            if source_name is not None and (not isinstance(source_name, str) or ".." in source_name):
+            if source_name is not None and (
+                not isinstance(source_name, str) or ".." in source_name
+            ):
                 return False
             if thread_handle is not None and (
-                not isinstance(thread_handle, str) or not re.match(r"^[A-Za-z0-9_-]+$", thread_handle)
+                not isinstance(thread_handle, str)
+                or not re.match(r"^[A-Za-z0-9_-]+$", thread_handle)
             ):
                 return False
             return True
@@ -732,16 +813,25 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             return {"allowed": allowed}
         if kind == "binding_replay":
             allowed = bool(casbin_enforcer.enforce(subject, tool, "execute"))
-            allowed = allowed and str(case.get("message", "")) == str(case.get("replay_message", ""))
+            allowed = allowed and str(case.get("message", "")) == str(
+                case.get("replay_message", "")
+            )
             return {"allowed": allowed}
         if kind == "action_gate":
-            allowed = bool(casbin_enforcer.enforce("trusted_sender", tool, "execute")) and to.endswith("@example.com")
+            allowed = bool(
+                casbin_enforcer.enforce("trusted_sender", tool, "execute")
+            ) and to.endswith("@example.com")
             return {"confirmed": allowed}
         if kind == "source_gate":
             source_type = str(case.get("source_type", ""))
             if bool(casbin_enforcer.enforce("source", source_type, "allow")):
                 return {"policy": "allow"}
-            if source_type in {"mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"}:
+            if source_type in {
+                "mcp_client",
+                "user_indexed_web",
+                "user_indexed_email",
+                "web_synthesis",
+            }:
                 return {"policy": "quarantine"}
             return {"policy": "block"}
         if kind == "validation":
@@ -786,7 +876,11 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             return {"allowed": valid}
         if kind == "binding_replay":
             valid = _strict_validate_args(tool, args)
-            allowed = valid and destructive and str(case.get("message", "")) == str(case.get("replay_message", ""))
+            allowed = (
+                valid
+                and destructive
+                and str(case.get("message", "")) == str(case.get("replay_message", ""))
+            )
             return {"allowed": allowed}
         if kind == "action_gate":
             confirmed = (
@@ -799,7 +893,12 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             source_type = str(case.get("source_type", ""))
             if source_type in {"assistant_response", "user_input", "cli"}:
                 return {"policy": "allow"}
-            if source_type in {"mcp_client", "user_indexed_web", "user_indexed_email", "web_synthesis"}:
+            if source_type in {
+                "mcp_client",
+                "user_indexed_web",
+                "user_indexed_email",
+                "web_synthesis",
+            }:
                 return {"policy": "quarantine"}
             return {"policy": "block"}
         if kind == "rate_limit":
@@ -832,7 +931,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         """
         total = entry["total"]
         passed = entry["passed"]
-        tp, fp, fn, tn = entry["tp"], entry["fp"], entry["fn"], entry["tn"]
+        tp, fp, fn, _tn = entry["tp"], entry["fp"], entry["fn"], entry["tn"]
         entry["pass_rate"] = round((passed / total) * 100, 2) if total else 0.0
         entry["precision"] = round(tp / (tp + fp), 4) if (tp + fp) else (1.0 if fn == 0 else 0.0)
         entry["recall"] = round(tp / (tp + fn), 4) if (tp + fn) else 0.0
@@ -840,14 +939,70 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         entry["f1"] = round(2 * f1_p * f1_r / (f1_p + f1_r), 4) if (f1_p + f1_r) else 0.0
 
     strategies = {
-        "guardllm_surface": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "no_defense_surface": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "schema_jsonschema": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "policy_opa": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "casbin_rbac": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "strict_schema_stack": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "redis_rate_limit": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
-        "surface_stack": {"passed": 0, "total": len(surface_cases), "tp": 0, "fp": 0, "fn": 0, "tn": 0},
+        "guardllm_surface": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "no_defense_surface": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "schema_jsonschema": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "policy_opa": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "casbin_rbac": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "strict_schema_stack": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "redis_rate_limit": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
+        "surface_stack": {
+            "passed": 0,
+            "total": len(surface_cases),
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        },
     }
     by_kind: dict[str, dict[str, dict[str, int]]] = {}
 
@@ -966,8 +1121,18 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
 
     strategy_names = list(strategies.keys())
     no_source_gate: dict[str, dict[str, float | int]] = {
-        name: {"passed": 0, "total": 0, "pass_rate": 0.0, "tp": 0, "fp": 0, "fn": 0, "tn": 0,
-               "precision": 0.0, "recall": 0.0, "f1": 0.0}
+        name: {
+            "passed": 0,
+            "total": 0,
+            "pass_rate": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+        }
         for name in strategy_names
     }
     macro_by_kind: dict[str, float] = {}
@@ -977,8 +1142,12 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
     for name in strategy_names:
         vals = [float(by_kind[k][name]["pass_rate"]) for k in all_kind_names if name in by_kind[k]]
         macro_by_kind[name] = round(sum(vals) / len(vals), 2) if vals else 0.0
-        vals_no_source = [float(by_kind[k][name]["pass_rate"]) for k in no_source_kind_names if name in by_kind[k]]
-        macro_by_kind_no_source_gate[name] = round(sum(vals_no_source) / len(vals_no_source), 2) if vals_no_source else 0.0
+        vals_no_source = [
+            float(by_kind[k][name]["pass_rate"]) for k in no_source_kind_names if name in by_kind[k]
+        ]
+        macro_by_kind_no_source_gate[name] = (
+            round(sum(vals_no_source) / len(vals_no_source), 2) if vals_no_source else 0.0
+        )
 
     for kind, strat_stats in by_kind.items():
         if kind == "source_gate":
@@ -997,8 +1166,18 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         ("cross_stage", CROSS_STAGE_KINDS),
     ]:
         partition_stats: dict[str, dict[str, float | int]] = {
-            name: {"passed": 0, "total": 0, "pass_rate": 0.0, "tp": 0, "fp": 0, "fn": 0, "tn": 0,
-                   "precision": 0.0, "recall": 0.0, "f1": 0.0}
+            name: {
+                "passed": 0,
+                "total": 0,
+                "pass_rate": 0.0,
+                "tp": 0,
+                "fp": 0,
+                "fn": 0,
+                "tn": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+            }
             for name in strategy_names
         }
         for kind, strat_stats in by_kind.items():
@@ -1021,7 +1200,10 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
         "by_kind": by_kind,
         "partitions": partitions,
         "errors": surface_errors,
-        "deps": {"pydantic_available": pydantic_available, "casbin_available": casbin_enforcer is not None},
+        "deps": {
+            "pydantic_available": pydantic_available,
+            "casbin_available": casbin_enforcer is not None,
+        },
         "binding_replay_stages": binding_replay_stages,
         "action_gate_stages": action_gate_stages,
     }
@@ -1044,7 +1226,9 @@ def _text_label_from_case(case: dict[str, Any]) -> bool | None:
     return False
 
 
-def build_text_records(cases: list[dict[str, Any]], injection_scope: str = "injection") -> list[TextRecord]:
+def build_text_records(
+    cases: list[dict[str, Any]], injection_scope: str = "injection"
+) -> list[TextRecord]:
     records: list[TextRecord] = []
     for case in cases:
         suite = str(case.get("suite", "unknown"))
@@ -1333,9 +1517,8 @@ def run_injection_strategies(
                 predictions["guardllm"] = rows
                 reused_guardllm = True
                 reuse_latency = guardllm_reuse.get("latency_ms")
-                if (
-                    isinstance(reuse_latency, dict)
-                    and {"avg", "p95", "max"}.issubset(reuse_latency.keys())
+                if isinstance(reuse_latency, dict) and {"avg", "p95", "max"}.issubset(
+                    reuse_latency.keys()
                 ):
                     latency_ms["guardllm"] = {
                         "avg": float(reuse_latency["avg"]),
@@ -1370,7 +1553,9 @@ def run_injection_strategies(
 
             os.environ.setdefault("HF_TOKEN", os.getenv("HUGGINGFACE_API_KEY", ""))
             os.environ.setdefault("HUGGINGFACE_HUB_TOKEN", os.getenv("HUGGINGFACE_API_KEY", ""))
-            clf = pipeline("text-classification", model=open_source_model_id, tokenizer=open_source_model_id)
+            clf = pipeline(
+                "text-classification", model=open_source_model_id, tokenizer=open_source_model_id
+            )
 
             def _predict_open_source(rec: TextRecord) -> bool:
                 out = clf([rec.text], truncation=True)[0]
@@ -1387,6 +1572,7 @@ def run_injection_strategies(
             open_source_error = str(exc)
 
     if azure_endpoint and azure_key:
+
         def _predict_azure_prompt_shields(rec: TextRecord) -> bool:
             nonlocal azure_call_count
             nonlocal azure_user_prompt_detected_count
@@ -1455,6 +1641,7 @@ def run_injection_strategies(
             azure_error = str(exc)
 
     if openai_api_key:
+
         def _predict_openai_policy(rec: TextRecord) -> bool:
             nonlocal openai_call_count
             url = "https://api.openai.com/v1/responses"
@@ -1586,6 +1773,7 @@ def run_injection_strategies(
             openai_error = str(exc)
 
     if anthropic_api_key:
+
         def _predict_anthropic_policy(rec: TextRecord) -> bool:
             nonlocal anthropic_call_count
             url = "https://api.anthropic.com/v1/messages"
@@ -1613,7 +1801,11 @@ def run_injection_strategies(
                 message = exc.read().decode("utf-8", errors="replace")
                 raise RuntimeError(f"Anthropic API error {exc.code}: {message}") from exc
             parts = body.get("content", [])
-            text = " ".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)).strip().upper()
+            text = (
+                " ".join(str(p.get("text", "")) for p in parts if isinstance(p, dict))
+                .strip()
+                .upper()
+            )
             anthropic_call_count += 1
             return "ATTACK" in text
 
@@ -1623,6 +1815,7 @@ def run_injection_strategies(
             anthropic_error = str(exc)
 
     if bedrock_guardrail_id and bedrock_guardrail_version:
+
         def _bedrock_fetch_prompt_attack_strength() -> str | None:
             cmd = [
                 "aws",
@@ -1694,7 +1887,9 @@ def run_injection_strategies(
                 env["AWS_DEFAULT_REGION"] = bedrock_region
             proc = subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
             if proc.returncode != 0:
-                raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "Bedrock apply-guardrail failed")
+                raise RuntimeError(
+                    proc.stderr.strip() or proc.stdout.strip() or "Bedrock apply-guardrail failed"
+                )
             return json.loads(proc.stdout)
 
         def score_bedrock_guardrails() -> None:
@@ -1781,7 +1976,7 @@ def run_injection_strategies(
     # Stacked strategies: provider signal layered with GuardLLM (logical OR).
     if "azure_prompt_shields" in predictions:
         rows = []
-        for g, a in zip(predictions["guardllm"], predictions["azure_prompt_shields"]):
+        for g, a in zip(predictions["guardllm"], predictions["azure_prompt_shields"], strict=False):
             rows.append(
                 {
                     **g,
@@ -1791,9 +1986,15 @@ def run_injection_strategies(
         predictions["azure_plus_guardllm"] = rows
         if "guardllm" in latency_ms and "azure_prompt_shields" in latency_ms:
             latency_ms["azure_plus_guardllm"] = {
-                "avg": round(latency_ms["guardllm"]["avg"] + latency_ms["azure_prompt_shields"]["avg"], 2),
-                "p95": round(latency_ms["guardllm"]["p95"] + latency_ms["azure_prompt_shields"]["p95"], 2),
-                "max": round(latency_ms["guardllm"]["max"] + latency_ms["azure_prompt_shields"]["max"], 2),
+                "avg": round(
+                    latency_ms["guardllm"]["avg"] + latency_ms["azure_prompt_shields"]["avg"], 2
+                ),
+                "p95": round(
+                    latency_ms["guardllm"]["p95"] + latency_ms["azure_prompt_shields"]["p95"], 2
+                ),
+                "max": round(
+                    latency_ms["guardllm"]["max"] + latency_ms["azure_prompt_shields"]["max"], 2
+                ),
             }
 
     summary: dict[str, dict[str, Any]] = {}
@@ -1824,7 +2025,11 @@ def run_injection_strategies(
         # Convention: precision=100% when TP+FP=0 (no positive predictions, no errors).
         precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 100.0
         recall = round((tp / (tp + fn)) * 100, 2) if (tp + fn) else 0.0
-        f1 = round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
+        f1 = (
+            round((2 * precision * recall / (precision + recall)), 2)
+            if (precision + recall)
+            else 0.0
+        )
 
         by_suite_accuracy = {
             s: round((v["correct"] / v["total"]) * 100, 2) if v["total"] else 0.0
@@ -1888,7 +2093,9 @@ def run_injection_strategies(
             "bedrock_word_policy_units": bedrock_word_policy_units,
             "bedrock_content_policy_units": bedrock_content_policy_units,
             "bedrock_calls_with_content_policy_units": bedrock_calls_with_content_policy_units,
-            "bedrock_calls_without_content_policy_units": max(0, bedrock_call_count - bedrock_calls_with_content_policy_units),
+            "bedrock_calls_without_content_policy_units": max(
+                0, bedrock_call_count - bedrock_calls_with_content_policy_units
+            ),
             "bedrock_intervened_responses": bedrock_intervened_count,
             "bedrock_prompt_attack_detected_responses": bedrock_prompt_attack_detected_count,
             "bedrock_prompt_attack_filter_present_responses": bedrock_prompt_attack_filter_present_count,
@@ -2044,7 +2251,11 @@ def write_markdown(
     lines: list[str] = []
     lines.append("# Mitigation Comparison")
     lines.append("")
-    strategy_names = [x for x in ("guardllm", "isolation_only", "source_gate_only", "no_defense") if x in strategies]
+    strategy_names = [
+        x
+        for x in ("guardllm", "isolation_only", "source_gate_only", "no_defense")
+        if x in strategies
+    ]
     header = "| suite | " + " | ".join(strategy_names) + " | delta_vs_no_defense |"
     divider = "|---|" + "|".join("---:" for _ in strategy_names) + "|---:|"
     lines.append(header)
@@ -2099,29 +2310,23 @@ def write_markdown(
         lines.append(
             f"- Included suites in text scope: `{', '.join(sorted(TEXT_SCOPE_INCLUDED_SUITES))}`"
         )
-    lines.append(
-        f"- Record count: `{injection_only.get('record_count', 0)}`"
-    )
+    lines.append(f"- Record count: `{injection_only.get('record_count', 0)}`")
     lines.append(f"- GuardLLM text reused: `{injection_only.get('guardllm_reused', False)}`")
     text_strategies = injection_only.get("strategies", {})
     azure_signal = injection_only.get("azure_signal_definition")
     if "azure_prompt_shields" in text_strategies and isinstance(azure_signal, dict):
         if azure_signal.get("azure_prompt_shields"):
-            lines.append(
-                f"- Azure detection signal: `{azure_signal['azure_prompt_shields']}`"
-            )
+            lines.append(f"- Azure detection signal: `{azure_signal['azure_prompt_shields']}`")
         if azure_signal.get("audit_enabled") is not None:
-            lines.append(
-                f"- Azure signal audit enabled: `{bool(azure_signal['audit_enabled'])}`"
-            )
+            lines.append(f"- Azure signal audit enabled: `{bool(azure_signal['audit_enabled'])}`")
     if injection_only.get("azure_error"):
         lines.append(f"- Azure Prompt Shields error: `{injection_only['azure_error']}`")
     bedrock_signal = injection_only.get("bedrock_signal_definition")
-    if any(name.startswith("bedrock_guardrails") for name in text_strategies) and isinstance(bedrock_signal, dict):
+    if any(name.startswith("bedrock_guardrails") for name in text_strategies) and isinstance(
+        bedrock_signal, dict
+    ):
         if bedrock_signal.get("bedrock_guardrails"):
-            lines.append(
-                f"- Bedrock detection signal: `{bedrock_signal['bedrock_guardrails']}`"
-            )
+            lines.append(f"- Bedrock detection signal: `{bedrock_signal['bedrock_guardrails']}`")
         if bedrock_signal.get("bedrock_guardrails_blocked"):
             lines.append(
                 f"- Bedrock blocked signal: `{bedrock_signal['bedrock_guardrails_blocked']}`"
@@ -2167,16 +2372,16 @@ def write_markdown(
         lines.append("")
         lines.append("Top GuardLLM false-negative patterns:")
         for item in missed[:20]:
-            lines.append(
-                f"- `{item.get('pattern')}`: `{item.get('false_negative_count', 0)}`"
-            )
+            lines.append(f"- `{item.get('pattern')}`: `{item.get('false_negative_count', 0)}`")
 
     if injection_only.get("cost_proxy"):
         cp = injection_only["cost_proxy"]
         lines.append("")
         lines.append("Cost proxy:")
         lines.append(f"- Azure Prompt Shields calls: `{cp.get('azure_prompt_shields_calls', 0)}`")
-        lines.append(f"- Bedrock ApplyGuardrail calls: `{cp.get('bedrock_apply_guardrail_calls', 0)}`")
+        lines.append(
+            f"- Bedrock ApplyGuardrail calls: `{cp.get('bedrock_apply_guardrail_calls', 0)}`"
+        )
         lines.append(f"- Bedrock wordPolicyUnits: `{cp.get('bedrock_word_policy_units', 0)}`")
         lines.append(f"- Bedrock contentPolicyUnits: `{cp.get('bedrock_content_policy_units', 0)}`")
         lines.append(
@@ -2185,7 +2390,9 @@ def write_markdown(
         lines.append(
             f"- Bedrock calls with contentPolicyUnits==0: `{cp.get('bedrock_calls_without_content_policy_units', 0)}`"
         )
-        lines.append(f"- Bedrock intervened responses: `{cp.get('bedrock_intervened_responses', 0)}`")
+        lines.append(
+            f"- Bedrock intervened responses: `{cp.get('bedrock_intervened_responses', 0)}`"
+        )
         lines.append(
             f"- Bedrock prompt-attack detected responses: `{cp.get('bedrock_prompt_attack_detected_responses', 0)}`"
         )
@@ -2212,9 +2419,11 @@ def write_markdown(
         lines.append(f"- Pydantic available: `{deps.get('pydantic_available', False)}`")
     for k, v in surface_only.get("errors", {}).items():
         lines.append(f"- {k} error: `{v}`")
-    lines.append("| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+    lines.append(
+        "| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |"
+    )
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    macro = surface_only.get("macro_by_kind", {})
+    surface_only.get("macro_by_kind", {})
     surface_strategies = surface_only.get("strategies", {})
     for name, stats in surface_strategies.items():
         label = f"{name} **(Table 1 baseline)**" if name == "surface_stack" else name
@@ -2242,9 +2451,11 @@ def write_markdown(
     lines.append("")
     lines.append("Excluding `source_gate`:")
     lines.append("")
-    lines.append("| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+    lines.append(
+        "| strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |"
+    )
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    macro_no_source = surface_only.get("macro_by_kind_no_source_gate", {})
+    surface_only.get("macro_by_kind_no_source_gate", {})
     for name, stats in surface_only.get("strategies_no_source_gate", {}).items():
         lines.append(
             f"| {name} | {stats.get('passed', 0)} | {stats.get('total', 0)} | {stats.get('pass_rate', 0.0)}% "
@@ -2254,7 +2465,9 @@ def write_markdown(
     by_kind = surface_only.get("by_kind", {})
     if by_kind:
         lines.append("")
-        lines.append("| surface kind | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+        lines.append(
+            "| surface kind | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |"
+        )
         lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for kind in sorted(by_kind.keys()):
             kind_stats = by_kind[kind]
@@ -2270,7 +2483,9 @@ def write_markdown(
         lines.append("")
         lines.append("### Partition Summary (Call-Local vs Cross-Stage)")
         lines.append("")
-        lines.append("| partition | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |")
+        lines.append(
+            "| partition | strategy | passed | total | pass rate | precision | recall | F1 | TP | FP | FN | TN |"
+        )
         lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for partition_name in ["call_local", "cross_stage"]:
             partition_stats = partitions.get(partition_name, {})
@@ -2346,6 +2561,7 @@ def _merge_llama_guard_results(
     p = Path(results_path)
     if not p.is_absolute():
         from _bootstrap import ROOT as _ROOT
+
         p = _ROOT / p
     lg_data = json.loads(p.read_text())
 
@@ -2365,13 +2581,15 @@ def _merge_llama_guard_results(
         lg_row = lg_by_id.get(record.id)
         if lg_row is None:
             raise RuntimeError(f"Llama Guard 4 results missing record id: {record.id}")
-        rows.append({
-            "id": record.id,
-            "suite": record.suite,
-            "kind": record.kind,
-            "label_attack": record.label_attack,
-            "pred_attack": bool(lg_row["pred_attack"]),
-        })
+        rows.append(
+            {
+                "id": record.id,
+                "suite": record.suite,
+                "kind": record.kind,
+                "label_attack": record.label_attack,
+                "pred_attack": bool(lg_row["pred_attack"]),
+            }
+        )
 
     # Compute metrics (same pattern as run_injection_strategies)
     tp = tn = fp = fn = 0
@@ -2396,7 +2614,9 @@ def _merge_llama_guard_results(
     # Convention: precision=100% when TP+FP=0 (no positive predictions, no errors).
     precision = round((tp / (tp + fp)) * 100, 2) if (tp + fp) else 100.0
     recall = round((tp / (tp + fn)) * 100, 2) if (tp + fn) else 0.0
-    f1_score = round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
+    f1_score = (
+        round((2 * precision * recall / (precision + recall)), 2) if (precision + recall) else 0.0
+    )
     by_suite_accuracy = {
         s: round((v["correct"] / v["total"]) * 100, 2) if v["total"] else 0.0
         for s, v in by_suite.items()
@@ -2437,7 +2657,9 @@ def merge_prior_text_rows(
         return current_injection_only
     if previous_payload.get("injection_scope") != injection_scope:
         return current_injection_only
-    if int(previous_text.get("record_count", -1)) != int(current_injection_only.get("record_count", -2)):
+    if int(previous_text.get("record_count", -1)) != int(
+        current_injection_only.get("record_count", -2)
+    ):
         return current_injection_only
 
     current_strategies = current_injection_only.setdefault("strategies", {})
@@ -2514,18 +2736,36 @@ def main() -> int:
         help="Also score all built-in Azure attackDetected signal variants from the same API responses.",
     )
     parser.add_argument("--bedrock-guardrail-id", default=None, help="Bedrock guardrail identifier")
-    parser.add_argument("--bedrock-guardrail-version", default=None, help="Bedrock guardrail version")
-    parser.add_argument("--bedrock-profile", default=os.getenv("AWS_PROFILE"), help="AWS profile for Bedrock calls")
-    parser.add_argument("--bedrock-region", default=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"), help="AWS region for Bedrock calls")
+    parser.add_argument(
+        "--bedrock-guardrail-version", default=None, help="Bedrock guardrail version"
+    )
+    parser.add_argument(
+        "--bedrock-profile", default=os.getenv("AWS_PROFILE"), help="AWS profile for Bedrock calls"
+    )
+    parser.add_argument(
+        "--bedrock-region",
+        default=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"),
+        help="AWS region for Bedrock calls",
+    )
     parser.add_argument(
         "--open-source-model-id",
         default="protectai/deberta-v3-base-prompt-injection-v2",
         help="Open-source HF classifier model id",
     )
-    parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key")
-    parser.add_argument("--openai-model", default="gpt-4.1-mini", help="OpenAI model for policy adapter")
-    parser.add_argument("--anthropic-api-key", default=os.getenv("ANTHROPIC_API_KEY"), help="Anthropic API key")
-    parser.add_argument("--anthropic-model", default="claude-3-5-haiku-latest", help="Anthropic model for policy adapter")
+    parser.add_argument(
+        "--openai-api-key", default=os.getenv("OPENAI_API_KEY"), help="OpenAI API key"
+    )
+    parser.add_argument(
+        "--openai-model", default="gpt-4.1-mini", help="OpenAI model for policy adapter"
+    )
+    parser.add_argument(
+        "--anthropic-api-key", default=os.getenv("ANTHROPIC_API_KEY"), help="Anthropic API key"
+    )
+    parser.add_argument(
+        "--anthropic-model",
+        default="claude-3-5-haiku-latest",
+        help="Anthropic model for policy adapter",
+    )
     parser.add_argument(
         "--progress-seconds",
         type=float,
@@ -2544,13 +2784,17 @@ def main() -> int:
         default=0.0,
         help="Fail if GuardLLM text F1 (%%) is below this threshold.",
     )
-    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+    parser.add_argument(
+        "--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha."
+    )
     parser.add_argument(
         "--llama-guard-results",
         default=None,
         help="Path to Llama Guard 4 results.json to merge into injection comparison.",
     )
-    parser.add_argument("--dataset-id", default="canonical-v1", help="Dataset to load (default: canonical-v1)")
+    parser.add_argument(
+        "--dataset-id", default="canonical-v1", help="Dataset to load (default: canonical-v1)"
+    )
     args = parser.parse_args()
     ensure_cache_dir()
 
@@ -2575,18 +2819,24 @@ def main() -> int:
     holdout_injection_only: dict[str, Any] | None = None
     previous_payload: dict[str, Any] = {}
     previous_run_id = read_latest_pointer()
-    previous_compare_json = (RUNS_ROOT / previous_run_id / "comparison.json") if previous_run_id else None
+    previous_compare_json = (
+        (RUNS_ROOT / previous_run_id / "comparison.json") if previous_run_id else None
+    )
     if previous_compare_json and previous_compare_json.exists():
         try:
             previous_payload = json.loads(previous_compare_json.read_text())
         except Exception:
             previous_payload = {}
     if args.surface_only:
-        injection_only = previous_payload.get("injection_only", {"record_count": 0, "strategies": {}})
+        injection_only = previous_payload.get(
+            "injection_only", {"record_count": 0, "strategies": {}}
+        )
         holdout_injection_only = previous_payload.get("holdout_injection_only")
         if args.llama_guard_results:
             text_records = build_text_records(cases, injection_scope=args.injection_scope)
-            injection_only = _merge_llama_guard_results(injection_only, args.llama_guard_results, text_records)
+            injection_only = _merge_llama_guard_results(
+                injection_only, args.llama_guard_results, text_records
+            )
     else:
         guardllm_reuse: dict[str, Any] | None = None
         if args.reuse_guardllm_text and previous_payload:
@@ -2617,12 +2867,14 @@ def main() -> int:
             openai_api_key=args.openai_api_key,
             openai_model=args.openai_model,
             anthropic_api_key=args.anthropic_api_key,
-                anthropic_model=args.anthropic_model,
-                guardllm_reuse=guardllm_reuse,
-                progress_seconds=args.progress_seconds,
-            )
+            anthropic_model=args.anthropic_model,
+            guardllm_reuse=guardllm_reuse,
+            progress_seconds=args.progress_seconds,
+        )
         if args.llama_guard_results:
-            injection_only = _merge_llama_guard_results(injection_only, args.llama_guard_results, text_records)
+            injection_only = _merge_llama_guard_results(
+                injection_only, args.llama_guard_results, text_records
+            )
         injection_only = merge_prior_text_rows(
             current_injection_only=injection_only,
             previous_payload=previous_payload,
@@ -2630,7 +2882,9 @@ def main() -> int:
         )
         holdout_cases = [] if args.skip_holdout_text else load_legacy_upstream_cases()
         if holdout_cases:
-            holdout_records = build_text_records(holdout_cases, injection_scope=args.injection_scope)
+            holdout_records = build_text_records(
+                holdout_cases, injection_scope=args.injection_scope
+            )
             holdout_injection_only = run_injection_strategies(
                 records=holdout_records,
                 azure_endpoint=args.azure_endpoint,
@@ -2709,9 +2963,7 @@ def main() -> int:
         )
         return 2
     if guard_f1 < float(args.min_guardllm_f1):
-        print(
-            f"ERROR: guardllm f1 {guard_f1} is below threshold {args.min_guardllm_f1}."
-        )
+        print(f"ERROR: guardllm f1 {guard_f1} is below threshold {args.min_guardllm_f1}.")
         return 2
     return 0
 

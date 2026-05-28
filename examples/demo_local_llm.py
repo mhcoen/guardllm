@@ -122,9 +122,7 @@ def load_model() -> tuple:
 
 def generate(model, tokenizer, messages: list[dict], max_new_tokens: int = 512) -> str:
     """Generate a response from chat messages."""
-    text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
     with torch.no_grad():
         output_ids = model.generate(
@@ -134,13 +132,14 @@ def generate(model, tokenizer, messages: list[dict], max_new_tokens: int = 512) 
             temperature=None,
             top_p=None,
         )
-    new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
+    new_tokens = output_ids[0][inputs["input_ids"].shape[1] :]
     return tokenizer.decode(new_tokens, skip_special_tokens=True)
 
 
 # ---------------------------------------------------------------------------
 # Detection helpers
 # ---------------------------------------------------------------------------
+
 
 def check_exfiltration(text: str) -> bool:
     """Check if the account number appears in a URL or markdown link."""
@@ -161,6 +160,7 @@ def check_exfiltration(text: str) -> bool:
 # ---------------------------------------------------------------------------
 # Run 1: Without GuardLLM
 # ---------------------------------------------------------------------------
+
 
 def run_without_guard(model, tokenizer) -> None:
     print("=" * 60)
@@ -215,6 +215,7 @@ def run_without_guard(model, tokenizer) -> None:
 # ---------------------------------------------------------------------------
 # Run 2: With GuardLLM
 # ---------------------------------------------------------------------------
+
 
 def run_with_guard(model, tokenizer) -> None:
     from guardllm import Guard
@@ -294,7 +295,7 @@ def run_with_guard(model, tokenizer) -> None:
     print(f"  Allowed: {outbound.allowed}")
     print(f"  Reason: {outbound.reason}")
     if outbound.contamination_triggered:
-        print(f"  Contamination detected: sensitive content mixed with untrusted context")
+        print("  Contamination detected: sensitive content mixed with untrusted context")
     if outbound.overlap_pct > 0:
         print(f"  Overlap: {outbound.overlap_pct:.1f}% of sensitive content in output")
     print()
@@ -311,6 +312,7 @@ def run_with_guard(model, tokenizer) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     print()

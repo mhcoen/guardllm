@@ -19,10 +19,9 @@ from pathlib import Path
 from typing import Any
 
 from _bootstrap import ROOT  # noqa: F401
+from compare_mitigations import TextRecord, build_text_records
 from output_layout import ensure_cache_dir, ensure_run_dir, git_sha_short
 from run_benchmarks import load_cases
-from compare_mitigations import build_text_records, TextRecord
-
 
 DEFAULT_MODEL_ID = "meta-llama/Llama-Guard-4-12B"
 DEFAULT_MAX_NEW_TOKENS = 20
@@ -270,25 +269,52 @@ def _write_results_md(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluate Llama Guard 4 on text benchmark records.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate Llama Guard 4 on text benchmark records."
+    )
     parser.add_argument("--run-id", required=True, help="Run identifier for output directory.")
     parser.add_argument("--suite", default=None, help="Filter to one suite.")
-    parser.add_argument("--text-scope", default=DEFAULT_TEXT_SCOPE, choices=["injection", "all"],
-                        help="Scope for text benchmark records.")
-    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="HuggingFace model identifier.")
+    parser.add_argument(
+        "--text-scope",
+        default=DEFAULT_TEXT_SCOPE,
+        choices=["injection", "all"],
+        help="Scope for text benchmark records.",
+    )
+    parser.add_argument(
+        "--model-id", default=DEFAULT_MODEL_ID, help="HuggingFace model identifier."
+    )
     parser.add_argument("--hf-revision", default=None, help="Specific HF model revision/commit.")
-    parser.add_argument("--cache-dir", default="benchmarks/cache/llama_guard4_eval/",
-                        help="Directory for per-record inference cache.")
-    parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS,
-                        help="Maximum tokens to generate per record.")
-    parser.add_argument("--dtype", default=DEFAULT_DTYPE, choices=["bf16", "bfloat16", "fp16", "float16"],
-                        help="Model precision.")
-    parser.add_argument("--progress-seconds", type=float, default=30.0,
-                        help="Emit progress updates every N seconds (0 disables).")
-    parser.add_argument("--limit", type=int, default=0,
-                        help="Limit to first N records (0 = all, useful for dev).")
-    parser.add_argument("--dataset-id", default=None,
-                        help="Use a pre-built dataset (e.g. canonical-v1) instead of discovering case files.")
+    parser.add_argument(
+        "--cache-dir",
+        default="benchmarks/cache/llama_guard4_eval/",
+        help="Directory for per-record inference cache.",
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=DEFAULT_MAX_NEW_TOKENS,
+        help="Maximum tokens to generate per record.",
+    )
+    parser.add_argument(
+        "--dtype",
+        default=DEFAULT_DTYPE,
+        choices=["bf16", "bfloat16", "fp16", "float16"],
+        help="Model precision.",
+    )
+    parser.add_argument(
+        "--progress-seconds",
+        type=float,
+        default=30.0,
+        help="Emit progress updates every N seconds (0 disables).",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=0, help="Limit to first N records (0 = all, useful for dev)."
+    )
+    parser.add_argument(
+        "--dataset-id",
+        default=None,
+        help="Use a pre-built dataset (e.g. canonical-v1) instead of discovering case files.",
+    )
     args = parser.parse_args()
 
     ensure_cache_dir()
@@ -300,7 +326,11 @@ def main() -> int:
         cache_dir = ROOT / cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    cases = load_cases(args.suite, dataset_id=args.dataset_id) if args.dataset_id else load_cases(args.suite)
+    cases = (
+        load_cases(args.suite, dataset_id=args.dataset_id)
+        if args.dataset_id
+        else load_cases(args.suite)
+    )
     if not cases:
         print("No benchmark cases found.")
         return 1
@@ -342,19 +372,23 @@ def main() -> int:
         if not result.get("cache_hit"):
             latencies.append(latency)
 
-        predictions.append({
-            "id": record.id,
-            "suite": record.suite,
-            "kind": record.kind,
-            "label_attack": record.label_attack,
-            "pred_attack": result["pred_attack"],
-            "raw_response": result.get("raw_response", ""),
-            "category": result.get("category"),
-            "latency_ms": latency,
-        })
+        predictions.append(
+            {
+                "id": record.id,
+                "suite": record.suite,
+                "kind": record.kind,
+                "label_attack": record.label_attack,
+                "pred_attack": result["pred_attack"],
+                "raw_response": result.get("raw_response", ""),
+                "category": result.get("category"),
+                "latency_ms": latency,
+            }
+        )
 
         now = time.perf_counter()
-        if args.progress_seconds > 0 and (now - last_progress >= args.progress_seconds or idx == len(records)):
+        if args.progress_seconds > 0 and (
+            now - last_progress >= args.progress_seconds or idx == len(records)
+        ):
             elapsed = now - started
             rate = idx / elapsed if elapsed > 0 else 0
             print(
@@ -405,7 +439,9 @@ def main() -> int:
         latency_stats = {
             "avg": round(sum(sorted_lat) / len(sorted_lat), 2),
             "p50": round(sorted_lat[len(sorted_lat) // 2], 2),
-            "p95": round(sorted_lat[min(len(sorted_lat) - 1, int(round((len(sorted_lat) - 1) * 0.95)))], 2),
+            "p95": round(
+                sorted_lat[min(len(sorted_lat) - 1, int(round((len(sorted_lat) - 1) * 0.95)))], 2
+            ),
             "max": round(sorted_lat[-1], 2),
         }
 
@@ -454,7 +490,10 @@ def main() -> int:
         model_id=args.model_id,
         hf_revision=classifier.hf_revision_resolved,
         record_count=total,
-        tp=tp, tn=tn, fp=fp, fn=fn,
+        tp=tp,
+        tn=tn,
+        fp=fp,
+        fn=fn,
         accuracy=accuracy,
         precision=precision,
         recall=recall,
@@ -475,10 +514,7 @@ def main() -> int:
     print(f"wrote {_repo_rel(results_json)}")
     print(f"wrote {_repo_rel(results_md)}")
     print(f"wrote {_repo_rel(manifest_json)}")
-    print(
-        f"metrics: accuracy={accuracy}% precision={precision}% "
-        f"recall={recall}% f1={f1}%"
-    )
+    print(f"metrics: accuracy={accuracy}% precision={precision}% recall={recall}% f1={f1}%")
     print(f"confusion: tp={tp} tn={tn} fp={fp} fn={fn}")
     print(f"cache: hits={cache_hits} writes={cache_writes}")
     print(f"elapsed: {elapsed_total:.1f}s")

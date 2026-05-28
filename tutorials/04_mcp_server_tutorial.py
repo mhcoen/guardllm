@@ -6,6 +6,7 @@ Focus: protecting a server from untrusted MCP client requests.
 from __future__ import annotations
 
 from _bootstrap import ROOT  # noqa: F401
+
 from guardllm import Guard
 from guardllm.security.error_sanitizer import InvalidParamsError
 from guardllm.security.types import PolicyConfig

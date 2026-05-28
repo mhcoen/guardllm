@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from _bootstrap import ROOT  # noqa: F401
+
 from guardllm.security.action_gate import ActionGate, ActionProposal
 from guardllm.security.types import ConfirmationHandler, SecurityContext
 

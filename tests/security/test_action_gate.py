@@ -73,6 +73,7 @@ class TestActionProposal:
 
 class _AcceptingHandler(ConfirmationHandler):
     """Always confirms."""
+
     def __init__(self):
         self.last_tool = None
         self.last_args = None
@@ -87,6 +88,7 @@ class _AcceptingHandler(ConfirmationHandler):
 
 class _DenyingHandler(ConfirmationHandler):
     """Always denies."""
+
     async def confirm(self, tool, args, context):
         return False
 
@@ -199,6 +201,7 @@ class TestConfirmAllBelow:
     def test_requires_confirmation_below_threshold(self, gate, proposal):
         """UNTRUSTED principal requires confirmation when threshold is UNTRUSTED."""
         from guardllm.security.types import PolicyConfig
+
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
@@ -211,6 +214,7 @@ class TestConfirmAllBelow:
     def test_requires_confirmation_at_semi_trusted(self, gate, proposal):
         """SEMI_TRUSTED principal requires confirmation when threshold is SEMI_TRUSTED."""
         from guardllm.security.types import PolicyConfig
+
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
@@ -223,6 +227,7 @@ class TestConfirmAllBelow:
     def test_untrusted_requires_when_threshold_semi_trusted(self, gate, proposal):
         """UNTRUSTED (below SEMI_TRUSTED) requires confirmation."""
         from guardllm.security.types import PolicyConfig
+
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
@@ -235,6 +240,7 @@ class TestConfirmAllBelow:
     def test_trusted_skips_when_threshold_semi_trusted(self, gate, proposal):
         """TRUSTED (above SEMI_TRUSTED) does not require confirmation."""
         from guardllm.security.types import PolicyConfig
+
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
@@ -258,6 +264,7 @@ class TestConfirmAllBelow:
     def test_confirm_passes_trust_gated_flag_to_handler(self, gate, proposal):
         """confirm() passes trust_gated_confirmation context to handler."""
         from guardllm.security.types import PolicyConfig
+
         handler = _AcceptingHandler()
         ctx = SecurityContext(
             mode="client",
@@ -273,6 +280,7 @@ class TestConfirmAllBelow:
     def test_web_derived_independent_of_confirm_all_below(self, gate, proposal):
         """Web-derived warning is additive, not gated by confirm_all_below."""
         from guardllm.security.types import PolicyConfig
+
         ctx = SecurityContext(
             mode="client",
             source_type="mcp_server",
@@ -282,9 +290,7 @@ class TestConfirmAllBelow:
             policy=PolicyConfig(confirm_all_below=TrustLevel.SEMI_TRUSTED),
         )
         # TRUSTED principal, above threshold, but web_derived still triggers
-        assert gate.requires_confirmation(
-            proposal, ctx, context_has_web_derived=True
-        ) is True
+        assert gate.requires_confirmation(proposal, ctx, context_has_web_derived=True) is True
 
 
 # ---------------------------------------------------------------------------
@@ -358,9 +364,7 @@ class TestArgsCommitment:
             context={},
         )
         asyncio.run(gate.confirm(proposal, ctx))
-        ok, reason = gate.verify_commitment(
-            "gmail_delete_email", {"to": "alice@test.com"}
-        )
+        ok, reason = gate.verify_commitment("gmail_delete_email", {"to": "alice@test.com"})
         assert ok is False
         assert "no commitment" in reason
 

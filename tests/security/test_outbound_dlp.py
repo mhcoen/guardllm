@@ -38,6 +38,7 @@ class TestShannonEntropy:
 
     def test_high_entropy(self):
         import string
+
         s = string.ascii_letters + string.digits
         entropy = _shannon_entropy(s)
         assert entropy > 4.0
@@ -131,9 +132,8 @@ class TestSecretScanning:
     def test_high_entropy_token(self):
         # Generate a high-entropy token
         import string
-        token = "".join(
-            string.ascii_letters[i % 52] for i in range(30)
-        )
+
+        token = "".join(string.ascii_letters[i % 52] for i in range(30))
         text = f"token={token}"
         found = _scan_secrets(text)
         # May or may not trigger depending on exact entropy
@@ -176,7 +176,7 @@ class TestOutboundDLP:
     def test_short_verbatim_overlap_passes(self, dlp, ctx):
         untrusted = "x" * 50  # < 100 char threshold for DLP
         dlp.ingest_untrusted(untrusted)
-        result = dlp.check(untrusted, ctx)
+        dlp.check(untrusted, ctx)
         # May pass or fail depending on n-gram — but at least no verbatim block
         # For single repeated char, n-gram overlap would be 100% since it's the same
         # Let's test with something that clearly passes
@@ -200,9 +200,7 @@ class TestOutboundDLP:
 
     def test_buffer_fifo(self):
         dlp = OutboundDLP(buffer_max=2)
-        ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s"
-        )
+        ctx = SecurityContext(mode="client", source_type="mcp_server", source_id="s")
         text1 = "a" * 150
         text2 = "b" * 150
         text3 = "c" * 150

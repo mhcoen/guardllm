@@ -70,16 +70,21 @@ def clone_or_update(name: str, url: str, root: Path) -> tuple[Path, str]:
     if dest.exists():
         subprocess.run(
             ["git", "fetch", "--all", "--prune"],
-            cwd=str(dest), capture_output=True,
+            cwd=str(dest),
+            capture_output=True,
         )
     else:
         subprocess.run(
             ["git", "clone", "--depth", "1", url, str(dest)],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
-        cwd=str(dest), capture_output=True, text=True, check=True,
+        cwd=str(dest),
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return dest, result.stdout.strip()
 
@@ -192,8 +197,9 @@ def main():
 
     # Per-category counts before dedup
     from collections import Counter
+
     cat_counts_raw = Counter(c for c, _ in all_entries)
-    print(f"  Per-category (raw):", file=sys.stderr)
+    print("  Per-category (raw):", file=sys.stderr)
     for cat, count in cat_counts_raw.most_common():
         print(f"    {cat}: {count}", file=sys.stderr)
 
@@ -213,7 +219,7 @@ def main():
         cat_counts[category] += 1
 
     print(f"  Total unique payloads: {len(deduped)}", file=sys.stderr)
-    print(f"  Per-category (deduped):", file=sys.stderr)
+    print("  Per-category (deduped):", file=sys.stderr)
     for cat, count in cat_counts.most_common():
         print(f"    {cat}: {count}", file=sys.stderr)
 
@@ -223,6 +229,7 @@ def main():
     if cat_counts.get("pathtraver", 0) > MAX_PER_CATEGORY:
         # Re-filter: keep only MAX_PER_CATEGORY pathtraver entries
         import random
+
         rng = random.Random(20260222)
         final: list[str] = []
         pathtraver_entries: list[str] = []
@@ -243,7 +250,10 @@ def main():
         final.extend(pathtraver_entries[:MAX_PER_CATEGORY])
         rng.shuffle(final)
         deduped = final
-        print(f"  After capping pathtraver to {MAX_PER_CATEGORY}: {len(deduped)} total", file=sys.stderr)
+        print(
+            f"  After capping pathtraver to {MAX_PER_CATEGORY}: {len(deduped)} total",
+            file=sys.stderr,
+        )
 
     # Write output
     out_path = cache_dir / "owasp_payload.txt"

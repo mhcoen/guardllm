@@ -1,11 +1,8 @@
 """Tests for MCP security provenance tracking."""
 
-import pytest
-
 from guardllm.security.normalization import compute_lcs_length, compute_ngram_overlap
 from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
-from guardllm.security.types import SensitivityLevel, TrustLevel
-
+from guardllm.security.types import TrustLevel
 
 # ---------------------------------------------------------------------------
 # ProvenancedSpan dataclass
@@ -97,8 +94,7 @@ class TestLCS:
         """Order of arguments shouldn't matter."""
         a = "the quick brown fox"
         b = "quick brown"
-        assert compute_lcs_length(a, b) == \
-            compute_lcs_length(b, a)
+        assert compute_lcs_length(a, b) == compute_lcs_length(b, a)
 
 
 # ---------------------------------------------------------------------------
@@ -155,12 +151,14 @@ class TestProvenanceTracker:
     def test_add_multiple_spans(self):
         tracker = ProvenanceTracker()
         for i in range(3):
-            tracker.add_span(ProvenancedSpan(
-                text=f"content {i}",
-                source_type="mcp_server",
-                source_id=f"server-{i}",
-                source_trust=TrustLevel.UNTRUSTED,
-            ))
+            tracker.add_span(
+                ProvenancedSpan(
+                    text=f"content {i}",
+                    source_type="mcp_server",
+                    source_id=f"server-{i}",
+                    source_trust=TrustLevel.UNTRUSTED,
+                )
+            )
         assert len(tracker._spans) == 3
 
     def test_clean_when_no_spans(self):
@@ -171,12 +169,14 @@ class TestProvenanceTracker:
 
     def test_clean_when_only_trusted_spans(self):
         tracker = ProvenanceTracker()
-        tracker.add_span(ProvenancedSpan(
-            text="some trusted content that is quite long and could match",
-            source_type="cli_user",
-            source_id="user-1",
-            source_trust=TrustLevel.TRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text="some trusted content that is quite long and could match",
+                source_type="cli_user",
+                source_id="user-1",
+                source_trust=TrustLevel.TRUSTED,
+            )
+        )
         allowed, reason = tracker.check_outbound(
             "some trusted content that is quite long and could match"
         )
@@ -187,27 +187,29 @@ class TestProvenanceTracker:
         tracker = ProvenanceTracker()
         # Even with untrusted content that would normally block
         long_text = "x" * 100
-        tracker.add_span(ProvenancedSpan(
-            text=long_text,
-            source_type="mcp_server",
-            source_id="server-1",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
-        allowed, reason = tracker.check_outbound(
-            long_text, has_quoting_directive=True
+        tracker.add_span(
+            ProvenancedSpan(
+                text=long_text,
+                source_type="mcp_server",
+                source_id="server-1",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
         )
+        allowed, reason = tracker.check_outbound(long_text, has_quoting_directive=True)
         assert allowed is True
         assert reason == "quoting directive"
 
     def test_blocks_verbatim_overlap(self):
         tracker = ProvenanceTracker()
         shared = "a" * 60  # >= 50 chars
-        tracker.add_span(ProvenancedSpan(
-            text=shared,
-            source_type="mcp_server",
-            source_id="evil-server",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text=shared,
+                source_type="mcp_server",
+                source_id="evil-server",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         allowed, reason = tracker.check_outbound("prefix " + shared + " suffix")
         assert allowed is False
         assert "Verbatim overlap" in reason
@@ -217,12 +219,14 @@ class TestProvenanceTracker:
         """Short LCS (< 50 chars) and low n-gram overlap pass."""
         tracker = ProvenanceTracker()
         span_text = "the meeting is scheduled for tomorrow morning"
-        tracker.add_span(ProvenancedSpan(
-            text=span_text,
-            source_type="mcp_server",
-            source_id="server-1",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text=span_text,
+                source_type="mcp_server",
+                source_id="server-1",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         # Outbound has a few common words but mostly different
         outbound = (
             "Please confirm the dinner reservation for this evening. "
@@ -235,12 +239,14 @@ class TestProvenanceTracker:
         tracker = ProvenanceTracker()
         # Use text that has high n-gram overlap but no single long substring
         span_text = "the quick brown fox jumps over the lazy dog near the river"
-        tracker.add_span(ProvenancedSpan(
-            text=span_text,
-            source_type="mcp_server",
-            source_id="server-1",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text=span_text,
+                source_type="mcp_server",
+                source_id="server-1",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         # Rearranged but largely the same content
         outbound = "the quick brown fox jumps over the lazy dog near the river"
         allowed, reason = tracker.check_outbound(outbound)
@@ -248,12 +254,14 @@ class TestProvenanceTracker:
 
     def test_empty_span_text_skipped(self):
         tracker = ProvenanceTracker()
-        tracker.add_span(ProvenancedSpan(
-            text="",
-            source_type="mcp_server",
-            source_id="server-1",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text="",
+                source_type="mcp_server",
+                source_id="server-1",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         allowed, reason = tracker.check_outbound("any content")
         assert allowed is True
 
@@ -261,18 +269,22 @@ class TestProvenanceTracker:
         tracker = ProvenanceTracker()
         safe_text = "something completely different and unique"
         dangerous = "d" * 60
-        tracker.add_span(ProvenancedSpan(
-            text=safe_text,
-            source_type="mcp_server",
-            source_id="safe",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
-        tracker.add_span(ProvenancedSpan(
-            text=dangerous,
-            source_type="mcp_server",
-            source_id="evil",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text=safe_text,
+                source_type="mcp_server",
+                source_id="safe",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
+        tracker.add_span(
+            ProvenancedSpan(
+                text=dangerous,
+                source_type="mcp_server",
+                source_id="evil",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         allowed, reason = tracker.check_outbound(dangerous)
         assert allowed is False
         assert "evil" in reason
@@ -280,12 +292,14 @@ class TestProvenanceTracker:
     def test_custom_thresholds_allow_same_content(self):
         tracker = ProvenanceTracker()
         shared = "x" * 120
-        tracker.add_span(ProvenancedSpan(
-            text=shared,
-            source_type="mcp_server",
-            source_id="server-1",
-            source_trust=TrustLevel.UNTRUSTED,
-        ))
+        tracker.add_span(
+            ProvenancedSpan(
+                text=shared,
+                source_type="mcp_server",
+                source_id="server-1",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
         allowed, reason = tracker.check_outbound(
             shared,
             lcs_threshold=1000,

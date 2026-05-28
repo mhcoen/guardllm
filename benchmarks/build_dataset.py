@@ -22,12 +22,13 @@ from compare_mitigations import TEXT_SCOPE_INCLUDED_SUITES, build_text_records
 from output_layout import BENCH_ROOT, ensure_run_dir, git_sha_short
 from run_benchmarks import CASES_DIR, UPSTREAM_MANIFEST
 
-
 DATASETS_ROOT = BENCH_ROOT / "datasets"
 
 
 def _sha256_json(payload: Any) -> str:
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -105,7 +106,9 @@ def _manifest_source_audit(manifest_path: Path) -> list[dict[str, Any]]:
             "raw_samples_sha256": _sha256_file(raw_path) if raw_path.exists() else None,
             "mapped_cases_sha256": _sha256_file(mapped_path) if mapped_path.exists() else None,
             "raw_samples_line_count": _line_count_jsonl(raw_path) if raw_path.exists() else None,
-            "mapped_cases_line_count": _line_count_jsonl(mapped_path) if mapped_path.exists() else None,
+            "mapped_cases_line_count": _line_count_jsonl(mapped_path)
+            if mapped_path.exists()
+            else None,
         }
         rows.append(row)
     rows.sort(key=lambda x: x["suite"])
@@ -164,7 +167,16 @@ def _dataset_hash(cases: list[dict[str, Any]]) -> str:
 def _text_dataset_hash(cases: list[dict[str, Any]]) -> str:
     text_records = build_text_records(cases, text_scope="injection")
     text_records = [r for r in text_records if r.suite in TEXT_SCOPE_INCLUDED_SUITES]
-    payload = [{"id": r.id, "suite": r.suite, "kind": r.kind, "label_attack": r.label_attack, "text": r.text} for r in text_records]
+    payload = [
+        {
+            "id": r.id,
+            "suite": r.suite,
+            "kind": r.kind,
+            "label_attack": r.label_attack,
+            "text": r.text,
+        }
+        for r in text_records
+    ]
     return _sha256_json(payload)
 
 
@@ -192,7 +204,9 @@ def build_dataset(dataset_id: str, manifest_path: Path, output_root: Path) -> Pa
     source_date_epoch_raw = os.getenv("SOURCE_DATE_EPOCH")
     source_date_epoch = int(source_date_epoch_raw) if source_date_epoch_raw is not None else None
     built_at_unix = source_date_epoch if source_date_epoch is not None else int(time.time())
-    built_at_iso_utc = dt.datetime.fromtimestamp(built_at_unix, tz=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    built_at_iso_utc = dt.datetime.fromtimestamp(built_at_unix, tz=dt.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     with_prov = _load_cases_with_provenance(manifest_path)
     cases = [row["case"] for row in with_prov]
@@ -243,7 +257,9 @@ def build_dataset(dataset_id: str, manifest_path: Path, output_root: Path) -> Pa
         "dataset_id": dataset_id,
         "dataset_hash_sha256": dataset_hash,
         "text_injection_dataset_hash_sha256": text_hash,
-        "manifest_path": str(manifest_path.relative_to(ROOT)) if manifest_path.is_absolute() else str(manifest_path),
+        "manifest_path": str(manifest_path.relative_to(ROOT))
+        if manifest_path.is_absolute()
+        else str(manifest_path),
         "case_count_total": len(cases),
         "suite_counts": dict(sorted(suite_counts.items())),
         "kind_counts": dict(sorted(kind_counts.items())),
@@ -270,7 +286,11 @@ def main() -> int:
     parser.add_argument("--dataset-id", default="canonical")
     parser.add_argument("--output-root", default=str(DATASETS_ROOT))
     parser.add_argument("--manifest", default=str(UPSTREAM_MANIFEST))
-    parser.add_argument("--run-id", default=None, help="Optional run id. If set, also writes benchmarks/runs/<run_id>/METADATA.json.")
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional run id. If set, also writes benchmarks/runs/<run_id>/METADATA.json.",
+    )
     args = parser.parse_args()
 
     output_root = Path(args.output_root)
@@ -288,7 +308,9 @@ def main() -> int:
         run_dir = ensure_run_dir(str(args.run_id))
         run_meta = dict(meta)
         run_meta["dataset_dir"] = str(out_dir.relative_to(ROOT))
-        (run_dir / "METADATA.json").write_text(json.dumps(run_meta, indent=2, sort_keys=True) + "\n")
+        (run_dir / "METADATA.json").write_text(
+            json.dumps(run_meta, indent=2, sort_keys=True) + "\n"
+        )
         print(f"run metadata: {run_dir / 'METADATA.json'}")
     print(f"dataset dir: {out_dir}")
     print(f"dataset hash: {meta['dataset_hash_sha256']}")

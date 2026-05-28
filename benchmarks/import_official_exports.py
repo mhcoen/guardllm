@@ -108,7 +108,7 @@ def first_present(record: dict[str, Any], keys: list[str]) -> str:
 def _as_bool(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bool(value)
     if isinstance(value, str):
         token = value.strip().lower()
@@ -188,7 +188,9 @@ def snippet(text: str, width: int = 96) -> str:
 
 
 def _normalize_id(text: str) -> str:
-    cleaned = "".join(ch if ("a" <= ch <= "z") or ("0" <= ch <= "9") else "_" for ch in text.lower())
+    cleaned = "".join(
+        ch if ("a" <= ch <= "z") or ("0" <= ch <= "9") else "_" for ch in text.lower()
+    )
     while "__" in cleaned:
         cleaned = cleaned.replace("__", "_")
     cleaned = cleaned.strip("_")
@@ -319,9 +321,7 @@ def map_cases_for_suite(
         if not text:
             return []
         case_id = f"upstream_jailbreakbench_{snapshot_tag}_{record_index:04d}"
-        label = _as_bool(
-            record.get("label", record.get("is_attack", record.get("jailbreak")))
-        )
+        label = _as_bool(record.get("label", record.get("is_attack", record.get("jailbreak"))))
         return [
             {
                 "id": case_id,
@@ -333,7 +333,10 @@ def map_cases_for_suite(
                 "expect_contains": [snippet(text)],
                 "expect_isolated": True,
                 "meta_upstream_label": bool(label) if label is not None else True,
-                "meta_upstream_category": first_present(record, ["category", "split", "attack_type"]) or "unknown",
+                "meta_upstream_category": first_present(
+                    record, ["category", "split", "attack_type"]
+                )
+                or "unknown",
             },
             {
                 "id": f"{case_id}_source_gate",
@@ -353,9 +356,7 @@ def map_cases_for_suite(
         if not text:
             return []
         case_id = f"upstream_harmbench_{snapshot_tag}_{record_index:04d}"
-        label = _as_bool(
-            record.get("label", record.get("is_harmful", record.get("harmful")))
-        )
+        label = _as_bool(record.get("label", record.get("is_harmful", record.get("harmful"))))
         return [
             {
                 "id": case_id,
@@ -367,7 +368,10 @@ def map_cases_for_suite(
                 "expect_contains": [snippet(text)],
                 "expect_isolated": True,
                 "meta_upstream_label": bool(label) if label is not None else True,
-                "meta_upstream_category": first_present(record, ["category", "taxonomy", "attack_type"]) or "unknown",
+                "meta_upstream_category": first_present(
+                    record, ["category", "taxonomy", "attack_type"]
+                )
+                or "unknown",
             },
             {
                 "id": f"{case_id}_source_gate",
@@ -506,7 +510,16 @@ def map_cases_for_suite(
     if suite in {"mcpbench", "mcp_bench"}:
         text = _best_text(
             record,
-            ["prompt", "instruction", "text", "input", "description", "attack", "query", "question"],
+            [
+                "prompt",
+                "instruction",
+                "text",
+                "input",
+                "description",
+                "attack",
+                "query",
+                "question",
+            ],
         )
         if not text:
             text = first_present(record, ["record_key", "id", "name", "sample_id"])
@@ -640,7 +653,10 @@ def map_cases_for_suite(
                 "expect_contains": [snippet(text)],
                 "expect_isolated": True,
                 "meta_upstream_label": bool(label),
-                "meta_upstream_category": first_present(record, ["source_split", "attack_type", "split"]) or "unknown",
+                "meta_upstream_category": first_present(
+                    record, ["source_split", "attack_type", "split"]
+                )
+                or "unknown",
             }
         ]
 
@@ -716,11 +732,15 @@ def upsert_manifest_source(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", required=True, choices=SUPPORTED_SUITES)
-    parser.add_argument("--input", required=True, help="Path to official export file (jsonl/json/yaml)")
+    parser.add_argument(
+        "--input", required=True, help="Path to official export file (jsonl/json/yaml)"
+    )
     parser.add_argument("--ref", required=True, help="Upstream commit/tag ref")
     parser.add_argument("--repo", default=None, help="Override source repository URL")
     parser.add_argument("--source-export", default=None, help="Source export path/name")
-    parser.add_argument("--snapshot-tag", default=None, help="Snapshot tag directory suffix (default: v<ref8>)")
+    parser.add_argument(
+        "--snapshot-tag", default=None, help="Snapshot tag directory suffix (default: v<ref8>)"
+    )
     parser.add_argument("--limit", type=int, default=None, help="Optional max records to import")
     args = parser.parse_args()
 

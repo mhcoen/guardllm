@@ -14,7 +14,6 @@ from guardllm import Guard
 from guardllm.security.audit import AuditLogger
 from guardllm.security.source_gate import check_extraction_allowed
 from guardllm.security.types import (
-    ContentType,
     ExtractionPolicy,
     PolicyConfig,
     SecurityContext,
@@ -64,10 +63,12 @@ class TestCompoundBasicTrusted:
             source_id="assistant-1",
             source_trust=TrustLevel.TRUSTED,
         )
-        results = guard.process_inbound_compound([
-            ("Hello from the user", ctx1),
-            ("Response from assistant", ctx2),
-        ])
+        results = guard.process_inbound_compound(
+            [
+                ("Hello from the user", ctx1),
+                ("Response from assistant", ctx2),
+            ]
+        )
         assert len(results) == 2
         assert "Hello from the user" in results[0].content
         assert "Response from assistant" in results[1].content
@@ -101,10 +102,12 @@ class TestCompoundForwardedFromExternal:
         ctx_envelope = _trusted_user_ctx()
         ctx_payload = _untrusted_email_ctx()
 
-        results = guard.process_inbound_compound([
-            ("From: alice@corp.com\nSubject: FYI", ctx_envelope),
-            ("Hey, check out http://evil.com/phish", ctx_payload),
-        ])
+        results = guard.process_inbound_compound(
+            [
+                ("From: alice@corp.com\nSubject: FYI", ctx_envelope),
+                ("Hey, check out http://evil.com/phish", ctx_payload),
+            ]
+        )
         assert len(results) == 2
         # Trusted envelope is not isolated
         assert results[0].isolated is False
@@ -119,10 +122,12 @@ class TestCompoundForwardedFromExternal:
         ctx_payload = _untrusted_email_ctx()
 
         gate_envelope = check_extraction_allowed(
-            ctx_envelope.source_type, ctx_envelope.source_id,
+            ctx_envelope.source_type,
+            ctx_envelope.source_id,
         )
         gate_payload = check_extraction_allowed(
-            ctx_payload.source_type, ctx_payload.source_id,
+            ctx_payload.source_type,
+            ctx_payload.source_id,
         )
         assert gate_envelope.policy == ExtractionPolicy.ALLOW
         assert gate_payload.policy == ExtractionPolicy.BLOCK
@@ -133,10 +138,12 @@ class TestCompoundForwardedFromExternal:
         ctx_envelope = _trusted_user_ctx()
         ctx_payload = _untrusted_email_ctx()
 
-        guard.process_inbound_compound([
-            ("Envelope text", ctx_envelope),
-            ("Secret payload with sensitive data", ctx_payload),
-        ])
+        guard.process_inbound_compound(
+            [
+                ("Envelope text", ctx_envelope),
+                ("Secret payload with sensitive data", ctx_payload),
+            ]
+        )
         # Now check outbound: trying to echo the untrusted content should be blocked
         outbound = guard.check_outbound(
             "Secret payload with sensitive data",
@@ -153,10 +160,12 @@ class TestCompoundAllUntrusted:
         ctx1 = _untrusted_email_ctx()
         ctx2 = _untrusted_web_ctx()
 
-        results = guard.process_inbound_compound([
-            ("Email body with instructions", ctx1),
-            ("<div>Web content with payload</div>", ctx2),
-        ])
+        results = guard.process_inbound_compound(
+            [
+                ("Email body with instructions", ctx1),
+                ("<div>Web content with payload</div>", ctx2),
+            ]
+        )
         assert len(results) == 2
         assert results[0].isolated is True
         assert results[1].isolated is True
@@ -215,10 +224,7 @@ class TestCompoundId:
         )
 
         events = audit.get_events(limit=50)
-        compound_events = [
-            e for e in events
-            if e["event_type"] == "compound_inbound_processed"
-        ]
+        compound_events = [e for e in events if e["event_type"] == "compound_inbound_processed"]
         assert len(compound_events) == 1
         assert compound_events[0]["request_id"] == "test-compound-42"
         assert "2 spans" in compound_events[0]["action_summary"]
@@ -232,10 +238,7 @@ class TestCompoundId:
         guard.process_inbound_compound([("Content A", ctx)])
 
         events = audit.get_events(limit=50)
-        compound_events = [
-            e for e in events
-            if e["event_type"] == "compound_inbound_processed"
-        ]
+        compound_events = [e for e in events if e["event_type"] == "compound_inbound_processed"]
         assert len(compound_events) == 1
         # Generated ID is a 16-char hex string
         generated_id = compound_events[0]["request_id"]
@@ -250,19 +253,16 @@ class TestCompoundId:
         ctx1 = _trusted_user_ctx()
         ctx2 = _untrusted_email_ctx()
 
-        guard.process_inbound_compound([
-            ("Span A", ctx1),
-            ("Span B", ctx2),
-        ])
+        guard.process_inbound_compound(
+            [
+                ("Span A", ctx1),
+                ("Span B", ctx2),
+            ]
+        )
 
         events = audit.get_events(limit=50)
-        inbound_events = [
-            e for e in events if e["event_type"] == "inbound_processed"
-        ]
-        compound_events = [
-            e for e in events
-            if e["event_type"] == "compound_inbound_processed"
-        ]
+        inbound_events = [e for e in events if e["event_type"] == "inbound_processed"]
+        compound_events = [e for e in events if e["event_type"] == "compound_inbound_processed"]
         # Two per-span events plus one compound summary
         assert len(inbound_events) == 2
         assert len(compound_events) == 1
@@ -280,10 +280,12 @@ class TestCompoundContaminationAggregation:
         # Before compound: not contaminated
         assert guard._pipeline.context_contaminated is False
 
-        guard.process_inbound_compound([
-            ("Trusted content", ctx_trusted),
-            ("Untrusted web content", ctx_untrusted),
-        ])
+        guard.process_inbound_compound(
+            [
+                ("Trusted content", ctx_trusted),
+                ("Untrusted web content", ctx_untrusted),
+            ]
+        )
         assert guard._pipeline.context_contaminated is True
 
     def test_first_untrusted_second_trusted(self):
@@ -292,10 +294,12 @@ class TestCompoundContaminationAggregation:
         ctx_untrusted = _untrusted_email_ctx()
         ctx_trusted = _trusted_user_ctx()
 
-        guard.process_inbound_compound([
-            ("Untrusted email", ctx_untrusted),
-            ("Trusted user input", ctx_trusted),
-        ])
+        guard.process_inbound_compound(
+            [
+                ("Untrusted email", ctx_untrusted),
+                ("Trusted user input", ctx_trusted),
+            ]
+        )
         assert guard._pipeline.context_contaminated is True
 
     def test_contamination_persists_for_tool_calls(self):
@@ -304,10 +308,12 @@ class TestCompoundContaminationAggregation:
         ctx_trusted = _trusted_user_ctx()
         ctx_untrusted = _untrusted_web_ctx()
 
-        guard.process_inbound_compound([
-            ("Trusted content", ctx_trusted),
-            ("Untrusted web content", ctx_untrusted),
-        ])
+        guard.process_inbound_compound(
+            [
+                ("Trusted content", ctx_trusted),
+                ("Untrusted web content", ctx_untrusted),
+            ]
+        )
 
         # With contaminated_tool_policy="deny", tool calls are blocked
         tool_ctx = Guard.context_mcp_server(

@@ -35,7 +35,7 @@ class TestCanaryGeneration:
     def test_token_hex_suffix(self):
         """Canary token suffix is 16 hex characters."""
         token = generate_canary("session-x")
-        suffix = token[len("CANARY-"):]
+        suffix = token[len("CANARY-") :]
         assert len(suffix) == 16
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -97,7 +97,7 @@ class TestCanaryDetection:
         """A partial canary token is not detected (substring match only)."""
         token = generate_canary("session-42")
         # Take only half the token
-        partial = token[:len(token) // 2]
+        partial = token[: len(token) // 2]
         text = f"Some text with partial {partial} but not the full token."
         assert detect_canary(text, token) is False
 
@@ -122,13 +122,16 @@ class TestCanaryDetection:
 class TestCanaryIsolation:
     """Canary tokens are session-specific and secret-specific."""
 
-    @pytest.mark.parametrize("session_id", [
-        "session-1",
-        "session-2",
-        "abc-def-ghi",
-        "12345",
-        "a" * 100,
-    ])
+    @pytest.mark.parametrize(
+        "session_id",
+        [
+            "session-1",
+            "session-2",
+            "abc-def-ghi",
+            "12345",
+            "a" * 100,
+        ],
+    )
     def test_unique_per_session(self, session_id):
         """Each session_id produces a unique token."""
         token = generate_canary(session_id)

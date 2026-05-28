@@ -5,22 +5,19 @@ expand to cover sensitive content, blocking verbatim/near-verbatim
 exfiltration of trusted-sensitive material.
 """
 
-import pytest
-
 from guardllm import Guard
 from guardllm.security.pipeline import SecurityPipeline
 from guardllm.security.types import (
-    ContentType,
     PolicyConfig,
     SecurityContext,
     SensitivityLevel,
     TrustLevel,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _sensitive_ctx(policy: PolicyConfig | None = None) -> SecurityContext:
     """Trusted, sensitive context (e.g. private-channel API keys)."""

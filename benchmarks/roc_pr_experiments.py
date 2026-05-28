@@ -27,18 +27,6 @@ from typing import Any
 from urllib import error, request
 
 from _bootstrap import ROOT  # noqa: F401
-from guardllm import Guard
-from guardllm.security.prompt_injection_detector import detect_prompt_injection
-from output_layout import (
-    CACHE_ROOT,
-    DATASETS_ROOT,
-    ensure_cache_dir,
-    ensure_run_dir,
-    git_sha_short,
-    make_run_id,
-    write_latest_pointer,
-)
-
 from compare_mitigations import (  # noqa: E402
     AZURE_SIGNAL_CHOICES,
     TEXT_SCOPE_INCLUDED_SUITES,
@@ -48,7 +36,19 @@ from compare_mitigations import (  # noqa: E402
     _context_for_source,
     build_text_records,
 )
+from output_layout import (
+    CACHE_ROOT,
+    DATASETS_ROOT,
+    ensure_cache_dir,
+    ensure_run_dir,
+    git_sha_short,
+    make_run_id,
+    write_latest_pointer,
+)
 from run_benchmarks import load_cases
+
+from guardllm import Guard
+from guardllm.security.prompt_injection_detector import detect_prompt_injection
 
 SCORE_CACHE = CACHE_ROOT / "roc_score_cache.jsonl"
 CACHE_FLUSH_EVERY = 1
@@ -242,7 +242,7 @@ def _f1(precision: float, recall: float) -> float:
 
 def _point_from_preds(labels: list[bool], preds: list[bool], threshold: float | None) -> PointEval:
     tp = fp = tn = fn = 0
-    for y, p in zip(labels, preds):
+    for y, p in zip(labels, preds, strict=False):
         if y and p:
             tp += 1
         elif (not y) and p:
@@ -328,8 +328,22 @@ def _curve_from_scores(
     pr_y = [p.precision for p in pr_sorted]
 
     return CurveEval(
-        pr_points=[{"threshold": round(p.threshold or 0.0, 6), "recall": round(p.recall, 6), "precision": round(p.precision, 6)} for p in points],
-        roc_points=[{"threshold": round(p.threshold or 0.0, 6), "fpr": round(p.fpr, 6), "tpr": round(p.recall, 6)} for p in points],
+        pr_points=[
+            {
+                "threshold": round(p.threshold or 0.0, 6),
+                "recall": round(p.recall, 6),
+                "precision": round(p.precision, 6),
+            }
+            for p in points
+        ],
+        roc_points=[
+            {
+                "threshold": round(p.threshold or 0.0, 6),
+                "fpr": round(p.fpr, 6),
+                "tpr": round(p.recall, 6),
+            }
+            for p in points
+        ],
         pr_auc=round(_trapezoid_auc(pr_x, pr_y), 6),
         roc_auc=round(_trapezoid_auc(roc_x, roc_y), 6),
         precision_empty_pred_convention="precision=1.0 when TP+FP=0",
@@ -402,7 +416,9 @@ def _wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float]
     phat = successes / total
     denom = 1.0 + (z * z) / total
     center = (phat + (z * z) / (2.0 * total)) / denom
-    margin = (z / denom) * math.sqrt((phat * (1.0 - phat) / total) + ((z * z) / (4.0 * total * total)))
+    margin = (z / denom) * math.sqrt(
+        (phat * (1.0 - phat) / total) + ((z * z) / (4.0 * total * total))
+    )
     lo = max(0.0, center - margin)
     hi = min(1.0, center + margin)
     return [round(lo, 6), round(hi, 6)]
@@ -472,7 +488,16 @@ def _stratified_split_indices(
 
 
 def _record_dataset_hash(records: list[TextRecord]) -> str:
-    payload = [{"id": r.id, "suite": r.suite, "kind": r.kind, "label_attack": r.label_attack, "text": r.text} for r in records]
+    payload = [
+        {
+            "id": r.id,
+            "suite": r.suite,
+            "kind": r.kind,
+            "label_attack": r.label_attack,
+            "text": r.text,
+        }
+        for r in records
+    ]
     return _sha256_json(payload)
 
 
@@ -496,7 +521,9 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
             latency = float(cached.get("latency_ms", 0.0))
             score = float(cached.get("score", 0.0))
             pred_default = bool(cached.get("default_pred", False))
-            raw_signals = cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            raw_signals = (
+                cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            )
             cache_hits += 1
         else:
             t0 = time.perf_counter()
@@ -504,7 +531,9 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
             detector = detect_prompt_injection(rec.text, _content_type(rec.content_type))
             if rec.kind == "inbound_sanitize":
                 processed = guard.process_inbound(rec.text, ctx)
-                class_hide = bool(processed.sanitization and processed.sanitization.class_hiding_possible)
+                class_hide = bool(
+                    processed.sanitization and processed.sanitization.class_hiding_possible
+                )
                 pred_default = bool(processed.warnings) or class_hide
             else:
                 guard.process_inbound(rec.inbound_seed, ctx)
@@ -552,7 +581,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
             rate = i / elapsed if elapsed > 0 else 0.0
             eta = (len(records) - i) / rate if rate > 0 else 0.0
             print(
-                f"[progress] guardllm scores: {i}/{len(records)} ({(i/len(records))*100:.1f}%) "
+                f"[progress] guardllm scores: {i}/{len(records)} ({(i / len(records)) * 100:.1f}%) "
                 f"elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}",
                 flush=True,
             )
@@ -795,7 +824,9 @@ def _score_openai_tool(
             score = float(cached.get("score", 0.0))
             attack = bool(cached.get("attack", False))
             latency = float(cached.get("latency_ms", 0.0))
-            raw = cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            raw = (
+                cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            )
             cache_hits += 1
         else:
             payload = {
@@ -820,7 +851,9 @@ def _score_openai_tool(
             latency = (time.perf_counter() - t0) * 1000.0
             args = _extract_openai_tool_args(body)
             if not isinstance(args, dict):
-                raise RuntimeError("OpenAI response did not include record_detection tool call args")
+                raise RuntimeError(
+                    "OpenAI response did not include record_detection tool call args"
+                )
             score = float(args.get("score_float", 0.0))
             score = max(0.0, min(1.0, score))
             score_int = int(round(score * 100.0))
@@ -866,7 +899,10 @@ def _score_openai_tool(
             elapsed = time.perf_counter() - started
             rate = i / elapsed if elapsed > 0 else 0.0
             eta = (len(records) - i) / rate if rate > 0 else 0.0
-            print(f"[progress] openai tool score: {i}/{len(records)} elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}", flush=True)
+            print(
+                f"[progress] openai tool score: {i}/{len(records)} elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}",
+                flush=True,
+            )
             next_report = time.perf_counter() + progress_seconds
 
     cache_writes += _flush_pending_cache(SCORE_CACHE, pending)
@@ -931,7 +967,9 @@ def _score_anthropic_tool(
             score = float(cached.get("score", 0.0))
             attack = bool(cached.get("attack", False))
             latency = float(cached.get("latency_ms", 0.0))
-            raw = cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            raw = (
+                cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            )
             cache_hits += 1
         else:
             payload = {
@@ -958,7 +996,9 @@ def _score_anthropic_tool(
             latency = (time.perf_counter() - t0) * 1000.0
             args = _extract_anthropic_tool_args(body)
             if not isinstance(args, dict):
-                raise RuntimeError("Anthropic response did not include record_detection tool_use input")
+                raise RuntimeError(
+                    "Anthropic response did not include record_detection tool_use input"
+                )
             score = float(args.get("score_float", 0.0))
             score = max(0.0, min(1.0, score))
             score_int = int(round(score * 100.0))
@@ -1004,7 +1044,10 @@ def _score_anthropic_tool(
             elapsed = time.perf_counter() - started
             rate = i / elapsed if elapsed > 0 else 0.0
             eta = (len(records) - i) / rate if rate > 0 else 0.0
-            print(f"[progress] anthropic tool score: {i}/{len(records)} elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}", flush=True)
+            print(
+                f"[progress] anthropic tool score: {i}/{len(records)} elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}",
+                flush=True,
+            )
             next_report = time.perf_counter() + progress_seconds
 
     cache_writes += _flush_pending_cache(SCORE_CACHE, pending)
@@ -1030,7 +1073,9 @@ def _score_anthropic_tool(
     )
 
 
-def _score_azure_points(records: list[TextRecord], endpoint: str, key: str, progress_seconds: float) -> list[MethodScores]:
+def _score_azure_points(
+    records: list[TextRecord], endpoint: str, key: str, progress_seconds: float
+) -> list[MethodScores]:
     base = endpoint.rstrip("/")
     url = f"{base}/contentsafety/text:shieldPrompt?api-version=2024-09-01"
     cache = _load_jsonl_cache(SCORE_CACHE)
@@ -1046,11 +1091,15 @@ def _score_azure_points(records: list[TextRecord], endpoint: str, key: str, prog
     next_report = started + progress_seconds if progress_seconds > 0 else None
 
     for i, rec in enumerate(records, start=1):
-        cache_key = _cache_key_method(method="azure_prompt_shields", config_hash=config_hash, rec=rec)
+        cache_key = _cache_key_method(
+            method="azure_prompt_shields", config_hash=config_hash, rec=rec
+        )
         cached = cache.get(cache_key)
         if cached is not None:
             latency = float(cached.get("latency_ms", 0.0))
-            signals = cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            signals = (
+                cached.get("raw_signals", {}) if isinstance(cached.get("raw_signals"), dict) else {}
+            )
             cache_hits += 1
         else:
             payload = {"userPrompt": rec.text, "documents": [rec.inbound_seed]}
@@ -1146,7 +1195,9 @@ def _rows_by_id(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {str(r["id"]): r for r in rows}
 
 
-def _subset_rows(records: list[TextRecord], row_by_id: dict[str, dict[str, Any]], idxs: list[int]) -> list[dict[str, Any]]:
+def _subset_rows(
+    records: list[TextRecord], row_by_id: dict[str, dict[str, Any]], idxs: list[int]
+) -> list[dict[str, Any]]:
     out = []
     for idx in idxs:
         rec = records[idx]
@@ -1213,7 +1264,9 @@ def _write_markdown(payload: dict[str, Any], out_path: Path) -> None:
     lines.append("")
     lines.append("## Recall At FP Budgets (test)")
     lines.append("")
-    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | recall_ci95 | precision_ci95 | fpr_ci95 | meets_budget_dev | meets_budget_test |")
+    lines.append(
+        "| method | budget | threshold | recall | precision | fp_per_1k_neg | recall_ci95 | precision_ci95 | fpr_ci95 | meets_budget_dev | meets_budget_test |"
+    )
     lines.append("|---|---|---:|---:|---:|---:|---|---|---|---:|---:|")
     for m in payload.get("methods", []):
         for op in m.get("selected_operating_points", []):
@@ -1264,7 +1317,9 @@ def _write_results_summary(payload: dict[str, Any], out_path: Path) -> None:
     lines.append("")
     lines.append("## Budgeted Points (Test)")
     lines.append("")
-    lines.append("| method | budget | threshold | recall | precision | fp_per_1k_neg | meets_budget_dev | meets_budget_test |")
+    lines.append(
+        "| method | budget | threshold | recall | precision | fp_per_1k_neg | meets_budget_dev | meets_budget_test |"
+    )
     lines.append("|---|---|---:|---:|---:|---:|---:|---:|")
     for m in payload.get("methods", []):
         for op in m.get("selected_operating_points", []):
@@ -1286,8 +1341,16 @@ def _write_results_summary(payload: dict[str, Any], out_path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None)
-    parser.add_argument("--dataset-id", default=None, help="Use prebuilt dataset at benchmarks/datasets/<dataset_id>/cases.jsonl")
-    parser.add_argument("--dataset-root", default=str(DATASETS_ROOT), help="Dataset root directory (default: benchmarks/datasets)")
+    parser.add_argument(
+        "--dataset-id",
+        default=None,
+        help="Use prebuilt dataset at benchmarks/datasets/<dataset_id>/cases.jsonl",
+    )
+    parser.add_argument(
+        "--dataset-root",
+        default=str(DATASETS_ROOT),
+        help="Dataset root directory (default: benchmarks/datasets)",
+    )
     parser.add_argument("--text-scope", choices=["injection", "all"], default="injection")
     parser.add_argument("--split-seed", type=int, default=1337)
     parser.add_argument("--dev-fraction", type=float, default=0.30)
@@ -1298,7 +1361,9 @@ def main() -> int:
         default=120.0,
         help="Status logging interval in seconds (forced to 120s for this runner).",
     )
-    parser.add_argument("--fp-budget-per-1k", type=_budget_from_arg, action="append", default=[1.0, 5.0])
+    parser.add_argument(
+        "--fp-budget-per-1k", type=_budget_from_arg, action="append", default=[1.0, 5.0]
+    )
     parser.add_argument("--precision-budget", type=float, action="append", default=[])
     parser.add_argument(
         "--guardllm-curve-step",
@@ -1313,7 +1378,9 @@ def main() -> int:
     parser.add_argument("--anthropic-model", default="claude-3-5-haiku-latest")
     parser.add_argument("--azure-endpoint", default=None)
     parser.add_argument("--azure-key", default=None)
-    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+    parser.add_argument(
+        "--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha."
+    )
     args = parser.parse_args()
     ensure_cache_dir()
     progress_seconds = STATUS_INTERVAL_SECONDS
@@ -1392,7 +1459,9 @@ def main() -> int:
             method_errors["anthropic_tool_policy"] = str(exc)
     if args.azure_endpoint and args.azure_key:
         try:
-            print("[status] scoring azure prompt shields variants (cached/resumable)...", flush=True)
+            print(
+                "[status] scoring azure prompt shields variants (cached/resumable)...", flush=True
+            )
             methods.extend(
                 _score_azure_points(
                     records=vendor_records,
@@ -1406,7 +1475,9 @@ def main() -> int:
 
     method_payloads: list[dict[str, Any]] = []
     fp_budgets: list[float] = sorted({float(x) for x in args.fp_budget_per_1k})
-    precision_budgets: list[float] = sorted({float(x) for x in args.precision_budget if 0.0 <= float(x) <= 1.0}, reverse=True)
+    precision_budgets: list[float] = sorted(
+        {float(x) for x in args.precision_budget if 0.0 <= float(x) <= 1.0}, reverse=True
+    )
 
     for method in methods:
         by_id = _rows_by_id(method.per_record)
@@ -1425,7 +1496,9 @@ def main() -> int:
 
             selected_ops: list[dict[str, Any]] = []
             for budget in fp_budgets:
-                picked = _choose_threshold_for_budget(dev_labels, dev_scores, fp_per_1k_budget=budget)
+                picked = _choose_threshold_for_budget(
+                    dev_labels, dev_scores, fp_per_1k_budget=budget
+                )
                 t = float(picked["threshold"])
                 test_eval = _point_at_threshold(test_labels, test_scores, t)
                 meets_test = bool(test_eval.fp_per_1k_neg <= budget)
@@ -1438,7 +1511,9 @@ def main() -> int:
                     }
                 )
             for precision_min in precision_budgets:
-                picked = _choose_threshold_for_budget(dev_labels, dev_scores, precision_budget=precision_min)
+                picked = _choose_threshold_for_budget(
+                    dev_labels, dev_scores, precision_budget=precision_min
+                )
                 t = float(picked["threshold"])
                 test_eval = _point_at_threshold(test_labels, test_scores, t)
                 meets_test = bool(test_eval.precision >= precision_min)
@@ -1451,7 +1526,9 @@ def main() -> int:
                     }
                 )
 
-            default_point = _point_from_preds(test_labels, [bool(r.get("default_pred", False)) for r in test_rows], None)
+            default_point = _point_from_preds(
+                test_labels, [bool(r.get("default_pred", False)) for r in test_rows], None
+            )
             method_payloads.append(
                 {
                     "name": method.name,

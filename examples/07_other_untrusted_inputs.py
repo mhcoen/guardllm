@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from _bootstrap import ROOT  # noqa: F401
+
 from guardllm import Guard
 from guardllm.security.source_gate import check_extraction_allowed
 from guardllm.security.types import ContentType, SecurityContext, TrustLevel
@@ -20,7 +21,7 @@ def main() -> None:
         content_type=ContentType.STRUCTURED,
     )
 
-    payload = "{\"summary\":\"ok\",\"note\":\"CANARY-ffffffffffffffff\"}"
+    payload = '{"summary":"ok","note":"CANARY-ffffffffffffffff"}'
     processed = guard.process_inbound(payload, unknown_ctx)
     print("[other] cleaned content:", processed.content)
     print("[other] warnings:", processed.warnings)

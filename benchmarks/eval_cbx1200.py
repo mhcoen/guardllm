@@ -39,9 +39,10 @@ def _extract_transform(meta: dict) -> str:
     transform_prog = meta.get("transform_program", [])
     if isinstance(transform_prog, str):
         import ast
+
         transform_prog = ast.literal_eval(transform_prog)
     for step in transform_prog:
-        if step.startswith("select(") or step.startswith("emit("):
+        if step.startswith(("select(", "emit(")):
             continue
         if step == "none":
             return "none"
@@ -150,7 +151,7 @@ def _print_variant_report(label: str, results: list, decision_key: str):
     print(f"  REPORT_LIMITATION ({len(expected_rl)}): blocked {rl_blocked}, allowed {rl_allowed}")
 
     # Per-case_kind
-    print(f"\n  Per-case_kind:")
+    print("\n  Per-case_kind:")
     kind_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0, "fn": 0, "fp": 0})
     for r in results:
         k = kind_stats[r["case_kind"]]
@@ -162,15 +163,26 @@ def _print_variant_report(label: str, results: list, decision_key: str):
             k["fp"] += 1
 
     print(f"  {'Kind':<16} {'Tot':>5} {'Blk':>5} {'Alw':>5} {'FN':>4} {'FP':>4}")
-    print(f"  {'-'*50}")
+    print(f"  {'-' * 50}")
     for kind in sorted(kind_stats.keys()):
         k = kind_stats[kind]
-        print(f"  {kind:<16} {k['total']:>5} {k['blocked']:>5} {k['allowed']:>5} {k['fn']:>4} {k['fp']:>4}")
+        print(
+            f"  {kind:<16} {k['total']:>5} {k['blocked']:>5} {k['allowed']:>5} {k['fn']:>4} {k['fp']:>4}"
+        )
 
     # Per-transform
-    transform_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0,
-                                            "exp_block": 0, "fn": 0,
-                                            "exp_allow": 0, "fp": 0, "rl": 0})
+    transform_stats = defaultdict(
+        lambda: {
+            "total": 0,
+            "blocked": 0,
+            "allowed": 0,
+            "exp_block": 0,
+            "fn": 0,
+            "exp_allow": 0,
+            "fp": 0,
+            "rl": 0,
+        }
+    )
     for r in results:
         t = r["transform"]
         s = transform_stats[t]
@@ -187,13 +199,17 @@ def _print_variant_report(label: str, results: list, decision_key: str):
         else:
             s["rl"] += 1
 
-    print(f"\n  Per-transform:")
-    print(f"  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}")
-    print(f"  {'-'*78}")
+    print("\n  Per-transform:")
+    print(
+        f"  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}"
+    )
+    print(f"  {'-' * 78}")
     for t in sorted(transform_stats.keys()):
         s = transform_stats[t]
-        print(f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
-              f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}")
+        print(
+            f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
+            f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}"
+        )
 
     # Per-secret-kind
     sk_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0})
@@ -203,12 +219,12 @@ def _print_variant_report(label: str, results: list, decision_key: str):
         s["total"] += 1
         s["blocked" if r[decision_key] == "BLOCK" else "allowed"] += 1
 
-    print(f"\n  Per-secret-kind:")
+    print("\n  Per-secret-kind:")
     print(f"  {'Secret Kind':<18} {'Tot':>5} {'Blk':>5} {'Alw':>5} {'Blk%':>7}")
-    print(f"  {'-'*50}")
+    print(f"  {'-' * 50}")
     for sk in sorted(sk_stats.keys()):
         s = sk_stats[sk]
-        pct = f"{100*s['blocked']/s['total']:.1f}" if s["total"] else "0.0"
+        pct = f"{100 * s['blocked'] / s['total']:.1f}" if s["total"] else "0.0"
         print(f"  {sk:<18} {s['total']:>5} {s['blocked']:>5} {s['allowed']:>5} {pct:>7}")
 
     # FN details
@@ -217,7 +233,9 @@ def _print_variant_report(label: str, results: list, decision_key: str):
         reason_key = decision_key.replace("_decision", "_reason")
         for r in fn[:10]:
             reason = r.get(reason_key, "")[:60]
-            print(f"    {r['id']}: transform={r['transform']}, secret_kind={r['secret_kind']}, reason={reason}")
+            print(
+                f"    {r['id']}: transform={r['transform']}, secret_kind={r['secret_kind']}, reason={reason}"
+            )
         if len(fn) > 10:
             print(f"    ... and {len(fn) - 10} more")
 
@@ -227,7 +245,9 @@ def _print_variant_report(label: str, results: list, decision_key: str):
         reason_key = decision_key.replace("_decision", "_reason")
         for r in fp[:10]:
             reason = r.get(reason_key, "")[:60]
-            print(f"    {r['id']}: transform={r['transform']}, secret_kind={r['secret_kind']}, reason={reason}")
+            print(
+                f"    {r['id']}: transform={r['transform']}, secret_kind={r['secret_kind']}, reason={reason}"
+            )
         if len(fp) > 10:
             print(f"    ... and {len(fp) - 10} more")
 
@@ -236,6 +256,7 @@ def _print_variant_report(label: str, results: list, decision_key: str):
 
 def main():
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--path", default="artifacts/cbx1200/cbx_1200_v1_seed20260224.jsonl")
     args = ap.parse_args()
@@ -265,41 +286,43 @@ def main():
     for i, case in enumerate(cases):
         results.append(run_case(case))
         if (i + 1) % 200 == 0:
-            print(f"  {i+1}/{len(cases)}...", file=sys.stderr)
+            print(f"  {i + 1}/{len(cases)}...", file=sys.stderr)
 
     # ================================================================
     # Variant A report
     # ================================================================
-    print(f"\n{'='*70}")
-    print(f"VARIANT A: secret regex + entropy only (no sensitive buffer)")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("VARIANT A: secret regex + entropy only (no sensitive buffer)")
+    print(f"{'=' * 70}")
     va_fn, va_fp = _print_variant_report("VA", results, "va_decision")
 
     # ================================================================
     # Variant B report
     # ================================================================
-    print(f"\n{'='*70}")
-    print(f"VARIANT B: full contaminated-context pipeline")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("VARIANT B: full contaminated-context pipeline")
+    print(f"{'=' * 70}")
     vb_fn, vb_fp = _print_variant_report("VB", results, "vb_decision")
 
     # ================================================================
     # VA vs VB comparison on ATTACK cases
     # ================================================================
-    print(f"\n{'='*70}")
-    print(f"VA vs VB COMPARISON (ATTACK cases only)")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("VA vs VB COMPARISON (ATTACK cases only)")
+    print(f"{'=' * 70}")
 
     attack_results = [r for r in results if r["case_kind"] == "ATTACK"]
-    sk_cmp = defaultdict(lambda: {
-        "total": 0,
-        "va_blocked": 0,
-        "vb_blocked": 0,
-        "both_blocked": 0,
-        "neither_blocked": 0,
-        "va_only": 0,
-        "vb_only": 0,
-    })
+    sk_cmp = defaultdict(
+        lambda: {
+            "total": 0,
+            "va_blocked": 0,
+            "vb_blocked": 0,
+            "both_blocked": 0,
+            "neither_blocked": 0,
+            "va_only": 0,
+            "vb_only": 0,
+        }
+    )
 
     for r in attack_results:
         sk = r["secret_kind"]
@@ -320,15 +343,19 @@ def main():
         if vb_blk and not va_blk:
             s["vb_only"] += 1
 
-    print(f"\n  {'Secret Kind':<18} {'Tot':>4} {'VA':>4} {'VB':>4} {'Both':>5} {'None':>5} {'VA%':>6} {'VB%':>6} {'VA-only':>8} {'VB-only':>8}")
-    print(f"  {'-'*90}")
+    print(
+        f"\n  {'Secret Kind':<18} {'Tot':>4} {'VA':>4} {'VB':>4} {'Both':>5} {'None':>5} {'VA%':>6} {'VB%':>6} {'VA-only':>8} {'VB-only':>8}"
+    )
+    print(f"  {'-' * 90}")
     for sk in sorted(sk_cmp.keys()):
         s = sk_cmp[sk]
-        va_pct = f"{100*s['va_blocked']/s['total']:.1f}" if s["total"] else "0.0"
-        vb_pct = f"{100*s['vb_blocked']/s['total']:.1f}" if s["total"] else "0.0"
-        print(f"  {sk:<18} {s['total']:>4} {s['va_blocked']:>4} {s['vb_blocked']:>4} "
-              f"{s['both_blocked']:>5} {s['neither_blocked']:>5} "
-              f"{va_pct:>6} {vb_pct:>6} {s['va_only']:>8} {s['vb_only']:>8}")
+        va_pct = f"{100 * s['va_blocked'] / s['total']:.1f}" if s["total"] else "0.0"
+        vb_pct = f"{100 * s['vb_blocked'] / s['total']:.1f}" if s["total"] else "0.0"
+        print(
+            f"  {sk:<18} {s['total']:>4} {s['va_blocked']:>4} {s['vb_blocked']:>4} "
+            f"{s['both_blocked']:>5} {s['neither_blocked']:>5} "
+            f"{va_pct:>6} {vb_pct:>6} {s['va_only']:>8} {s['vb_only']:>8}"
+        )
 
     # Totals
     totals = defaultdict(int)
@@ -336,17 +363,19 @@ def main():
         for k, v in s.items():
             totals[k] += v
     if totals["total"]:
-        va_pct = f"{100*totals['va_blocked']/totals['total']:.1f}"
-        vb_pct = f"{100*totals['vb_blocked']/totals['total']:.1f}"
+        va_pct = f"{100 * totals['va_blocked'] / totals['total']:.1f}"
+        vb_pct = f"{100 * totals['vb_blocked'] / totals['total']:.1f}"
     else:
         va_pct = vb_pct = "0.0"
-    print(f"  {'-'*90}")
-    print(f"  {'TOTAL':<18} {totals['total']:>4} {totals['va_blocked']:>4} {totals['vb_blocked']:>4} "
-          f"{totals['both_blocked']:>5} {totals['neither_blocked']:>5} "
-          f"{va_pct:>6} {vb_pct:>6} {totals['va_only']:>8} {totals['vb_only']:>8}")
+    print(f"  {'-' * 90}")
+    print(
+        f"  {'TOTAL':<18} {totals['total']:>4} {totals['va_blocked']:>4} {totals['vb_blocked']:>4} "
+        f"{totals['both_blocked']:>5} {totals['neither_blocked']:>5} "
+        f"{va_pct:>6} {vb_pct:>6} {totals['va_only']:>8} {totals['vb_only']:>8}"
+    )
 
     # Non-attack FP check
-    print(f"\n  Non-attack FP check:")
+    print("\n  Non-attack FP check:")
     non_attack = [r for r in results if r["case_kind"] != "ATTACK"]
     va_fp_na = sum(1 for r in non_attack if r["va_decision"] == "BLOCK")
     vb_fp_na = sum(1 for r in non_attack if r["vb_decision"] == "BLOCK")
@@ -356,12 +385,12 @@ def main():
 
     # Summary
     eb = [r for r in results if r["expected_guard"] == "BLOCK"]
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     va_blk_eb = sum(1 for r in eb if r["va_decision"] == "BLOCK")
     vb_blk_eb = sum(1 for r in eb if r["vb_decision"] == "BLOCK")
     print(f"VA: {va_blk_eb}/{len(eb)} expected-BLOCK caught, {len(va_fn)} FN, {len(va_fp)} FP")
     print(f"VB: {vb_blk_eb}/{len(eb)} expected-BLOCK caught, {len(vb_fn)} FN, {len(vb_fp)} FP")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":

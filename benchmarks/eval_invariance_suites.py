@@ -18,7 +18,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from guardllm import Guard
 from guardllm.security.types import (
-    PolicyConfig,
     SecurityContext,
     SensitivityLevel,
     TrustLevel,
@@ -66,7 +65,7 @@ def run_case(case: dict) -> dict:
     # Get the operator name from the program (second element, or first if short)
     transform = "unknown"
     for step in transform_prog:
-        if step.startswith("select(") or step.startswith("emit("):
+        if step.startswith(("select(", "emit(")):
             continue
         if step == "none":
             transform = "none"
@@ -90,9 +89,9 @@ def run_case(case: dict) -> dict:
 
 def report_suite(suite_name: str, results: list[dict]) -> dict:
     """Print and return a report for a single suite."""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"SUITE: {suite_name} ({len(results)} cases)")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     expected_block = [r for r in results if r["expected_guard"] == "BLOCK"]
     expected_allow = [r for r in results if r["expected_guard"] == "ALLOW"]
@@ -110,9 +109,18 @@ def report_suite(suite_name: str, results: list[dict]) -> dict:
     print(f"  REPORT_LIMITATION ({len(expected_rl)}): blocked {rl_blocked}, allowed {rl_allowed}")
 
     # Per-transform breakdown
-    transform_stats = defaultdict(lambda: {"total": 0, "blocked": 0, "allowed": 0,
-                                            "exp_block": 0, "fn": 0,
-                                            "exp_allow": 0, "fp": 0, "rl": 0})
+    transform_stats = defaultdict(
+        lambda: {
+            "total": 0,
+            "blocked": 0,
+            "allowed": 0,
+            "exp_block": 0,
+            "fn": 0,
+            "exp_allow": 0,
+            "fp": 0,
+            "rl": 0,
+        }
+    )
     for r in results:
         t = r["transform"]
         s = transform_stats[t]
@@ -129,21 +137,25 @@ def report_suite(suite_name: str, results: list[dict]) -> dict:
         else:
             s["rl"] += 1
 
-    print(f"\n  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}")
-    print(f"  {'-'*78}")
+    print(
+        f"\n  {'Transform':<28} {'Tot':>4} {'Blk':>4} {'Alw':>4} {'ExpB':>5} {'FN':>3} {'ExpA':>5} {'FP':>3} {'RL':>3}"
+    )
+    print(f"  {'-' * 78}")
     for t in sorted(transform_stats.keys()):
         s = transform_stats[t]
-        print(f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
-              f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}")
+        print(
+            f"  {t:<28} {s['total']:>4} {s['blocked']:>4} {s['allowed']:>4} "
+            f"{s['exp_block']:>5} {s['fn']:>3} {s['exp_allow']:>5} {s['fp']:>3} {s['rl']:>3}"
+        )
 
     if fn:
-        print(f"\n  FN details:")
+        print("\n  FN details:")
         by_t = Counter(r["transform"] for r in fn)
         for t, count in by_t.most_common():
             print(f"    {t}: {count}")
 
     if fp:
-        print(f"\n  FP details:")
+        print("\n  FP details:")
         by_t = Counter(r["transform"] for r in fp)
         for t, count in by_t.most_common():
             print(f"    {t}: {count}")
@@ -167,6 +179,7 @@ def report_suite(suite_name: str, results: list[dict]) -> dict:
 
 def main():
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--suites_dir", default="artifacts/suites")
     args = ap.parse_args()
@@ -193,21 +206,25 @@ def main():
         for i, case in enumerate(cases):
             results.append(run_case(case))
             if (i + 1) % 200 == 0:
-                print(f"  [{sf.name}] {i+1}/{len(cases)}...", file=sys.stderr)
+                print(f"  [{sf.name}] {i + 1}/{len(cases)}...", file=sys.stderr)
 
         summary = report_suite(sf.stem, results)
         summaries.append(summary)
 
     # Cross-suite invariance check
-    print(f"\n{'='*70}")
-    print(f"INVARIANCE COMPARISON")
-    print(f"{'='*70}")
-    print(f"{'Suite':<45} {'ExpB':>5} {'Blk':>4} {'FN':>3} {'ExpA':>5} {'Alw':>4} {'FP':>3} {'RL':>4} {'RLblk':>5}")
+    print(f"\n{'=' * 70}")
+    print("INVARIANCE COMPARISON")
+    print(f"{'=' * 70}")
+    print(
+        f"{'Suite':<45} {'ExpB':>5} {'Blk':>4} {'FN':>3} {'ExpA':>5} {'Alw':>4} {'FP':>3} {'RL':>4} {'RLblk':>5}"
+    )
     print("-" * 95)
     for s in summaries:
-        print(f"{s['suite']:<45} {s['expected_block']:>5} {s['blocked']:>4} {s['fn']:>3} "
-              f"{s['expected_allow']:>5} {s['allowed']:>4} {s['fp']:>3} "
-              f"{s['report_limitation']:>4} {s['rl_blocked']:>5}")
+        print(
+            f"{s['suite']:<45} {s['expected_block']:>5} {s['blocked']:>4} {s['fn']:>3} "
+            f"{s['expected_allow']:>5} {s['allowed']:>4} {s['fp']:>3} "
+            f"{s['report_limitation']:>4} {s['rl_blocked']:>5}"
+        )
 
     # Check invariance: same FN/FP counts across suites
     fn_counts = [s["fn"] for s in summaries]
@@ -215,9 +232,11 @@ def main():
     blk_counts = [s["blocked"] for s in summaries]
 
     if len(set(fn_counts)) == 1 and len(set(fp_counts)) == 1 and len(set(blk_counts)) == 1:
-        print(f"\nINVARIANCE HOLDS: all suites have identical FN={fn_counts[0]}, FP={fp_counts[0]}, blocked={blk_counts[0]}")
+        print(
+            f"\nINVARIANCE HOLDS: all suites have identical FN={fn_counts[0]}, FP={fp_counts[0]}, blocked={blk_counts[0]}"
+        )
     else:
-        print(f"\nINVARIANCE BROKEN:")
+        print("\nINVARIANCE BROKEN:")
         print(f"  FN counts: {fn_counts}")
         print(f"  FP counts: {fp_counts}")
         print(f"  Blocked counts: {blk_counts}")

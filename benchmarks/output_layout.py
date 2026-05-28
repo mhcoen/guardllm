@@ -4,7 +4,6 @@ import datetime as _dt
 import subprocess
 from pathlib import Path
 
-
 BENCH_ROOT = Path(__file__).resolve().parent
 RUNS_ROOT = BENCH_ROOT / "runs"
 CACHE_ROOT = BENCH_ROOT / "cache"

@@ -8,8 +8,6 @@ Covers:
 - Within limits -> allowed
 """
 
-import time
-
 import pytest
 
 from guardllm.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
@@ -96,12 +94,14 @@ class TestExceedHourlyLimit:
 
     def test_custom_limit(self, ctx):
         """Custom hourly limit is respected."""
-        custom_limiter = RateLimiter(limits={
-            "emails_per_hour": 3,
-            "burst_threshold": 3,
-            "burst_window_seconds": 10,
-            "novel_recipient_flag": True,
-        })
+        custom_limiter = RateLimiter(
+            limits={
+                "emails_per_hour": 3,
+                "burst_threshold": 3,
+                "burst_window_seconds": 10,
+                "novel_recipient_flag": True,
+            }
+        )
         for _ in range(3):
             custom_limiter.record("gmail_send_email", ctx)
 
@@ -111,10 +111,13 @@ class TestExceedHourlyLimit:
     def test_custom_window_seconds(self, ctx):
         """Custom window_seconds extends the counting window beyond default 3600s."""
         from unittest.mock import patch
-        custom_limiter = RateLimiter(limits={
-            "emails_per_hour": 5,
-            "window_seconds": 7200,
-        })
+
+        custom_limiter = RateLimiter(
+            limits={
+                "emails_per_hour": 5,
+                "window_seconds": 7200,
+            }
+        )
         # Record 5 calls at t=0
         with patch("guardllm.security.rate_limiter.time") as mock_time:
             mock_time.time.return_value = 0
@@ -131,6 +134,7 @@ class TestExceedHourlyLimit:
     def test_default_window_prunes_old_entries(self, ctx):
         """Default 3600s window prunes entries older than 1 hour."""
         from unittest.mock import patch
+
         custom_limiter = RateLimiter(limits={"emails_per_hour": 5})
         # Record 5 calls at t=0
         with patch("guardllm.security.rate_limiter.time") as mock_time:
@@ -150,9 +154,7 @@ class TestNovelRecipient:
 
     def test_novel_recipient_flagged(self, limiter, ctx):
         """First message to a new recipient is flagged as anomaly."""
-        result = limiter.check(
-            "gmail_send_email", ctx, recipient="unknown@suspicious.com"
-        )
+        result = limiter.check("gmail_send_email", ctx, recipient="unknown@suspicious.com")
         assert result.allowed is True
         assert any("novel" in a.lower() for a in result.anomalies)
         assert any("unknown@suspicious.com" in a for a in result.anomalies)
@@ -161,9 +163,7 @@ class TestNovelRecipient:
         """After recording a recipient, they are no longer novel."""
         limiter.record("gmail_send_email", ctx, recipient="alice@example.com")
 
-        result = limiter.check(
-            "gmail_send_email", ctx, recipient="alice@example.com"
-        )
+        result = limiter.check("gmail_send_email", ctx, recipient="alice@example.com")
         assert not any("novel" in a.lower() for a in result.anomalies)
 
     def test_no_recipient_no_anomaly(self, limiter, ctx):
@@ -210,9 +210,7 @@ class TestRapidBurst:
         for _ in range(3):
             limiter.record("gmail_send_email", ctx)
 
-        result = limiter.check(
-            "gmail_send_email", ctx, recipient="new@stranger.com"
-        )
+        result = limiter.check("gmail_send_email", ctx, recipient="new@stranger.com")
         anomaly_text = " ".join(result.anomalies).lower()
         assert "burst" in anomaly_text or "rapid" in anomaly_text
         assert "novel" in anomaly_text
@@ -250,12 +248,8 @@ class TestReset:
 
     def test_reset_one_session_preserves_another(self, limiter):
         """Resetting session A does not affect session B."""
-        ctx_a = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="session-A"
-        )
-        ctx_b = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="session-B"
-        )
+        ctx_a = SecurityContext(mode="client", source_type="mcp_server", source_id="session-A")
+        ctx_b = SecurityContext(mode="client", source_type="mcp_server", source_id="session-B")
 
         for _ in range(10):
             limiter.record("gmail_send_email", ctx_a)
@@ -291,12 +285,8 @@ class TestSessionIsolation:
 
     def test_different_sessions_independent(self, limiter):
         """Two sessions have independent rate limits."""
-        ctx_a = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="session-A"
-        )
-        ctx_b = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="session-B"
-        )
+        ctx_a = SecurityContext(mode="client", source_type="mcp_server", source_id="session-A")
+        ctx_b = SecurityContext(mode="client", source_type="mcp_server", source_id="session-B")
 
         for _ in range(10):
             limiter.record("gmail_send_email", ctx_a)
@@ -331,6 +321,7 @@ class TestRateLimitOverrides:
     def test_override_reduces_hourly_limit(self):
         """Override can lower hourly limit for untrusted principals."""
         from guardllm.security.types import PolicyConfig
+
         limiter = RateLimiter()
         ctx = SecurityContext(
             mode="client",
@@ -354,6 +345,7 @@ class TestRateLimitOverrides:
     def test_override_increases_hourly_limit(self):
         """Override can raise hourly limit for trusted principals."""
         from guardllm.security.types import PolicyConfig
+
         limiter = RateLimiter()
         ctx = SecurityContext(
             mode="client",
@@ -378,6 +370,7 @@ class TestRateLimitOverrides:
     def test_override_merges_with_defaults(self):
         """Override only replaces specified keys, defaults fill the rest."""
         from guardllm.security.types import PolicyConfig
+
         limiter = RateLimiter()
         ctx = SecurityContext(
             mode="client",
@@ -402,6 +395,7 @@ class TestRateLimitOverrides:
     def test_no_override_uses_defaults(self):
         """Without overrides, DEFAULT_LIMITS are used."""
         from guardllm.security.types import PolicyConfig
+
         limiter = RateLimiter()
         ctx = SecurityContext(
             mode="client",
@@ -416,6 +410,7 @@ class TestRateLimitOverrides:
     def test_non_matching_trust_level_uses_defaults(self):
         """Override for TRUSTED doesn't affect UNTRUSTED principal."""
         from guardllm.security.types import PolicyConfig
+
         limiter = RateLimiter()
         ctx = SecurityContext(
             mode="client",
@@ -434,6 +429,7 @@ class TestRateLimitOverrides:
     def test_does_not_mutate_default_limits(self):
         """Merge must not modify DEFAULT_LIMITS."""
         from guardllm.security.types import PolicyConfig
+
         original = dict(DEFAULT_LIMITS)
         limiter = RateLimiter()
         ctx = SecurityContext(

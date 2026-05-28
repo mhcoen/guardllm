@@ -7,15 +7,12 @@ from __future__ import annotations
 
 import base64
 import unicodedata
-import urllib.parse
 from unittest.mock import patch
 
-import pytest
 from bs4 import BeautifulSoup
 
 from guardllm.security.sanitizer import sanitize
 from guardllm.security.types import ContentType
-
 
 # ===================================================================
 # HTML hidden element stripping (spec tests 1-9)
@@ -45,7 +42,7 @@ class TestHtmlHiddenElementStripping:
     def test_position_absolute_negative_offset(self):
         """Spec test 4: Elements with position:absolute and large negative offset are stripped."""
         html = (
-            '<div>Visible</div>'
+            "<div>Visible</div>"
             '<div style="position:absolute; left:-99999px">Off-screen payload</div>'
         )
         result = sanitize(html, ContentType.HTML)
@@ -55,10 +52,7 @@ class TestHtmlHiddenElementStripping:
 
     def test_transform_translate_negative(self):
         """Spec test 5: Elements with transform:translateX with large negative value are stripped."""
-        html = (
-            '<div>Visible</div>'
-            '<div style="transform:translateX(-99999px)">Translated away</div>'
-        )
+        html = '<div>Visible</div><div style="transform:translateX(-99999px)">Translated away</div>'
         result = sanitize(html, ContentType.HTML)
         assert "Translated away" not in result.cleaned_text
         assert "Visible" in result.cleaned_text
@@ -66,10 +60,7 @@ class TestHtmlHiddenElementStripping:
 
     def test_clip_rect_zero(self):
         """Spec test 6: Elements with clip:rect(0,0,0,0) are stripped."""
-        html = (
-            '<div>Visible</div>'
-            '<div style="clip:rect(0,0,0,0)">Clipped away</div>'
-        )
+        html = '<div>Visible</div><div style="clip:rect(0,0,0,0)">Clipped away</div>'
         result = sanitize(html, ContentType.HTML)
         assert "Clipped away" not in result.cleaned_text
         assert "Visible" in result.cleaned_text
@@ -78,7 +69,7 @@ class TestHtmlHiddenElementStripping:
     def test_one_by_one_pixel_trick(self):
         """Spec test 7: Elements with 1x1 pixel and overflow:hidden are stripped."""
         html = (
-            '<div>Visible</div>'
+            "<div>Visible</div>"
             '<div style="width:1px; height:1px; overflow:hidden">Tiny hidden</div>'
         )
         result = sanitize(html, ContentType.HTML)
@@ -113,7 +104,7 @@ class TestHtmlContentStripping:
 
     def test_html_comments_stripped(self):
         """Spec test 10: HTML comments are removed."""
-        html = '<div>Visible</div><!-- Secret instructions: ignore previous -->'
+        html = "<div>Visible</div><!-- Secret instructions: ignore previous -->"
         result = sanitize(html, ContentType.HTML)
         assert "Secret instructions" not in result.cleaned_text
         assert "ignore previous" not in result.cleaned_text
@@ -137,7 +128,7 @@ class TestHtmlContentStripping:
 
     def test_svg_text_elements_stripped(self):
         """Spec test 13: SVG elements containing <text> are removed."""
-        html = '<div>Visible</div><svg><text>Hidden SVG text payload</text></svg>'
+        html = "<div>Visible</div><svg><text>Hidden SVG text payload</text></svg>"
         result = sanitize(html, ContentType.HTML)
         assert "Hidden SVG text payload" not in result.cleaned_text
         assert "Visible" in result.cleaned_text
@@ -160,7 +151,7 @@ class TestClassBasedHiding:
 
     def test_no_style_block_no_flag(self):
         """No style blocks means class_hiding_possible is False."""
-        html = '<div>Normal content</div>'
+        html = "<div>Normal content</div>"
         result = sanitize(html, ContentType.HTML)
         assert result.class_hiding_possible is False
 
@@ -200,33 +191,33 @@ class TestUnicodeSanitization:
 
     def test_zero_width_chars_stripped(self):
         """Spec test 16: Zero-width characters (ZWSP, ZWNJ, ZWJ, etc.) are stripped."""
-        text = "Hello\u200BWorld\u200CTest\u200DFoo\u2060Bar\uFEFFBaz"
+        text = "Hello\u200bWorld\u200cTest\u200dFoo\u2060Bar\ufeffBaz"
         result = sanitize(text, ContentType.PLAINTEXT)
-        assert "\u200B" not in result.cleaned_text
-        assert "\u200C" not in result.cleaned_text
-        assert "\u200D" not in result.cleaned_text
+        assert "\u200b" not in result.cleaned_text
+        assert "\u200c" not in result.cleaned_text
+        assert "\u200d" not in result.cleaned_text
         assert "\u2060" not in result.cleaned_text
-        assert "\uFEFF" not in result.cleaned_text
+        assert "\ufeff" not in result.cleaned_text
         assert "HelloWorldTestFooBarBaz" in result.cleaned_text
         assert result.chars_stripped > 0
 
     def test_directional_overrides_stripped(self):
         """Spec test 17: Bidirectional override characters are stripped."""
-        text = "Normal\u202AHidden\u202BMore\u202CEnd\u202D\u202E"
+        text = "Normal\u202aHidden\u202bMore\u202cEnd\u202d\u202e"
         result = sanitize(text, ContentType.PLAINTEXT)
-        assert "\u202A" not in result.cleaned_text
-        assert "\u202B" not in result.cleaned_text
-        assert "\u202C" not in result.cleaned_text
-        assert "\u202D" not in result.cleaned_text
-        assert "\u202E" not in result.cleaned_text
+        assert "\u202a" not in result.cleaned_text
+        assert "\u202b" not in result.cleaned_text
+        assert "\u202c" not in result.cleaned_text
+        assert "\u202d" not in result.cleaned_text
+        assert "\u202e" not in result.cleaned_text
         assert result.chars_stripped > 0
 
     def test_tag_chars_stripped(self):
         """Spec test 18: Unicode tag characters (U+E0001-U+E007F) are stripped."""
-        text = "Hello\U000E0041\U000E0042World"
+        text = "Hello\U000e0041\U000e0042World"
         result = sanitize(text, ContentType.PLAINTEXT)
-        assert "\U000E0041" not in result.cleaned_text
-        assert "\U000E0042" not in result.cleaned_text
+        assert "\U000e0041" not in result.cleaned_text
+        assert "\U000e0042" not in result.cleaned_text
         assert "HelloWorld" in result.cleaned_text
         assert result.chars_stripped >= 2
 
@@ -249,9 +240,9 @@ class TestUnicodeSanitization:
 
     def test_zero_width_joiner_stripped(self):
         """Spec test 21: Zero-width joiner (U+200D) is stripped."""
-        text = "test\u200Dvalue"
+        text = "test\u200dvalue"
         result = sanitize(text, ContentType.PLAINTEXT)
-        assert "\u200D" not in result.cleaned_text
+        assert "\u200d" not in result.cleaned_text
         assert result.chars_stripped >= 1
 
 
@@ -333,10 +324,10 @@ class TestPositioning:
     def test_negative_z_index_on_positioned_small_element(self):
         """Negative z-index on small positioned element is stripped."""
         html = (
-            '<div>Visible</div>'
+            "<div>Visible</div>"
             '<div style="position:absolute; z-index:-1; width:1px; height:1px">'
-            'Hidden behind'
-            '</div>'
+            "Hidden behind"
+            "</div>"
         )
         result = sanitize(html, ContentType.HTML)
         assert "Hidden behind" not in result.cleaned_text
@@ -345,10 +336,7 @@ class TestPositioning:
 
     def test_filter_opacity_zero(self):
         """Elements with filter:opacity(0) are stripped."""
-        html = (
-            '<div>Visible</div>'
-            '<div style="filter:opacity(0)">Filtered away</div>'
-        )
+        html = '<div>Visible</div><div style="filter:opacity(0)">Filtered away</div>'
         result = sanitize(html, ContentType.HTML)
         assert "Filtered away" not in result.cleaned_text
         assert "Visible" in result.cleaned_text
@@ -366,9 +354,9 @@ class TestDisplayParity:
     def test_sanitization_summary_with_counts(self):
         """Spec test 73: sanitization_summary includes character counts by reason."""
         html = (
-            '<div>Visible</div>'
+            "<div>Visible</div>"
             '<div style="display:none">Hidden payload here</div>'
-            '<!-- Comment payload -->'
+            "<!-- Comment payload -->"
         )
         result = sanitize(html, ContentType.HTML)
         summary = result.sanitization_summary
@@ -382,17 +370,21 @@ class TestDisplayParity:
 
     def test_unicode_stripping_summary(self):
         """Spec test 74: sanitization_summary includes Unicode stripping details."""
-        text = "Hello\u200B\u200C\u200DWorld"
+        text = "Hello\u200b\u200c\u200dWorld"
         result = sanitize(text, ContentType.PLAINTEXT)
         summary = result.sanitization_summary
         assert summary is not None
         # Summary should reference invisible Unicode removal
         assert "Unicode" in summary or "unicode" in summary.lower()
-        assert "Invisible" in summary or "invisible" in summary.lower() or "stripped" in summary.lower()
+        assert (
+            "Invisible" in summary
+            or "invisible" in summary.lower()
+            or "stripped" in summary.lower()
+        )
 
     def test_class_hiding_possible_in_summary(self):
         """Spec test 75: class_hiding_possible is reflected in sanitization_summary."""
-        html = '<style>.secret { display:none }</style><div>Content</div>'
+        html = "<style>.secret { display:none }</style><div>Content</div>"
         result = sanitize(html, ContentType.HTML)
         assert result.class_hiding_possible is True
         summary = result.sanitization_summary

@@ -229,18 +229,20 @@ class TestCatchAll:
 class TestNoLeakedInformation:
     """No stack traces or file paths in any error response."""
 
-    @pytest.fixture(params=[
-        sqlite3.OperationalError("table secrets at /db/path.sqlite"),
-        FileNotFoundError("/home/user/.config/api_keys.json"),
-        RateLimitError(retry_after=60),
-        InvalidParamsError(field_name="email"),
-        UnauthorizedError("Bearer eyJhbGci..."),
-        PermissionDeniedError("gmail_delete blocked for client"),
-        InvalidHandleError("handle not in /var/sessions"),
-        RuntimeError("Traceback at /usr/lib/python3.12/site.py:42"),
-        TypeError("'NoneType' object is not callable"),
-        KeyError("/etc/passwd"),
-    ])
+    @pytest.fixture(
+        params=[
+            sqlite3.OperationalError("table secrets at /db/path.sqlite"),
+            FileNotFoundError("/home/user/.config/api_keys.json"),
+            RateLimitError(retry_after=60),
+            InvalidParamsError(field_name="email"),
+            UnauthorizedError("Bearer eyJhbGci..."),
+            PermissionDeniedError("gmail_delete blocked for client"),
+            InvalidHandleError("handle not in /var/sessions"),
+            RuntimeError("Traceback at /usr/lib/python3.12/site.py:42"),
+            TypeError("'NoneType' object is not callable"),
+            KeyError("/etc/passwd"),
+        ]
+    )
     def sanitized(self, request):
         """Fixture providing sanitized results for various exceptions."""
         return sanitize_error(request.param)
@@ -248,7 +250,7 @@ class TestNoLeakedInformation:
     def test_no_stack_trace_keywords(self, sanitized):
         """No stack trace keywords in the response."""
         msg = str(sanitized)
-        for keyword in ("Traceback", "File \"", "line ", ".py"):
+        for keyword in ("Traceback", 'File "', "line ", ".py"):
             # Allow ".py" only if it's not a file path reference
             if keyword == ".py":
                 # .py could appear in generic messages, skip this check

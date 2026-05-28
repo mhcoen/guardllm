@@ -18,6 +18,14 @@ from pathlib import Path
 from typing import Any
 
 from _bootstrap import ROOT  # noqa: F401
+from output_layout import (
+    DATASETS_ROOT,
+    RUNS_ROOT,
+    ensure_run_dir,
+    make_run_id,
+    write_latest_pointer,
+)
+
 from guardllm import Guard
 from guardllm.security.canary import generate_canary
 from guardllm.security.error_sanitizer import (
@@ -37,7 +45,6 @@ from guardllm.security.types import (
     SensitivityLevel,
     TrustLevel,
 )
-from output_layout import DATASETS_ROOT, RUNS_ROOT, ensure_run_dir, make_run_id, write_latest_pointer
 
 BENCH_ROOT = Path(__file__).resolve().parent
 CASES_DIR = BENCH_ROOT / "cases"
@@ -72,7 +79,9 @@ def _content_type(name: str) -> ContentType:
     return mapping[name]
 
 
-def _context_for_source(source_type: str, content_type: ContentType, policy: PolicyConfig | None = None) -> SecurityContext:
+def _context_for_source(
+    source_type: str, content_type: ContentType, policy: PolicyConfig | None = None
+) -> SecurityContext:
     return SecurityContext(
         mode="client",
         source_type=source_type,
@@ -283,6 +292,7 @@ def run_error(case: dict[str, Any]) -> CaseResult:
         exc = FileNotFoundError("/nonexistent/path")
     elif error_name == "sqlite3.OperationalError":
         import sqlite3
+
         exc = sqlite3.OperationalError("no such table: secrets")
     elif error_name == "ValueError":
         exc = ValueError("bad value")
@@ -350,11 +360,7 @@ def run_rate_limit(case: dict[str, Any]) -> CaseResult:
 
     token = case.get("expect_any_anomaly_contains")
     if token is not None:
-        found = any(
-            token.lower() in anomaly.lower()
-            for r in results
-            for anomaly in r.anomalies
-        )
+        found = any(token.lower() in anomaly.lower() for r in results for anomaly in r.anomalies)
         if not found:
             passed = False
             details.append(f"missing anomaly token={token}")
@@ -427,7 +433,12 @@ def _source_trust(name: str) -> TrustLevel:
 
 
 def _sensitivity_level(name: str) -> SensitivityLevel:
-    return {"public": SensitivityLevel.PUBLIC, "none": SensitivityLevel.PUBLIC, "internal": SensitivityLevel.INTERNAL, "sensitive": SensitivityLevel.SENSITIVE}[name]
+    return {
+        "public": SensitivityLevel.PUBLIC,
+        "none": SensitivityLevel.PUBLIC,
+        "internal": SensitivityLevel.INTERNAL,
+        "sensitive": SensitivityLevel.SENSITIVE,
+    }[name]
 
 
 def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
@@ -477,7 +488,9 @@ def run_contaminated_exfil(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
-def _run_contaminated_exfil_steps(guard: Guard, policy: PolicyConfig, case: dict[str, Any]) -> CaseResult:
+def _run_contaminated_exfil_steps(
+    guard: Guard, policy: PolicyConfig, case: dict[str, Any]
+) -> CaseResult:
     passed = True
     details_parts: list[str] = []
     for i, step in enumerate(case["steps"]):
@@ -593,7 +606,13 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return asyncio.run(run_action_gate(case))
     if kind == "contaminated_exfil":
         return run_contaminated_exfil(case)
-    return CaseResult(case.get("id", "unknown"), case.get("suite", "unknown"), kind, False, f"unsupported kind: {kind}")
+    return CaseResult(
+        case.get("id", "unknown"),
+        case.get("suite", "unknown"),
+        kind,
+        False,
+        f"unsupported kind: {kind}",
+    )
 
 
 def summarize(results: list[CaseResult]) -> dict[str, Any]:
@@ -692,13 +711,16 @@ def compare_checkpoint(
     # When extra suites are allowed, compare only the checkpoint-covered subset
     if allow_extra_suites:
         actual_failed = sorted(
-            r.id for r in actual_results
-            if not r.passed and r.suite in expected_suites
+            r.id for r in actual_results if not r.passed and r.suite in expected_suites
         )
         actual_total = sum(actual_suites.get(s, {}).get("total", 0) for s in expected_suites)
         actual_passed = sum(actual_suites.get(s, {}).get("passed", 0) for s in expected_suites)
         actual_failed_count = actual_total - actual_passed
-        comparable_summary = {"total": actual_total, "passed": actual_passed, "failed": actual_failed_count}
+        comparable_summary = {
+            "total": actual_total,
+            "passed": actual_passed,
+            "failed": actual_failed_count,
+        }
     else:
         actual_failed = sorted(r.id for r in actual_results if not r.passed)
         comparable_summary = actual_summary
@@ -737,8 +759,16 @@ def compare_checkpoint(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", default=None, help="Filter to one suite")
-    parser.add_argument("--dataset-id", default=None, help="Load cases from benchmarks/datasets/<dataset_id>/cases.jsonl")
-    parser.add_argument("--dataset-root", default=str(DATASETS_ROOT), help="Dataset root directory (default: benchmarks/datasets)")
+    parser.add_argument(
+        "--dataset-id",
+        default=None,
+        help="Load cases from benchmarks/datasets/<dataset_id>/cases.jsonl",
+    )
+    parser.add_argument(
+        "--dataset-root",
+        default=str(DATASETS_ROOT),
+        help="Dataset root directory (default: benchmarks/datasets)",
+    )
     parser.add_argument(
         "--checkpoint",
         default=None,
@@ -754,7 +784,9 @@ def main() -> int:
         action="store_true",
         help="When validating checkpoint, do not fail on extra suites in run output",
     )
-    parser.add_argument("--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha.")
+    parser.add_argument(
+        "--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha."
+    )
     args = parser.parse_args()
 
     dataset_root = Path(args.dataset_root)
@@ -778,7 +810,15 @@ def main() -> int:
     )
 
     print("guardllm benchmark results")
-    print("total:", summary["total"], "passed:", summary["passed"], "failed:", summary["failed"], f"pass_rate={summary['pass_rate']}%")
+    print(
+        "total:",
+        summary["total"],
+        "passed:",
+        summary["passed"],
+        "failed:",
+        summary["failed"],
+        f"pass_rate={summary['pass_rate']}%",
+    )
     for suite, stats in summary["by_suite"].items():
         rate = round((stats["passed"] / stats["total"]) * 100, 2) if stats["total"] else 0.0
         print(f"- {suite}: {stats['passed']}/{stats['total']} ({rate}%)")

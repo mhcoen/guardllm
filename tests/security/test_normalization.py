@@ -10,8 +10,6 @@ Covers:
 - Empty string, simple string unchanged
 """
 
-import unicodedata
-
 import pytest
 
 from guardllm.security.normalization import (
@@ -53,22 +51,22 @@ class TestInvisibleCharStripping:
 
     def test_zero_width_space_stripped(self):
         """Zero-width space (U+200B) is removed."""
-        text = "hello\u200Bworld"
+        text = "hello\u200bworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_zero_width_non_joiner_stripped(self):
         """Zero-width non-joiner (U+200C) is removed."""
-        text = "hello\u200Cworld"
+        text = "hello\u200cworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_zero_width_joiner_stripped(self):
         """Zero-width joiner (U+200D) is removed."""
-        text = "hello\u200Dworld"
+        text = "hello\u200dworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_soft_hyphen_stripped(self):
         """Soft hyphen (U+00AD) is removed."""
-        text = "dis\u00ADplay"
+        text = "dis\u00adplay"
         assert normalize_for_overlap(text) == "display"
 
     def test_word_joiner_stripped(self):
@@ -78,27 +76,27 @@ class TestInvisibleCharStripping:
 
     def test_bom_stripped(self):
         """BOM / zero-width no-break space (U+FEFF) is removed."""
-        text = "\uFEFFhello"
+        text = "\ufeffhello"
         assert normalize_for_overlap(text) == "hello"
 
     def test_object_replacement_stripped(self):
         """Object replacement character (U+FFFC) is removed."""
-        text = "before\uFFFCafter"
+        text = "before\ufffcafter"
         assert normalize_for_overlap(text) == "beforeafter"
 
     def test_interlinear_annotation_stripped(self):
         """Interlinear annotation markers (U+FFF9-U+FFFB) are removed."""
-        text = "text\uFFF9annotation\uFFFAinterlinear\uFFFBmore"
+        text = "text\ufff9annotation\ufffainterlinear\ufffbmore"
         assert normalize_for_overlap(text) == "textannotationinterlinearmore"
 
     def test_tag_characters_stripped(self):
         """Tag characters (U+E0001-U+E007F) are removed."""
-        text = "hello\U000E0001\U000E0041\U000E007Fworld"
+        text = "hello\U000e0001\U000e0041\U000e007fworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_multiple_invisible_chars_in_sequence(self):
         """Multiple different invisible chars all stripped."""
-        text = "a\u200B\u200C\u200D\u00AD\u2060\uFEFFb"
+        text = "a\u200b\u200c\u200d\u00ad\u2060\ufeffb"
         assert normalize_for_overlap(text) == "ab"
 
 
@@ -157,27 +155,27 @@ class TestBidiControlStripping:
 
     def test_lre_stripped(self):
         """Left-to-Right Embedding (U+202A) is removed."""
-        text = "hello\u202Aworld"
+        text = "hello\u202aworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_rle_stripped(self):
         """Right-to-Left Embedding (U+202B) is removed."""
-        text = "hello\u202Bworld"
+        text = "hello\u202bworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_pdf_stripped(self):
         """Pop Directional Formatting (U+202C) is removed."""
-        text = "hello\u202Cworld"
+        text = "hello\u202cworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_lro_stripped(self):
         """Left-to-Right Override (U+202D) is removed."""
-        text = "hello\u202Dworld"
+        text = "hello\u202dworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_rlo_stripped(self):
         """Right-to-Left Override (U+202E) is removed."""
-        text = "hello\u202Eworld"
+        text = "hello\u202eworld"
         assert normalize_for_overlap(text) == "helloworld"
 
     def test_lri_stripped(self):
@@ -202,24 +200,27 @@ class TestBidiControlStripping:
 
     def test_all_bidi_controls_stripped(self):
         """All bidi controls removed from a single string."""
-        text = "\u202Ahello\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069world"
+        text = "\u202ahello\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069world"
         assert normalize_for_overlap(text) == "helloworld"
 
 
 class TestIdempotency:
     """normalize(normalize(x)) == normalize(x) for all inputs."""
 
-    @pytest.mark.parametrize("text", [
-        "Hello World",
-        "caf\u0065\u0301",
-        "hello\u200B\u200Cworld",
-        "  multiple   spaces  ",
-        "\u202AHello\u202E World\u2069",
-        "MiXeD CaSe with\ttabs\nand\nnewlines",
-        "",
-        "simple",
-        "a\u200B\u00AD\uFEFF\u2060b\u202Ac\u202Ed",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Hello World",
+            "caf\u0065\u0301",
+            "hello\u200b\u200cworld",
+            "  multiple   spaces  ",
+            "\u202aHello\u202e World\u2069",
+            "MiXeD CaSe with\ttabs\nand\nnewlines",
+            "",
+            "simple",
+            "a\u200b\u00ad\ufeff\u2060b\u202ac\u202ed",
+        ],
+    )
     def test_idempotent(self, text: str):
         """Double normalization produces the same result as single."""
         once = normalize_for_overlap(text)
@@ -249,7 +250,7 @@ class TestEdgeCases:
     def test_full_pipeline_combined(self):
         """All steps work together on a complex input."""
         # Decomposed e-acute + zero-width space + multiple spaces + uppercase + bidi
-        text = "CAFI\u0301\u200B  \u202A LATTE"
+        text = "CAFI\u0301\u200b  \u202a LATTE"
         result = normalize_for_overlap(text)
         # NFC: I + combining accent -> I-acute (lowercased to i-acute)
         # Zero-width stripped, spaces collapsed, lowercased, bidi stripped

@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a new capability or hardening for GuardLLM
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the real-world scenario, not the implementation you want.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Inbound sanitization or detection
+        - Authorization or policy
+        - Integrity or request binding
+        - Outbound DLP or audit
+        - Integrations or examples
+        - Documentation
+        - Benchmark methodology
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context

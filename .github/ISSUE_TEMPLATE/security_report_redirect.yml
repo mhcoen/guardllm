@@ -1,0 +1,15 @@
+name: Reporting a vulnerability?
+description: Use the private security channel instead of a public issue
+title: "Do not file here — see SECURITY.md"
+labels: ["security-redirect"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Stop
+
+        Please **do not file vulnerability reports as public issues**.
+
+        See [SECURITY.md](https://github.com/mhcoen/guardllm/blob/main/SECURITY.md) for the private reporting process and supported disclosure timeline.
+
+        If you intended to file a regular bug, close this and use the "Bug report" template instead.

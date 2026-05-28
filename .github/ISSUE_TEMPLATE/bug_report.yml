@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a defect in GuardLLM's behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. **Do not use this template for security vulnerabilities** — see [SECURITY.md](https://github.com/mhcoen/guardllm/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: GuardLLM version
+      placeholder: "1.0.3"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.7"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal code that triggers the bug.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include exception output if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Adjacent settings, policy config, source trust assumptions, etc.

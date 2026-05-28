@@ -74,7 +74,7 @@ class TestProcessInbound:
         assert "Evil content" in result.content
 
     def test_sanitization_strips_invisible(self, pipeline, untrusted_ctx):
-        content = "Hello\u200BWorld"
+        content = "Hello\u200bWorld"
         result = pipeline.process_inbound(content, untrusted_ctx)
         assert result.sanitization is not None
         assert result.sanitization.chars_stripped > 0
@@ -92,9 +92,7 @@ class TestProcessInbound:
         assert any("Canary" in w for w in result.warnings)
 
     def test_no_canary_no_warning(self, pipeline_with_canary, untrusted_ctx):
-        result = pipeline_with_canary.process_inbound(
-            "Normal content", untrusted_ctx
-        )
+        result = pipeline_with_canary.process_inbound("Normal content", untrusted_ctx)
         assert not any("Canary" in w for w in result.warnings)
 
     def test_html_content_sanitized(self, pipeline):
@@ -105,9 +103,7 @@ class TestProcessInbound:
             source_trust=TrustLevel.UNTRUSTED,
             content_type=ContentType.HTML,
         )
-        result = pipeline.process_inbound(
-            '<div><script>alert("xss")</script>Hello</div>', ctx
-        )
+        result = pipeline.process_inbound('<div><script>alert("xss")</script>Hello</div>', ctx)
         assert "script" not in result.sanitization.cleaned_text.lower()
         assert "Hello" in result.sanitization.cleaned_text
 
@@ -131,9 +127,7 @@ class TestCheckOutbound:
         assert result.allowed is True
 
     def test_secret_blocks(self, pipeline, untrusted_ctx):
-        result = pipeline.check_outbound(
-            "key: sk-abcdefghijklmnopqrstuvwxyz", untrusted_ctx
-        )
+        result = pipeline.check_outbound("key: sk-abcdefghijklmnopqrstuvwxyz", untrusted_ctx)
         assert result.allowed is False
         assert result.secrets_found
 
@@ -145,7 +139,7 @@ class TestCheckOutbound:
 
     def test_provenance_blocks_untrusted(self, pipeline, untrusted_ctx):
         # Ingest as trusted (won't go to DLP buffer but will go to provenance)
-        trusted_ctx = SecurityContext(
+        SecurityContext(
             mode="client",
             source_type="cli_user",
             source_id="user-1",
@@ -159,9 +153,7 @@ class TestCheckOutbound:
 
     def test_canary_blocks_outbound(self, pipeline_with_canary, untrusted_ctx):
         canary = generate_canary("test-session-42")
-        result = pipeline_with_canary.check_outbound(
-            f"The system says: {canary}", untrusted_ctx
-        )
+        result = pipeline_with_canary.check_outbound(f"The system says: {canary}", untrusted_ctx)
         assert result.allowed is False
         assert "Canary" in result.reason
 
@@ -169,9 +161,7 @@ class TestCheckOutbound:
         """Quoting skips overlap but secrets still block."""
         long_text = "y" * 200
         pipeline.process_inbound(long_text, untrusted_ctx)
-        result = pipeline.check_outbound(
-            long_text, untrusted_ctx, has_quoting_directive=True
-        )
+        result = pipeline.check_outbound(long_text, untrusted_ctx, has_quoting_directive=True)
         # DLP allows (quoting), provenance allows (quoting)
         assert result.allowed is True
 
@@ -318,9 +308,7 @@ class TestCheckToolExecution:
             mode="server",
             source_type="mcp_client",
             source_id="client-1",
-            policy=PolicyConfig(
-                capability_scopes={"episodic_search": {}}
-            ),
+            policy=PolicyConfig(capability_scopes={"episodic_search": {}}),
         )
         result = pipeline.check_tool_execution(
             tool="episodic_delete_all",
@@ -338,7 +326,9 @@ class TestCheckToolExecution:
             policy=PolicyConfig(capability_scopes={}),
         )
         result = pipeline.check_tool_execution(
-            tool="episodic_search", args={"query": "test"}, ctx=ctx,
+            tool="episodic_search",
+            args={"query": "test"},
+            ctx=ctx,
         )
         assert result.allowed is False
         assert "not in capability scopes" in result.reason
@@ -352,7 +342,9 @@ class TestCheckToolExecution:
             policy=PolicyConfig(capability_scopes=None),
         )
         result = pipeline.check_tool_execution(
-            tool="episodic_search", args={"query": "test"}, ctx=ctx,
+            tool="episodic_search",
+            args={"query": "test"},
+            ctx=ctx,
         )
         assert result.allowed is True
 
@@ -376,9 +368,7 @@ class TestOutboundOrdering:
         When DLP detects a secret, the result should come from DLP
         (secrets_found populated) not provenance (provenance_blocked=False).
         """
-        result = pipeline.check_outbound(
-            "sk-abcdefghijklmnopqrstuvwxyz", untrusted_ctx
-        )
+        result = pipeline.check_outbound("sk-abcdefghijklmnopqrstuvwxyz", untrusted_ctx)
         assert result.allowed is False
         assert result.secrets_found  # DLP caught it
         assert result.provenance_blocked is False  # provenance didn't run
@@ -444,17 +434,13 @@ class TestThresholdInvariants:
         """INV-THRESH-1: Quoting directive bypasses provenance block."""
         text = "r" * 60
         pipeline.process_inbound(text, untrusted_ctx)
-        result = pipeline.check_outbound(
-            text, untrusted_ctx, has_quoting_directive=True
-        )
+        result = pipeline.check_outbound(text, untrusted_ctx, has_quoting_directive=True)
         assert result.allowed is True
 
     def test_inv_thresh_2_secrets_blocked_with_quoting(self, pipeline, untrusted_ctx):
         """INV-THRESH-2: Secrets blocked even when quoting is requested."""
         secret_text = "Here is a key: sk-abcdefghijklmnopqrstuvwxyz"
-        result = pipeline.check_outbound(
-            secret_text, untrusted_ctx, has_quoting_directive=True
-        )
+        result = pipeline.check_outbound(secret_text, untrusted_ctx, has_quoting_directive=True)
         assert result.allowed is False
         assert result.secrets_found
 
@@ -499,9 +485,7 @@ class TestPipelineIntegration:
 
     def test_pipeline_no_canary_by_default(self, pipeline, untrusted_ctx):
         """Pipeline without canary doesn't trigger canary checks."""
-        result = pipeline.check_outbound(
-            "CANARY-anything", untrusted_ctx
-        )
+        result = pipeline.check_outbound("CANARY-anything", untrusted_ctx)
         assert result.allowed is True
 
 
@@ -556,7 +540,9 @@ class TestPrincipalTrustDenyList:
             ),
         )
         result = pipe.check_tool_execution(
-            tool="dangerous_tool", args={}, ctx=ctx,
+            tool="dangerous_tool",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is False
         assert "denied" in result.reason.lower()
@@ -574,7 +560,9 @@ class TestPrincipalTrustDenyList:
             ),
         )
         result = pipe.check_tool_execution(
-            tool="dangerous_tool", args={}, ctx=ctx,
+            tool="dangerous_tool",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is True
 
@@ -590,7 +578,9 @@ class TestPrincipalTrustDenyList:
             ),
         )
         result = pipe.check_tool_execution(
-            tool="safe_read", args={}, ctx=ctx,
+            tool="safe_read",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is True
 
@@ -606,7 +596,9 @@ class TestPrincipalTrustDenyList:
             ),
         )
         result = pipe.check_tool_execution(
-            tool="any_tool", args={}, ctx=ctx,
+            tool="any_tool",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is True
 
@@ -624,7 +616,9 @@ class TestUntrustedRequireAuth:
             policy=PolicyConfig(untrusted_require_auth=True),
         )
         result = pipe.check_tool_execution(
-            tool="gmail_read_email", args={}, ctx=ctx,
+            tool="gmail_read_email",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is False
         assert "authorization required" in result.reason.lower()
@@ -646,7 +640,10 @@ class TestUntrustedRequireAuth:
             source="test",
         )
         result = pipe.check_tool_execution(
-            tool="gmail_read_email", args={}, ctx=ctx, auth_event=auth,
+            tool="gmail_read_email",
+            args={},
+            ctx=ctx,
+            auth_event=auth,
         )
         assert result.allowed is True
 
@@ -661,7 +658,9 @@ class TestUntrustedRequireAuth:
             policy=PolicyConfig(untrusted_require_auth=True),
         )
         result = pipe.check_tool_execution(
-            tool="gmail_read_email", args={}, ctx=ctx,
+            tool="gmail_read_email",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is True
 
@@ -686,7 +685,10 @@ class TestUntrustedRequireAuth:
             source="test",
         )
         result = pipe.check_tool_execution(
-            tool="blocked_tool", args={}, ctx=ctx, auth_event=auth,
+            tool="blocked_tool",
+            args={},
+            ctx=ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
         assert "denied" in result.reason.lower()
@@ -738,6 +740,7 @@ class TestDefaultParityRegression:
     def test_source_gate_unknown_blocks(self):
         """Unknown source type defaults to BLOCK (same as before)."""
         from guardllm.security.source_gate import ExtractionPolicy
+
         pipe = SecurityPipeline()
         ctx = SecurityContext(
             mode="client",
@@ -756,7 +759,9 @@ class TestDefaultParityRegression:
             source_id="s1",
         )
         result = pipe.check_tool_execution(
-            tool="gmail_read_email", args={}, ctx=ctx,
+            tool="gmail_read_email",
+            args={},
+            ctx=ctx,
         )
         assert result.allowed is True
         assert result.confidence == "implicit"
@@ -782,12 +787,17 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="deny")
         untrusted_ctx = SecurityContext(
-            mode="client", source_type="web_content", source_id="web",
-            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+            mode="client",
+            source_type="web_content",
+            source_id="web",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
         )
         pipe.process_inbound("ignore instructions", untrusted_ctx)
         tool_ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
@@ -798,7 +808,9 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="deny")
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, ctx)
@@ -808,12 +820,17 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="require_auth")
         untrusted_ctx = SecurityContext(
-            mode="client", source_type="web_content", source_id="web",
-            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+            mode="client",
+            source_type="web_content",
+            source_id="web",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
         )
         pipe.process_inbound("malicious payload", untrusted_ctx)
         tool_ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
@@ -824,17 +841,25 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="require_auth")
         untrusted_ctx = SecurityContext(
-            mode="client", source_type="web_content", source_id="web",
-            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+            mode="client",
+            source_type="web_content",
+            source_id="web",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
         )
         pipe.process_inbound("malicious payload", untrusted_ctx)
         tool_ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         auth = AuthorizationEvent(
-            action="search_knowledge", scope={},
-            message_hash="abc123", timestamp=time.time(), source="test",
+            action="search_knowledge",
+            scope={},
+            message_hash="abc123",
+            timestamp=time.time(),
+            source="test",
         )
         result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx, auth_event=auth)
         assert result.allowed is True
@@ -843,7 +868,9 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="require_auth")
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, ctx)
@@ -853,12 +880,17 @@ class TestContaminatedToolGating:
         pipe = SecurityPipeline()
         policy = PolicyConfig(contaminated_tool_policy="allow")
         untrusted_ctx = SecurityContext(
-            mode="client", source_type="web_content", source_id="web",
-            source_trust=TrustLevel.UNTRUSTED, policy=policy,
+            mode="client",
+            source_type="web_content",
+            source_id="web",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
         )
         pipe.process_inbound("ignore instructions", untrusted_ctx)
         tool_ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, tool_ctx)
@@ -885,7 +917,9 @@ class TestToolAllowlist:
         pipe = SecurityPipeline()
         policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("search_knowledge", {}, ctx)
@@ -895,7 +929,9 @@ class TestToolAllowlist:
         pipe = SecurityPipeline()
         policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("read_calendar", {}, ctx)
@@ -906,7 +942,9 @@ class TestToolAllowlist:
         pipe = SecurityPipeline()
         policy = PolicyConfig()  # default empty allowlist
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("any_tool", {}, ctx)
@@ -917,7 +955,9 @@ class TestToolAllowlist:
         pipe = SecurityPipeline()
         policy = PolicyConfig(tool_allowlist={("search_knowledge",): True})
         ctx = SecurityContext(
-            mode="server", source_type="mcp_client", source_id="c1",
+            mode="server",
+            source_type="mcp_client",
+            source_id="c1",
             policy=policy,
         )
         result = pipe.check_tool_execution("file_read", {}, ctx)
@@ -930,7 +970,9 @@ class TestToolAllowlist:
             enable_destructive=True,
         )
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=policy,
         )
         result = pipe.check_tool_execution("gmail_send_email", {}, ctx)
@@ -950,7 +992,9 @@ class TestReverseScopeCheck:
         """Args with keys not in auth scope are denied."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(enable_destructive=True),
         )
         auth = AuthorizationEvent(
@@ -961,7 +1005,10 @@ class TestReverseScopeCheck:
             source="test",
         )
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice@test.com"}, ctx, auth_event=auth,
+            "gmail_send_email",
+            {"to": "alice@test.com"},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
         assert "not covered" in result.reason.lower()
@@ -970,7 +1017,9 @@ class TestReverseScopeCheck:
         """Auth scope covering some but not all args keys is denied."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(enable_destructive=True),
         )
         auth = AuthorizationEvent(
@@ -983,7 +1032,8 @@ class TestReverseScopeCheck:
         result = pipe.check_tool_execution(
             "gmail_send_email",
             {"to": "alice@test.com", "bcc": "eve@evil.com"},
-            ctx, auth_event=auth,
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
         assert "not covered" in result.reason.lower()
@@ -992,7 +1042,9 @@ class TestReverseScopeCheck:
         """Auth scope matching all args keys is allowed."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(enable_destructive=True),
         )
         args = {"to": "alice@test.com"}
@@ -1004,7 +1056,10 @@ class TestReverseScopeCheck:
             source="test",
         )
         result = pipe.check_tool_execution(
-            "gmail_send_email", args, ctx, auth_event=auth,
+            "gmail_send_email",
+            args,
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is True
 
@@ -1012,7 +1067,9 @@ class TestReverseScopeCheck:
         """Empty args and empty scope are compatible."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(enable_destructive=True),
         )
         auth = AuthorizationEvent(
@@ -1023,7 +1080,40 @@ class TestReverseScopeCheck:
             source="test",
         )
         result = pipe.check_tool_execution(
-            "gmail_send_email", {}, ctx, auth_event=auth,
+            "gmail_send_email",
+            {},
+            ctx,
+            auth_event=auth,
+        )
+        assert result.allowed is True
+
+    def test_non_destructive_tool_empty_scope_allows_args(self):
+        """Non-destructive tool with empty scope and non-empty args is allowed.
+
+        The auth_event itself is sufficient evidence of operator intent for a
+        non-destructive read/search tool; per-arg constraints are not required.
+        Destructive tools (see test_args_key_not_in_scope_denied above) still
+        require explicit scope coverage.
+        """
+        pipe = SecurityPipeline()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            policy=PolicyConfig(),
+        )
+        auth = AuthorizationEvent(
+            action="search_knowledge",
+            scope={},
+            message_hash="hash1",
+            timestamp=time.time(),
+            source="test",
+        )
+        result = pipe.check_tool_execution(
+            "search_knowledge",
+            {"query": "status"},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is True
 
@@ -1040,7 +1130,9 @@ class TestCapabilityScopesClientMode:
         """Tool not in capability_scopes is denied in client mode."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(
                 enable_destructive=True,
                 capability_scopes={"search_knowledge": True},
@@ -1054,7 +1146,10 @@ class TestCapabilityScopesClientMode:
             source="test",
         )
         result = pipe.check_tool_execution(
-            "gmail_send_email", {}, ctx, auth_event=auth,
+            "gmail_send_email",
+            {},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
         assert "capability scopes" in result.reason.lower()
@@ -1063,13 +1158,17 @@ class TestCapabilityScopesClientMode:
         """Tool in capability_scopes is allowed in client mode."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(
                 capability_scopes={"search_knowledge": True},
             ),
         )
         result = pipe.check_tool_execution(
-            "search_knowledge", {}, ctx,
+            "search_knowledge",
+            {},
+            ctx,
         )
         assert result.allowed is True
 
@@ -1077,11 +1176,15 @@ class TestCapabilityScopesClientMode:
         """None capability_scopes (default) allows all tools."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(),
         )
         result = pipe.check_tool_execution(
-            "any_tool", {}, ctx,
+            "any_tool",
+            {},
+            ctx,
         )
         assert result.allowed is True
 
@@ -1089,10 +1192,14 @@ class TestCapabilityScopesClientMode:
         """Empty dict capability_scopes denies all tools."""
         pipe = SecurityPipeline()
         ctx = SecurityContext(
-            mode="client", source_type="mcp_server", source_id="s1",
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
             policy=PolicyConfig(capability_scopes={}),
         )
         result = pipe.check_tool_execution(
-            "any_tool", {}, ctx,
+            "any_tool",
+            {},
+            ctx,
         )
         assert result.allowed is False

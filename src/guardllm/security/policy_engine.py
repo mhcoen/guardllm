@@ -201,14 +201,27 @@ class PolicyEngine:
                     confidence="none",
                 )
 
-        # Reverse check: args must not contain keys outside auth scope
-        uncovered = set(args.keys()) - set(auth_event.scope.keys())
-        if uncovered:
-            return GateResult(
-                allowed=False,
-                reason=(f"Args key(s) {sorted(uncovered)} not covered by authorization scope"),
-                confidence="none",
-            )
+        # Reverse check: args must not contain keys outside the explicitly
+        # authorized scope keys (prevents parameter expansion: e.g. authorizing
+        # gmail_send_email(to=alice) and the LLM tacking on bcc=attacker).
+        #
+        # For destructive tools, an empty scope is treated as "no constraint
+        # specified" and the reverse check denies any args -- destructive
+        # actions must be authorized with explicit per-arg constraints.
+        #
+        # For non-destructive tools, an empty scope means "no per-arg
+        # restriction" (the auth_event itself is sufficient evidence of
+        # operator intent); the action match, TTL, and source checks still
+        # apply. This is what lets contaminated-context require_auth flows
+        # authorize a read/search tool without enumerating every arg key.
+        if auth_event.scope or is_destructive:
+            uncovered = set(args.keys()) - set(auth_event.scope.keys())
+            if uncovered:
+                return GateResult(
+                    allowed=False,
+                    reason=(f"Args key(s) {sorted(uncovered)} not covered by authorization scope"),
+                    confidence="none",
+                )
 
         # Verify timestamp within TTL
         elapsed = time.time() - auth_event.timestamp

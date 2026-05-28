@@ -35,11 +35,14 @@ jobs:
         run: |
           python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json --allow-extra-suites
 
-      - name: Upload benchmark report on failure
+      - name: Dump benchmark summary on failure
         if: failure() && steps.benchmarks.conclusion == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: bench-report-py${{ matrix.python-version }}
-          path: benchmarks/runs/
-          if-no-files-found: warn
-          retention-days: 7
+        run: |
+          set -e
+          latest=$(ls -t benchmarks/runs/*/latest.json | head -1)
+          echo "::group::Run summary ($latest)"
+          python -c "import json; d=json.load(open('$latest')); print(json.dumps(d['summary'], indent=2))"
+          echo "::endgroup::"
+          echo "::group::Failed case IDs"
+          python -c "import json; d=json.load(open('$latest')); [print(r['id'], '|', r.get('details','')[:160]) for r in d['results'] if not r['passed']]"
+          echo "::endgroup::"

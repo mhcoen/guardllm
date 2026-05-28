@@ -1,5 +1,10 @@
 # GuardLLM
 
+[![CI](https://github.com/mhcoen/guardllm/actions/workflows/ci.yml/badge.svg)](https://github.com/mhcoen/guardllm/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/mhcoen/guardllm/actions/workflows/codeql.yml/badge.svg)](https://github.com/mhcoen/guardllm/actions/workflows/codeql.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications with a shared security context that follows content from ingress through authorization, integrity checks, and output enforcement. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
 ## How GuardLLM Works
@@ -153,7 +158,7 @@ Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Ca
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md)
-- **Architecture & API**: [Security Architecture](docs/security.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
+- **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/)
 - **Operations**: [Production Checklist](docs/production_checklist.md) | [Troubleshooting](docs/troubleshooting.md) | [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
 
@@ -173,7 +178,7 @@ python benchmarks/run_benchmarks.py
 python benchmarks/compare_mitigations.py
 ```
 
-Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves.
+Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves. See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow and [SECURITY.md](SECURITY.md) for the vulnerability reporting policy.
 
 ## Author
 

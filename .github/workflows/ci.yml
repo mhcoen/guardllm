@@ -40,9 +40,16 @@ jobs:
         run: |
           set -e
           latest=$(ls -t benchmarks/runs/*/latest.json | head -1)
-          echo "::group::Run summary ($latest)"
-          python -c "import json; d=json.load(open('$latest')); print(json.dumps(d['summary'], indent=2))"
-          echo "::endgroup::"
-          echo "::group::Failed case IDs"
-          python -c "import json; d=json.load(open('$latest')); [print(r['id'], '|', r.get('details','')[:160]) for r in d['results'] if not r['passed']]"
-          echo "::endgroup::"
+          {
+            echo "## Benchmark failure on py${{ matrix.python-version }}"
+            echo ""
+            echo "### Run summary"
+            echo '```json'
+            python -c "import json; d=json.load(open('$latest')); print(json.dumps(d['summary'], indent=2))"
+            echo '```'
+            echo ""
+            echo "### Checkpoint validation errors"
+            echo '```'
+            python -c "import json; ck=json.load(open('benchmarks/checkpoints/official-baseline.json')); d=json.load(open('$latest')); import sys; sys.path.insert(0, 'benchmarks'); from run_benchmarks import compare_checkpoint, CaseResult; results=[CaseResult(id=r['id'], suite=r['suite'], kind=r['kind'], passed=r['passed'], details=r.get('details','')) for r in d['results']]; errs=compare_checkpoint(ck, d['summary'], results, allow_extra_suites=True); print('\n'.join(errs) or 'no errors?')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

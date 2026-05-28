@@ -4,10 +4,6 @@ on:
   push:
   pull_request:
 
-permissions:
-  contents: read
-  checks: write
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -35,38 +31,5 @@ jobs:
           pytest -q
 
       - name: Run benchmarks
-        id: benchmarks
         run: |
           python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json --allow-extra-suites
-
-      - name: Dump benchmark summary on failure
-        if: failure() && steps.benchmarks.conclusion == 'failure' && matrix.python-version == '3.12'
-        run: |
-          set -e
-          latest=$(ls -t benchmarks/runs/*/latest.json | head -1)
-          python -c "import json; d=json.load(open('$latest')); print(json.dumps(d['summary'], indent=2))" > /tmp/bench-summary.json
-          python -c "import json; ck=json.load(open('benchmarks/checkpoints/official-baseline.json')); d=json.load(open('$latest')); import sys; sys.path.insert(0, 'benchmarks'); from run_benchmarks import compare_checkpoint, CaseResult; results=[CaseResult(id=r['id'], suite=r['suite'], kind=r['kind'], passed=r['passed'], details=r.get('details','')) for r in d['results']]; errs=compare_checkpoint(ck, d['summary'], results, allow_extra_suites=True); open('/tmp/bench-errors.txt','w').write('\n'.join(errs))"
-
-      - name: Publish failure detail to check-run output
-        if: failure() && steps.benchmarks.conclusion == 'failure' && matrix.python-version == '3.12'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const summary = fs.readFileSync('/tmp/bench-summary.json', 'utf8');
-            const errors = fs.readFileSync('/tmp/bench-errors.txt', 'utf8');
-            const text = '### Run summary\n```json\n' + summary + '\n```\n\n### Validation errors\n```\n' + errors + '\n```';
-            const { data: check } = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'bench-debug-${{ matrix.python-version }}',
-              head_sha: context.sha,
-              status: 'completed',
-              conclusion: 'neutral',
-              output: {
-                title: 'Benchmark failure detail',
-                summary: 'Run summary and validation errors below',
-                text: text.slice(0, 65000)
-              }
-            });
-            core.info('Posted check ' + check.id);

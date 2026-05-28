@@ -39,6 +39,9 @@ htmlcov/
 # IDE/editor files
 .vscode/
 .idea/
+.claude/
+.aider*
+.cursor/
 
 # OS junk
 .DS_Store

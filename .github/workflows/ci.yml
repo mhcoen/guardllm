@@ -31,5 +31,15 @@ jobs:
           pytest -q
 
       - name: Run benchmarks
+        id: benchmarks
         run: |
           python benchmarks/run_benchmarks.py --checkpoint benchmarks/checkpoints/official-baseline.json --allow-extra-suites
+
+      - name: Upload benchmark report on failure
+        if: failure() && steps.benchmarks.conclusion == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-report-py${{ matrix.python-version }}
+          path: benchmarks/runs/
+          if-no-files-found: warn
+          retention-days: 7

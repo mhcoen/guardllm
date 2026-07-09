@@ -291,8 +291,11 @@ class SecurityPipeline:
                     confidence="none",
                 )
 
-        # L9: Policy engine check
-        policy_result = self._policy.check_tool_execution(tool, args, auth_event, ctx)
+        # L9: Policy engine check. Pass the genuine current message hash (not
+        # the auth_event fallback) so message binding can detect replay.
+        policy_result = self._policy.check_tool_execution(
+            tool, args, auth_event, ctx, current_message_hash=message_hash
+        )
         if not policy_result.allowed:
             return policy_result
 

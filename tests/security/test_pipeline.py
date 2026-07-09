@@ -1250,3 +1250,103 @@ class TestRateLimitWiredThroughPipeline:
         assert blocked.allowed is False
         assert "limit" in blocked.reason.lower()
 
+
+# ---------------------------------------------------------------------------
+# H3: anti-replay message binding (auth bound to the current user message)
+# ---------------------------------------------------------------------------
+
+
+class TestMessageBinding:
+    """An authorization must not be replayable across a later, different
+    user message. A supplied current message hash that differs from the
+    authorized message hash is always denied; require_message_binding makes
+    a missing current hash fail closed."""
+
+    @staticmethod
+    def _client_ctx(policy: PolicyConfig) -> SecurityContext:
+        return SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            policy=policy,
+        )
+
+    def _auth(self, msg_hash: str) -> AuthorizationEvent:
+        return AuthorizationEvent(
+            action="gmail_send_email",
+            scope={"to": "alice"},
+            message_hash=msg_hash,
+            timestamp=time.time(),
+            source="test",
+        )
+
+    def test_matching_message_hash_allows(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
+        auth = self._auth("hash-M1")
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx,
+            auth_event=auth, message_hash="hash-M1",
+        )
+        assert result.allowed is True
+
+    def test_mismatched_message_hash_denied_as_replay(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
+        auth = self._auth("hash-M1")
+        # Same auth replayed while the conversation has advanced to M2.
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx,
+            auth_event=auth, message_hash="hash-M2",
+        )
+        assert result.allowed is False
+        assert "replay" in result.reason.lower()
+
+    def test_off_without_hash_is_legacy_allow(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
+        auth = self._auth("hash-M1")
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx, auth_event=auth,
+        )
+        assert result.allowed is True
+
+    def test_destructive_mode_without_hash_fails_closed(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(
+            PolicyConfig(enable_destructive=True, require_message_binding="destructive")
+        )
+        auth = self._auth("hash-M1")
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+        assert "message binding required" in result.reason.lower()
+
+    def test_destructive_mode_with_hash_allows(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(
+            PolicyConfig(enable_destructive=True, require_message_binding="destructive")
+        )
+        auth = self._auth("hash-M1")
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx,
+            auth_event=auth, message_hash="hash-M1",
+        )
+        assert result.allowed is True
+
+    def test_all_mode_requires_hash_for_authorized_nondestructive(self):
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(PolicyConfig(require_message_binding="all"))
+        auth = AuthorizationEvent(
+            action="search_knowledge", scope={}, message_hash="hash-M1",
+            timestamp=time.time(), source="test",
+        )
+        result = pipe.check_tool_execution(
+            "search_knowledge", {}, ctx, auth_event=auth,
+        )
+        assert result.allowed is False
+
+    def test_invalid_require_message_binding_rejected(self):
+        with pytest.raises(ValueError, match="require_message_binding"):
+            PolicyConfig(require_message_binding="bogus")

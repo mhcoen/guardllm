@@ -61,11 +61,15 @@ class PolicyEngine:
         args: dict,
         auth_event: AuthorizationEvent | None,
         ctx: SecurityContext,
+        current_message_hash: str | None = None,
     ) -> GateResult:
         """Policy check before tool execution.
 
         Trust-gated layer runs first (principal_trust checks), then
         server/client mode-specific logic.
+
+        current_message_hash: SHA-256 of the user message driving this
+            execution, used for anti-replay message binding (client mode).
         """
         # Principal-trust deny list: block before any scope/auth check
         if ctx.principal_trust == TrustLevel.UNTRUSTED and tool in ctx.policy.untrusted_deny_tools:
@@ -89,7 +93,7 @@ class PolicyEngine:
 
         if ctx.mode == "server":
             return self._check_server(tool, args, auth_event, ctx)
-        return self._check_client(tool, args, auth_event, ctx)
+        return self._check_client(tool, args, auth_event, ctx, current_message_hash)
 
     def _check_server(
         self,
@@ -130,6 +134,7 @@ class PolicyEngine:
         args: dict,
         auth_event: AuthorizationEvent | None,
         ctx: SecurityContext,
+        current_message_hash: str | None = None,
     ) -> GateResult:
         """Client mode: verify authorization event."""
         is_destructive = tool in self._destructive_tools
@@ -176,6 +181,28 @@ class PolicyEngine:
                 allowed=True,
                 reason="Non-destructive tool, implicit allow",
                 confidence="implicit",
+            )
+
+        # L11 anti-replay: bind this authorization to the current user message.
+        # A supplied current hash that differs from the authorized message is
+        # positive evidence of replay and is always denied. When
+        # require_message_binding demands it, a missing current hash fails
+        # closed rather than allowing an unbound (replayable) authorization.
+        binding_required = ctx.policy.require_message_binding == "all" or (
+            ctx.policy.require_message_binding == "destructive" and is_destructive
+        )
+        if current_message_hash:
+            if auth_event.message_hash != current_message_hash:
+                return GateResult(
+                    allowed=False,
+                    reason="Authorization does not match the current message (possible replay)",
+                    confidence="none",
+                )
+        elif binding_required:
+            return GateResult(
+                allowed=False,
+                reason="Message binding required but no current message hash was provided",
+                confidence="none",
             )
 
         # Verify auth_event.action matches the tool

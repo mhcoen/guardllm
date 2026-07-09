@@ -147,6 +147,14 @@ class PolicyConfig:
     auto_confirm_destructive: bool = False
     # Source types that require non-empty source_id
     require_source_id_for: frozenset[str] = frozenset()
+    # L11 anti-replay: require tool authorizations to be bound to the current
+    # user message (auth_event.message_hash must match the message hash
+    # supplied at execution time). A mismatch is always denied; this flag
+    # controls whether a *missing* current message hash fails closed.
+    #   "off"          - legacy: no hard requirement (backward compatible)
+    #   "destructive"  - destructive tools must carry a current message hash
+    #   "all"          - every authorized tool call must carry one
+    require_message_binding: str = "off"
 
     def __post_init__(self) -> None:
         _VALID_CONTAMINATED_TOOL_POLICIES = {"allow", "require_auth", "deny"}
@@ -154,6 +162,12 @@ class PolicyConfig:
             raise ValueError(
                 f"Invalid contaminated_tool_policy: '{self.contaminated_tool_policy}'. "
                 f"Valid values: {sorted(_VALID_CONTAMINATED_TOOL_POLICIES)}"
+            )
+        _VALID_MESSAGE_BINDING = {"off", "destructive", "all"}
+        if self.require_message_binding not in _VALID_MESSAGE_BINDING:
+            raise ValueError(
+                f"Invalid require_message_binding: '{self.require_message_binding}'. "
+                f"Valid values: {sorted(_VALID_MESSAGE_BINDING)}"
             )
         _VALID_RATE_LIMIT_KEYS = {
             "emails_per_hour",

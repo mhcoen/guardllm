@@ -159,6 +159,19 @@ class TestSecretScanning:
             found = _scan_secrets(benign)
             assert not any("entropy" in s.lower() for s in found), f"{benign} false positive"
 
+    def test_space_split_high_entropy_token_flagged(self):
+        """A generic (unprefixed) high-entropy token split by spaces is still
+        caught: the entropy scan covers the whitespace-removed form."""
+        found = _scan_secrets("aZ9k Q2mP 7xR4 tB6v N1wL 8yC3")
+        assert any("entropy" in s.lower() for s in found)
+
+    def test_natural_language_sentence_not_flagged_after_merge(self):
+        """Removing whitespace must not flag a natural-language sentence whose
+        words merge into one long alphabetic run (no digits -> not a token)."""
+        pangram = "the quick brown fox jumps over the lazy dog " * 5
+        found = _scan_secrets(pangram)
+        assert not any("entropy" in s.lower() for s in found)
+
 
 # ---------------------------------------------------------------------------
 # OutboundDLP.check

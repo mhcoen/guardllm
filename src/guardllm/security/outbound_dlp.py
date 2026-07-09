@@ -105,10 +105,25 @@ def _scan_secrets(text: str) -> list[str]:
             found.append(label)
 
     # High-entropy token detection: look for long hex/base64-like tokens.
-    # Scan the invisible-stripped form so a zero-width char cannot split a
-    # random token below the length gate.
-    for token in re.findall(r"[A-Za-z0-9+/\-_]{20,}", stripped):
-        if len(token) >= _ENTROPY_MIN_LENGTH:
+    # Scan the invisible-stripped form (all tokens) AND the whitespace-removed
+    # form so neither a zero-width char nor an inserted space can split a
+    # random (unprefixed) token below the length gate. On the whitespace-merged
+    # form, only consider tokens that contain a digit: this is the signature of
+    # a machine token/secret, and it prevents a natural-language sentence
+    # (whose words merge into one long alphabetic run) from being flagged.
+    entropy_forms: list[tuple[str, bool]] = [(stripped, False)]
+    if ws_removed != stripped:
+        entropy_forms.append((ws_removed, True))
+    seen_tokens: set[str] = set()
+    for form, merged in entropy_forms:
+        for token in re.findall(r"[A-Za-z0-9+/\-_]{20,}", form):
+            if token in seen_tokens:
+                continue
+            seen_tokens.add(token)
+            if len(token) < _ENTROPY_MIN_LENGTH:
+                continue
+            if merged and not any(c.isdigit() for c in token):
+                continue
             entropy = _shannon_entropy(token)
             # Length-aware threshold: never require more entropy than the
             # length can produce. Caps at _ENTROPY_THRESHOLD for long tokens

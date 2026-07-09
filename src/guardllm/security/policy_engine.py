@@ -200,7 +200,7 @@ class PolicyEngine:
         binding_required = ctx.policy.require_message_binding == "all" or (
             ctx.policy.require_message_binding == "destructive" and is_destructive
         )
-        if current_message_hash:
+        if current_message_hash is not None:
             if auth_event.message_hash != current_message_hash:
                 return GateResult(
                     allowed=False,

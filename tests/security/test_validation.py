@@ -416,3 +416,30 @@ class TestUniversalSafetyChecks:
     def test_benign_unknown_scalars_allowed(self):
         result = validate_arguments("tool_x", {"limit": 10, "name": "alice"})
         assert result.valid is True
+
+    def test_deeply_nested_input_rejected_not_crash(self):
+        """Recursion must be depth-bounded: deep nesting is rejected, not a
+        RecursionError out of the first gate."""
+        v = "p"
+        for _ in range(3000):
+            v = [v]
+        result = validate_arguments("file_write", {"path": v})
+        assert result.valid is False
+        assert any("deep" in e.lower() for e in result.errors)
+
+    def test_self_referential_structure_does_not_crash(self):
+        d: dict = {}
+        d["a"] = d
+        result = validate_arguments("t", {"x": d})
+        assert result.valid is False
+
+    def test_traversal_in_dict_key_rejected(self):
+        """Dict keys are checked, not just values (a key can be a path)."""
+        result = validate_arguments("file_write", {"files": {"../../etc/passwd": "data"}})
+        assert result.valid is False
+
+    def test_reasonable_nesting_still_valid(self):
+        result = validate_arguments(
+            "t", {"opts": {"a": {"b": {"c": "/safe/path/here"}}}}
+        )
+        assert result.valid is True

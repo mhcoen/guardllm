@@ -1311,6 +1311,19 @@ class TestMessageBinding:
         )
         assert result.allowed is True
 
+    def test_empty_string_hash_is_treated_as_a_value_not_absent(self):
+        """An empty-string current message hash is a real (mismatching) value,
+        not 'no hash', so a replayed auth is still denied."""
+        pipe = SecurityPipeline()
+        ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
+        auth = self._auth("hash-M1")
+        result = pipe.check_tool_execution(
+            "gmail_send_email", {"to": "alice"}, ctx,
+            auth_event=auth, message_hash="",
+        )
+        assert result.allowed is False
+        assert "replay" in result.reason.lower()
+
     def test_destructive_mode_without_hash_fails_closed(self):
         pipe = SecurityPipeline()
         ctx = self._client_ctx(

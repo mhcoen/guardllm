@@ -38,24 +38,36 @@ def _string_safety_errors(arg_name: str, value: str) -> list[str]:
     return errors
 
 
-def _walk_value(arg_name: str, value: Any) -> list[str]:
+# Maximum container nesting inspected before a request is rejected. Well
+# above any legitimate tool-argument shape, but low enough that a maliciously
+# deep (or self-referential) structure cannot exhaust the Python stack.
+_MAX_WALK_DEPTH = 64
+
+
+def _walk_value(arg_name: str, value: Any, _depth: int = 0) -> list[str]:
     """Recurse into containers, applying string-safety checks to leaves.
 
     Guards against type-confusion evasion where a payload is nested inside
     a list/dict/tuple/set (e.g. ``{"path": ["../../etc/passwd"]}``) to skip
-    a check that only looked at top-level strings.
+    a check that only looked at top-level strings. Both dict keys and values
+    are checked. Recursion is depth-bounded so deeply nested or cyclic input
+    is rejected rather than raising RecursionError out of the first gate.
     """
+    if _depth > _MAX_WALK_DEPTH:
+        return [f"Parameter {arg_name} nesting too deep"]
     if isinstance(value, str):
         return _string_safety_errors(arg_name, value)
     if isinstance(value, dict):
         errors: list[str] = []
-        for v in value.values():
-            errors.extend(_walk_value(arg_name, v))
+        for k, v in value.items():
+            if isinstance(k, str):
+                errors.extend(_string_safety_errors(arg_name, k))
+            errors.extend(_walk_value(arg_name, v, _depth + 1))
         return errors
     if isinstance(value, list | tuple | set):
         errors = []
         for v in value:
-            errors.extend(_walk_value(arg_name, v))
+            errors.extend(_walk_value(arg_name, v, _depth + 1))
         return errors
     return []
 

@@ -367,3 +367,52 @@ class TestValidationResult:
             },
         )
         assert result.valid is True
+
+
+class TestUniversalSafetyChecks:
+    """H4 regression: path traversal / null bytes are caught on EVERY
+    argument, not just the six named ones, and inside nested containers.
+
+    Previously unknown argument names (e.g. the `path` argument of
+    file_delete/file_write) skipped validation entirely, so a traversal
+    payload passed as valid.
+    """
+
+    def test_traversal_on_unknown_path_arg_rejected(self):
+        result = validate_arguments("file_delete", {"path": "../../../../etc/passwd"})
+        assert result.valid is False
+        assert any("traversal" in e.lower() for e in result.errors)
+
+    def test_traversal_on_second_unknown_arg_rejected(self):
+        result = validate_arguments(
+            "file_write", {"file_path": "/a/../../etc/shadow", "content": "x"}
+        )
+        assert result.valid is False
+
+    def test_traversal_nested_in_list_rejected(self):
+        """Type-confusion via a list value is still caught."""
+        result = validate_arguments("file_delete", {"path": ["../../etc/passwd"]})
+        assert result.valid is False
+
+    def test_traversal_nested_in_dict_rejected(self):
+        result = validate_arguments("tool_x", {"opts": {"target": "../secret"}})
+        assert result.valid is False
+
+    def test_null_byte_rejected(self):
+        result = validate_arguments("file_write", {"path": "ok\x00.txt"})
+        assert result.valid is False
+        assert any("null byte" in e.lower() for e in result.errors)
+
+    def test_field_name_points_at_offending_arg(self):
+        result = validate_arguments("file_delete", {"path": "../../etc/passwd"})
+        assert result.field_name == "path"
+
+    def test_benign_absolute_path_allowed(self):
+        result = validate_arguments(
+            "file_write", {"path": "/home/user/report.txt", "content": "hello"}
+        )
+        assert result.valid is True
+
+    def test_benign_unknown_scalars_allowed(self):
+        result = validate_arguments("tool_x", {"limit": 10, "name": "alice"})
+        assert result.valid is True

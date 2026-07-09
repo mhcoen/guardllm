@@ -22,6 +22,44 @@ ARGUMENT_LIMITS: dict[str, dict[str, Any]] = {
 }
 
 
+def _string_safety_errors(arg_name: str, value: str) -> list[str]:
+    """Universal safety checks applied to every string argument.
+
+    These are not tied to a specific named parameter: path traversal and
+    null-byte injection are dangerous in any argument, including the
+    path/filename arguments of destructive tools (file_write, file_delete)
+    that are absent from ARGUMENT_LIMITS.
+    """
+    errors: list[str] = []
+    if ".." in value:
+        errors.append(f"Parameter {arg_name} contains path traversal")
+    if "\x00" in value:
+        errors.append(f"Parameter {arg_name} contains a null byte")
+    return errors
+
+
+def _walk_value(arg_name: str, value: Any) -> list[str]:
+    """Recurse into containers, applying string-safety checks to leaves.
+
+    Guards against type-confusion evasion where a payload is nested inside
+    a list/dict/tuple/set (e.g. ``{"path": ["../../etc/passwd"]}``) to skip
+    a check that only looked at top-level strings.
+    """
+    if isinstance(value, str):
+        return _string_safety_errors(arg_name, value)
+    if isinstance(value, dict):
+        errors: list[str] = []
+        for v in value.values():
+            errors.extend(_walk_value(arg_name, v))
+        return errors
+    if isinstance(value, list | tuple | set):
+        errors = []
+        for v in value:
+            errors.extend(_walk_value(arg_name, v))
+        return errors
+    return []
+
+
 def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
     """Validate all arguments for a tool invocation.
 
@@ -39,15 +77,19 @@ def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
 
     for arg_name, value in args.items():
         limits = ARGUMENT_LIMITS.get(arg_name)
-        if limits is None:
-            # Unknown fields silently ignored (defense against schema probing)
-            continue
+
+        # Universal safety checks run on EVERY argument (known or unknown),
+        # including strings nested inside containers. Unknown argument names
+        # no longer skip validation: path traversal / null bytes must be
+        # caught even on arguments (e.g. `path`) that have no size/pattern
+        # limits declared.
+        errors.extend(_walk_value(arg_name, value))
 
         if arg_name == "provenance":
             # Special handling for structured provenance field
             if isinstance(value, dict):
-                max_fields = limits.get("max_fields", 10)
-                max_val = limits.get("max_value_chars", 500)
+                max_fields = limits.get("max_fields", 10) if limits else 10
+                max_val = limits.get("max_value_chars", 500) if limits else 500
                 if len(value) > max_fields:
                     errors.append(
                         f"Parameter {arg_name} exceeds maximum fields ({len(value)} > {max_fields})"
@@ -57,17 +99,15 @@ def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
                         errors.append(f"Parameter {arg_name}.{k} exceeds maximum size")
             continue
 
-        if not isinstance(value, str):
+        # Named-argument limits (max_chars / pattern) apply only to declared
+        # string arguments.
+        if limits is None or not isinstance(value, str):
             continue
 
         # Check max_chars
         max_chars = limits.get("max_chars")
         if max_chars is not None and len(value) > max_chars:
             errors.append(f"Parameter {arg_name} exceeds maximum size")
-
-        # Check for path traversal sequences
-        if ".." in value:
-            errors.append(f"Parameter {arg_name} contains path traversal")
 
         # Check pattern
         pattern = limits.get("pattern")

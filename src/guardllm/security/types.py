@@ -115,6 +115,11 @@ class PolicyConfig:
     # Server mode (None = no allowlist, {} = deny all tools)
     capability_scopes: dict[str, Any] | None = None
     client_id: str | None = None
+    # Server mode: when True, a missing capability_scopes (None) denies all
+    # tools instead of allowing by default. Fail-closed opt-in so a forgotten
+    # capability_scopes config does not silently allow every non-destructive
+    # tool for an untrusted client.
+    server_default_deny: bool = False
 
     # Shared
     rate_limits: dict[str, Any] = field(default_factory=dict)
@@ -248,6 +253,8 @@ class GateResult:
     reason: str
     matched_directive: str | None = None
     confidence: str = "none"  # "explicit" | "implicit" | "none"
+    # Non-blocking rate-limit anomaly signals (burst, novel recipient)
+    anomalies: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -262,6 +269,8 @@ class OutboundResult:
     contamination_triggered: bool = False
     echo_detected: bool = False
     echo_lcs: int = 0
+    # Non-blocking rate-limit anomaly signals (burst, novel recipient)
+    anomalies: list[str] = field(default_factory=list)
 
 
 @dataclass

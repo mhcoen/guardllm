@@ -104,7 +104,16 @@ class PolicyEngine:
     ) -> GateResult:
         """Server mode: check capability scopes."""
         scopes = ctx.policy.capability_scopes
-        if scopes is not None:
+        if scopes is None:
+            # No capability scopes configured. Fail closed when the operator
+            # has opted into default-deny; otherwise legacy allow-by-default.
+            if ctx.policy.server_default_deny:
+                return GateResult(
+                    allowed=False,
+                    reason="No capability scopes configured (default-deny)",
+                    confidence="none",
+                )
+        else:
             # Empty dict = deny all tools; non-empty = tool must be in set
             if not scopes or tool not in scopes:
                 return GateResult(

@@ -1350,3 +1350,91 @@ class TestMessageBinding:
     def test_invalid_require_message_binding_rejected(self):
         with pytest.raises(ValueError, match="require_message_binding"):
             PolicyConfig(require_message_binding="bogus")
+
+
+# ---------------------------------------------------------------------------
+# M3: server mode default-deny opt-in
+# ---------------------------------------------------------------------------
+
+
+class TestServerDefaultDeny:
+    @staticmethod
+    def _server_ctx(policy: PolicyConfig) -> SecurityContext:
+        return SecurityContext(
+            mode="server",
+            source_type="mcp_client",
+            source_id="c1",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
+        )
+
+    def test_no_scopes_flag_off_is_legacy_allow(self):
+        pipe = SecurityPipeline()
+        result = pipe.check_tool_execution(
+            "search_knowledge", {}, self._server_ctx(PolicyConfig())
+        )
+        assert result.allowed is True
+
+    def test_no_scopes_flag_on_denies(self):
+        pipe = SecurityPipeline()
+        result = pipe.check_tool_execution(
+            "search_knowledge", {}, self._server_ctx(PolicyConfig(server_default_deny=True))
+        )
+        assert result.allowed is False
+        assert "default-deny" in result.reason.lower()
+
+    def test_scoped_tool_allowed_with_flag_on(self):
+        pipe = SecurityPipeline()
+        ctx = self._server_ctx(
+            PolicyConfig(server_default_deny=True, capability_scopes={"search_knowledge": {}})
+        )
+        assert pipe.check_tool_execution("search_knowledge", {}, ctx).allowed is True
+
+    def test_unscoped_tool_denied_with_flag_on(self):
+        pipe = SecurityPipeline()
+        ctx = self._server_ctx(
+            PolicyConfig(server_default_deny=True, capability_scopes={"search_knowledge": {}})
+        )
+        assert pipe.check_tool_execution("other_tool", {}, ctx).allowed is False
+
+
+# ---------------------------------------------------------------------------
+# M2: rate-limit anomaly signals are surfaced, not discarded
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitAnomaliesSurfaced:
+    @staticmethod
+    def _trusted_ctx() -> SecurityContext:
+        return SecurityContext(
+            mode="client",
+            source_type="cli_user",
+            source_id="u1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(),
+        )
+
+    def test_burst_anomaly_surfaced_on_gate_result(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = self._trusted_ctx()
+        # Default burst threshold is 3 within a 10s window.
+        results = [pipe.check_tool_execution("search_docs", {}, ctx) for _ in range(4)]
+        assert all(r.allowed for r in results)
+        assert any("burst" in a.lower() for a in results[-1].anomalies)
+
+    def test_novel_recipient_surfaced_on_outbound(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = self._trusted_ctx()
+        first = pipe.check_outbound("hi alice", ctx, recipient="alice@example.com")
+        assert any("novel recipient" in a.lower() for a in first.anomalies)
+        # Once recorded, the same recipient is no longer novel.
+        again = pipe.check_outbound("hi again", ctx, recipient="alice@example.com")
+        assert not any("novel recipient" in a.lower() for a in again.anomalies)
+
+    def test_anomalies_do_not_block(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = self._trusted_ctx()
+        r = pipe.check_outbound("hello", ctx, recipient="new@example.com")
+        assert r.allowed is True
+        assert r.anomalies  # advisory signal present but non-blocking

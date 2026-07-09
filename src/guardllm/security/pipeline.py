@@ -167,6 +167,7 @@ class SecurityPipeline:
         content: str,
         ctx: SecurityContext,
         has_quoting_directive: bool = False,
+        recipient: str | None = None,
     ) -> OutboundResult:
         """Check content leaving the system.
 
@@ -229,11 +230,13 @@ class SecurityPipeline:
         rate_result = self._rate_limiter.check(
             action="outbound",
             ctx=ctx,
+            recipient=recipient,
         )
         if not rate_result.allowed:
             return OutboundResult(
                 allowed=False,
                 reason=rate_result.reason,
+                anomalies=rate_result.anomalies,
             )
 
         # L5: Canary detection on outbound
@@ -241,17 +244,21 @@ class SecurityPipeline:
             return OutboundResult(
                 allowed=False,
                 reason="Canary token detected in outbound content",
+                anomalies=rate_result.anomalies,
             )
 
         # L6: record the now-permitted outbound action so the rate limiter
         # accumulates state across calls (otherwise check() never trips).
-        self._rate_limiter.record(action="outbound", ctx=ctx)
+        self._rate_limiter.record(action="outbound", ctx=ctx, recipient=recipient)
 
+        # Surface non-blocking anomaly signals (burst, novel recipient) rather
+        # than discarding them, so downstream audit/callers can act on them.
         return OutboundResult(
             allowed=True,
             reason="clean" if not dlp_result.echo_detected else "clean (echo signal only)",
             echo_detected=dlp_result.echo_detected,
             echo_lcs=dlp_result.echo_lcs,
+            anomalies=rate_result.anomalies,
         )
 
     def check_tool_execution(
@@ -262,6 +269,7 @@ class SecurityPipeline:
         auth_event: AuthorizationEvent | None = None,
         binding: Binding | None = None,
         message_hash: str | None = None,
+        recipient: str | None = None,
     ) -> GateResult:
         """Policy check before tool execution.
 
@@ -300,12 +308,13 @@ class SecurityPipeline:
             return policy_result
 
         # L6: Rate limit
-        rate_result = self._rate_limiter.check(action=tool, ctx=ctx)
+        rate_result = self._rate_limiter.check(action=tool, ctx=ctx, recipient=recipient)
         if not rate_result.allowed:
             return GateResult(
                 allowed=False,
                 reason=rate_result.reason,
                 confidence="none",
+                anomalies=rate_result.anomalies,
             )
 
         # L11: Request binding verification
@@ -321,8 +330,11 @@ class SecurityPipeline:
 
         # L6: record the now-permitted tool action so the rate limiter
         # accumulates state across calls (otherwise check() never trips).
-        self._rate_limiter.record(action=tool, ctx=ctx)
+        self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
 
+        # Surface non-blocking anomaly signals (burst, novel recipient) rather
+        # than discarding them.
+        policy_result.anomalies = rate_result.anomalies
         return policy_result
 
     def check_kg_extraction(

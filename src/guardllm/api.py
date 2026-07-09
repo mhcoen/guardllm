@@ -237,6 +237,7 @@ class Guard:
         binding: Binding | None = None,
         user_message: str | None = None,
         message_hash: str | None = None,
+        recipient: str | None = None,
     ) -> GateResult:
         """Run policy/rate-limit/binding checks for a tool call."""
         msg_hash = message_hash
@@ -249,6 +250,7 @@ class Guard:
             auth_event=authorization,
             binding=binding,
             message_hash=msg_hash,
+            recipient=recipient,
         )
         self._audit(
             AuditEvent(
@@ -256,6 +258,7 @@ class Guard:
                 tool_name=tool,
                 action_summary=result.reason,
                 firewall_result={"allowed": result.allowed, "confidence": result.confidence},
+                rate_limit_result={"anomalies": result.anomalies} if result.anomalies else None,
                 session_id=context.source_id,
             )
         )
@@ -267,12 +270,14 @@ class Guard:
         context: SecurityContext,
         *,
         has_quoting_directive: bool = False,
+        recipient: str | None = None,
     ) -> OutboundResult:
         """Run outbound DLP/provenance/rate checks."""
         result = self._pipeline.check_outbound(
             content=content,
             ctx=context,
             has_quoting_directive=has_quoting_directive,
+            recipient=recipient,
         )
         self._audit(
             AuditEvent(
@@ -284,6 +289,7 @@ class Guard:
                     "secrets_found": result.secrets_found,
                 },
                 provenance_result={"blocked": result.provenance_blocked},
+                rate_limit_result={"anomalies": result.anomalies} if result.anomalies else None,
                 session_id=context.source_id,
             )
         )
@@ -364,6 +370,7 @@ class Guard:
         require_confirmation: bool = False,
         heightened_scrutiny: bool = False,
         validate: bool = True,
+        recipient: str | None = None,
     ) -> GateResult:
         """Full tool-call guard flow: validation -> policy -> optional confirmation."""
         # L12: auto-require confirmation for destructive tools when policy says so
@@ -405,6 +412,7 @@ class Guard:
             binding=binding,
             user_message=user_message,
             message_hash=message_hash,
+            recipient=recipient,
         )
         if not gate.allowed:
             return gate

@@ -214,12 +214,15 @@ guard.check_tool_call(
     binding: Binding | None = None,
     user_message: str | None = None,
     message_hash: str | None = None,
+    recipient: str | None = None,
 ) -> GateResult
 ```
 
 Behavior:
 - Runs policy check, rate-limit check, and optional binding verification.
 - If `message_hash` absent and `user_message` provided, computes hash from `user_message`.
+- Anti-replay message binding: when an `authorization` is present and a current message hash is available (from `message_hash`/`user_message`), a mismatch against `authorization.message_hash` is denied as a possible replay. `PolicyConfig.require_message_binding` additionally fails closed on a missing current hash.
+- `recipient` (optional) feeds novel-recipient rate-limit anomaly detection; surfaced non-blocking on `GateResult.anomalies` and recorded in the audit event.
 - Emits audit event `tool_call_checked` if audit logger is configured.
 
 ### Method: `check_outbound`
@@ -230,11 +233,13 @@ guard.check_outbound(
     context: SecurityContext,
     *,
     has_quoting_directive: bool = False,
+    recipient: str | None = None,
 ) -> OutboundResult
 ```
 
 Behavior:
 - Runs outbound DLP, provenance checks, rate checks, canary check.
+- `recipient` (optional) feeds novel-recipient rate-limit anomaly detection; surfaced non-blocking on `OutboundResult.anomalies` and recorded in the audit event.
 - Emits audit event `outbound_checked` if audit logger is configured.
 
 ### Method: `validate_tool_args`
@@ -302,14 +307,18 @@ await guard.guard_tool_call(
     require_confirmation: bool = False,
     heightened_scrutiny: bool = False,
     validate: bool = True,
+    recipient: str | None = None,
 ) -> GateResult
 ```
 
 Execution order:
-1. Optional validation (`validate=True` by default)
-2. Tool policy/rate/binding checks (`check_tool_call`)
-3. Optional manual confirmation (`require_confirmation=True`)
-4. G6 commitment verification: after confirmation, verifies that tool args have not been mutated since the confirmation handler was called. If args changed, the call is rejected with `"Commitment verification failed"`. This prevents TOCTOU attacks where args are swapped between confirmation and execution.
+1. Confirmation escalation: `require_confirmation` is forced to `True` when policy demands it, even if the caller passed `False`. This fires for a destructive tool under `auto_confirm_destructive`, for web-derived context (`context_has_web_derived=True`) under `escalation_gate_enabled`, and for a principal at or below `confirm_all_below`. Escalation fails closed: if confirmation is required and no handler is configured, the call is denied.
+2. Optional validation (`validate=True` by default)
+3. Tool policy/rate/binding checks (`check_tool_call`), including anti-replay message binding
+4. Optional/escalated confirmation (`require_confirmation=True`)
+5. G6 commitment verification: after confirmation, verifies that tool args have not been mutated since the confirmation handler was called. If args changed, the call is rejected with `"Commitment verification failed"`. This prevents TOCTOU attacks where args are swapped between confirmation and execution.
+
+`recipient` (optional) is forwarded to `check_tool_call` for novel-recipient anomaly detection.
 
 Return behavior:
 - Validation failure: `GateResult(allowed=False, reason="Validation failed: ...", confidence="none")`
@@ -357,6 +366,7 @@ Fields:
 - `enable_destructive: bool = False`
 - `capability_scopes: dict[str, Any] | None = None` (`None` = no allowlist; `{}` = deny all tools)
 - `client_id: str | None = None`
+- `server_default_deny: bool = False` (server mode: when `True`, a missing `capability_scopes` denies all tools instead of allowing by default)
 - `rate_limits: dict[str, Any] = {}`
 - `argument_limits: dict[str, Any] = {}`
 - `escalation_gate_enabled: bool = True`
@@ -374,6 +384,7 @@ Fields:
 - `contaminated_tool_policy: str = "allow"` (`"allow"` | `"require_auth"` | `"deny"`)
 - `auto_confirm_destructive: bool = False`
 - `require_source_id_for: frozenset[str] = frozenset()`
+- `require_message_binding: str = "off"` (`"off"` | `"destructive"` | `"all"`; anti-replay message binding)
 
 ### Protocol Class: `ConfirmationHandler`
 
@@ -424,6 +435,7 @@ Fields:
 - `reason: str`
 - `matched_directive: str | None = None`
 - `confidence: str = "none"` (`"explicit" | "implicit" | "none"` by convention)
+- `anomalies: list[str] = []` (non-blocking rate-limit signals: burst, novel recipient)
 
 ### Dataclass: `OutboundResult`
 
@@ -436,6 +448,7 @@ Fields:
 - `contamination_triggered: bool = False`
 - `echo_detected: bool = False`
 - `echo_lcs: int = 0`
+- `anomalies: list[str] = []` (non-blocking rate-limit signals: burst, novel recipient)
 
 ### Dataclass: `RateLimitResult`
 

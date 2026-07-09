@@ -35,8 +35,8 @@ Recommended pattern for write-capable tools:
 ## Runtime Checks
 
 - `guard.process_inbound(content, context) -> ProcessedContent`
-- `guard.check_tool_call(tool, args, context, authorization=..., binding=..., user_message=..., message_hash=...) -> GateResult`
-- `guard.check_outbound(content, context, has_quoting_directive=False) -> OutboundResult`
+- `guard.check_tool_call(tool, args, context, authorization=..., binding=..., user_message=..., message_hash=..., recipient=...) -> GateResult`
+- `guard.check_outbound(content, context, has_quoting_directive=False, recipient=...) -> OutboundResult`
 - `guard.validate_tool_args(tool, args) -> ValidationResult`
 - `await guard.confirm_action(tool, args, context, summary=..., ...) -> bool`
 - `await guard.guard_tool_call(tool, args, context, ...) -> GateResult`
@@ -47,12 +47,13 @@ Recommended pattern for write-capable tools:
 - `confirm_action(...)` and `guard_tool_call(..., require_confirmation=True)` rely on `context.confirmation_handler`.
 - If no handler is configured, confirmation fails closed (`False`) and the action is blocked.
 - For heightened scrutiny, pass `context_has_web_derived=True` to include the hardcoded warning context in the confirmation payload.
+- `guard_tool_call` escalates to confirmation automatically (even without `require_confirmation=True`) when policy requires it: `auto_confirm_destructive` for destructive tools, `context_has_web_derived=True` under `escalation_gate_enabled`, or a principal at or below `confirm_all_below`. Escalation fails closed with no handler.
 
 ## Return Objects
 
 - `ProcessedContent`: sanitized content, warnings, source metadata.
-- `GateResult`: allow/deny decision and reason for tool execution.
-- `OutboundResult`: allow/deny decision and exfiltration/provenance indicators.
+- `GateResult`: allow/deny decision and reason for tool execution, plus non-blocking rate-limit `anomalies` (burst, novel recipient).
+- `OutboundResult`: allow/deny decision and exfiltration/provenance indicators, plus non-blocking rate-limit `anomalies`.
 - `ValidationResult`: argument validation pass/fail with field-level details.
 
 ## Minimal End-to-End Example

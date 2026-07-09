@@ -27,6 +27,8 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - `contaminated_tool_policy`: tool gating when context is contaminated (`"allow"`, `"require_auth"`, or `"deny"`; default `"allow"`).
 - `auto_confirm_destructive`: auto-require confirmation for destructive tool calls (default `False`). Production deployments should set to `True`.
 - `require_source_id_for`: source types that require non-empty `source_id` (default empty frozenset). Blocks KG extraction when violated.
+- `server_default_deny`: server-mode fail-closed (default `False`). When `True`, a missing `capability_scopes` (`None`) denies all tools instead of allowing non-destructive tools by default. Set to `True` in production so a forgotten scope config does not silently allow tools.
+- `require_message_binding`: anti-replay message binding for client-mode authorizations (`"off"`, `"destructive"`, or `"all"`; default `"off"`). A current message hash that mismatches the authorized message is always denied as replay; this flag additionally controls whether a *missing* current hash fails closed: `"destructive"` requires it for destructive tools, `"all"` for every authorized tool call.
 
 ## SecurityContext
 
@@ -45,6 +47,8 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 - Keep `enable_destructive=False` unless explicitly required.
 - Use `UNTRUSTED` for any external or mixed-provenance source.
 - Require both authorization and binding for all write-capable tools.
+- Set `server_default_deny=True` (server mode) so a missing `capability_scopes` fails closed.
+- Set `require_message_binding="destructive"` (or `"all"`) and pass the current `user_message`/`message_hash` so authorizations cannot be replayed across messages.
 - Preserve and monitor warnings from `process_inbound`.
 
 ## Deployment Guidance

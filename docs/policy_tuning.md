@@ -40,7 +40,12 @@ Recommended:
 ## 5) Rate limiting
 
 - Tune by action criticality and user volume.
-- Keep anomaly detection enabled (novel recipient / burst patterns).
+- Keep anomaly detection enabled (novel recipient / burst patterns). Pass `recipient=` to `check_tool_call`/`check_outbound` to drive novel-recipient detection; anomalies surface non-blocking on `GateResult.anomalies` / `OutboundResult.anomalies` and in the audit trail.
+
+## 6) Fail-closed options
+
+- `server_default_deny=True` (server mode): deny all tools when `capability_scopes` is unset.
+- `require_message_binding="destructive"` (or `"all"`): reject write-tool authorizations that are not bound to the current user message. Pass the current `user_message`/`message_hash` at the call site.
 
 ## Tuning workflow
 

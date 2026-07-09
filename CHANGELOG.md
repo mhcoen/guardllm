@@ -4,6 +4,29 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-09
+
+### Security
+- Injection detection now strips zero-width, bidi, and tag characters before scanning, so a trigger word split by an invisible character (e.g. U+200B) no longer evades detection.
+- Outbound secret scanning now inspects invisible-stripped and whitespace-removed forms, so a key split by a space or zero-width character is still caught. The high-entropy scan gained a length-aware threshold that closes a dead zone for 20-22 character tokens, and covers the whitespace-removed form (gated to digit-bearing tokens to avoid flagging natural language).
+- Canary detection is now case- and separator-insensitive, so an exfiltrated token cannot be hidden by re-casing or inserting spaces/zero-width characters.
+- `wrap_untrusted` neutralizes any `</untrusted_content>` sentinel embedded in untrusted content and XML-escapes attribute values, preventing untrusted content from breaking out of or spoofing the isolation boundary.
+- `validate_arguments` now applies path-traversal and null-byte checks to every argument (not just six named ones), recurses into lists/dicts including dict keys, and is depth-bounded to reject deeply nested or cyclic input instead of raising `RecursionError`.
+- `guard_tool_call` now enforces the escalation gate: web-derived context (INV-MUSE-7) and `confirm_all_below` force confirmation, failing closed when no handler is configured.
+- The policy engine now binds client-mode authorizations to the current user message: a mismatching message hash is denied as replay.
+
+### Added
+- `PolicyConfig.require_message_binding` (`"off"` | `"destructive"` | `"all"`): anti-replay message binding; fail-closed opt-in for a missing current message hash.
+- `PolicyConfig.server_default_deny`: server-mode fail-closed when `capability_scopes` is unset.
+- `recipient` parameter on `Guard.check_tool_call`, `Guard.check_outbound`, and `Guard.guard_tool_call`, feeding novel-recipient rate-limit anomaly detection.
+- `GateResult.anomalies` and `OutboundResult.anomalies`: non-blocking rate-limit signals (burst, novel recipient), also recorded in the audit trail.
+
+### Fixed
+- The rate limiter now records permitted actions on the success path, so per-session limits actually accumulate and eventually trip.
+
+### Changed
+- `confusables` (>=1.2) is now a declared runtime dependency; when it is absent, TR39 homoglyph normalization emits a `RuntimeWarning` instead of silently degrading to a no-op.
+
 ## [1.1.0] - 2026-05-28
 
 ### Added

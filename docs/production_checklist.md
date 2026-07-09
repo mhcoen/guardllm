@@ -5,7 +5,7 @@ Use this checklist before deploying guardllm-backed flows.
 ## 1. Dependency and Environment
 
 - Use a dedicated project environment.
-- Install package and dev deps from project metadata.
+- Install package and dev deps from project metadata. Runtime dependencies are `beautifulsoup4` and `confusables` (TR39 homoglyph normalization); if `confusables` is missing, homoglyph normalization is disabled and a `RuntimeWarning` is emitted.
 - Pin dependency versions in your deployment system.
 
 ## 2. Trust Boundary Setup
@@ -17,8 +17,8 @@ Use this checklist before deploying guardllm-backed flows.
 ## 3. Tool Execution Controls
 
 - Enable destructive tools only where required (`PolicyConfig(enable_destructive=True)`).
-- Enforce scope-limited server policies (`capability_scopes`).
-- Require explicit authorization and request binding for write-capable tools.
+- Enforce scope-limited server policies (`capability_scopes`), and set `server_default_deny=True` so a missing scope config fails closed.
+- Require explicit authorization and request binding for write-capable tools; set `require_message_binding="destructive"` (or `"all"`) and pass the current `user_message`/`message_hash` to prevent authorization replay.
 - Require L12 confirmation for high-impact actions (`guard_tool_call(..., require_confirmation=True)`).
 
 ## 4. Outbound Safety

@@ -71,7 +71,7 @@ The application itself, the policy configuration, and the principal identity are
 | T-IN4 | Untrusted content synthesizing an `AuthorizationEvent`                                   | Authorization events come only from app adapters, never from content; policy engine rejects events with no matching adapter source |
 | T-IN5 | Destructive tool call from untrusted-trust principal                                     | Policy engine + `DESTRUCTIVE_TOOLS` allowlist requires explicit authorization |
 | T-IN6 | Parameter tampering between authorization and execution                                  | `Guard.bind_request` + verification at call site          |
-| T-IN7 | Replay of stale authorization or binding                                                 | Anti-replay window in binding verification                |
+| T-IN7 | Replay of stale authorization or binding                                                 | Anti-replay window in binding verification; policy-engine message binding (`PolicyConfig.require_message_binding`) denies an authorization whose message hash does not match the current message |
 | T-IN8 | Untrusted-provenance content copied into outbound payload                                | `Guard.check_outbound` provenance + DLP                   |
 | T-IN9 | Exfiltration via canary token                                                            | Canary detection at ingress and outbound                  |
 | T-IN10| Internal detail leakage via exception messages                                           | `Guard.sanitize_exception`                                |
@@ -88,7 +88,7 @@ The application itself, the policy configuration, and the principal identity are
 | T-OUT4 | Attacks requiring the network attacker to break TLS                                  | TLS is a layer below GuardLLM.                                                   |
 | T-OUT5 | Side-channel timing attacks on the detector                                          | Heuristics are intentionally fast; we do not claim timing-side-channel resistance. |
 | T-OUT6 | Adversarial perturbation of LLM weights (model supply-chain)                         | Layer above GuardLLM; use trusted model sources.                                 |
-| T-OUT7 | Vulnerabilities in `beautifulsoup4` or other runtime deps                            | Tracked via Dependabot and pip-audit; CVEs fixed by upgrading, not patched in GuardLLM. |
+| T-OUT7 | Vulnerabilities in `beautifulsoup4`, `confusables`, or other runtime deps           | Tracked via Dependabot and pip-audit; CVEs fixed by upgrading, not patched in GuardLLM. |
 | T-OUT8 | Detection of human-targeted social engineering not aimed at the model                | Not a content-injection threat.                                                  |
 
 ## Assumptions

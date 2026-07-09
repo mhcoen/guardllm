@@ -34,8 +34,8 @@ This is the architectural gap that point tools leave open. Individual tools like
 
 **Integrity & replay**
 - Request binding for tool calls (prevents parameter tampering)
-- Anti-replay checks (prevents reuse of stale authorizations)
-- Rate limiting and anomaly checks
+- Anti-replay checks (prevents reuse of stale authorizations), including message binding that ties an authorization to the user message that produced it
+- Rate limiting and anomaly checks (burst and novel-recipient signals)
 - Argument validation against declared schemas
 
 **Outbound & audit**

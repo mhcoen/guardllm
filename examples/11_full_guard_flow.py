@@ -56,6 +56,7 @@ async def main() -> None:
         validate=True,
     )
     print("[full] gated tool call allowed:", result.allowed, "|", result.reason)
+    assert result.allowed
 
     invalid = await guard.guard_tool_call(
         tool="search_knowledge",
@@ -64,9 +65,11 @@ async def main() -> None:
         validate=True,
     )
     print("[full] validation failed:", invalid.allowed, "|", invalid.reason)
+    assert not invalid.allowed
 
     sanitized = guard.sanitize_exception(PermissionDeniedError("blocked"))
     print("[full] sanitized error:", sanitized)
+    assert "error" in sanitized
 
     print("[full] audit events:", [e["event_type"] for e in audit.get_events(limit=20)])
 

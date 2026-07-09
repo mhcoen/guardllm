@@ -33,9 +33,13 @@ def main() -> None:
     bad_args = {"thread_handle": "bad@#$"}
     result_invalid = checked_dispatch("search_knowledge", bad_args)
     print("[validation] invalid args sanitized response:", result_invalid)
+    assert result_invalid["error"]["code"] == "invalid_params"
 
     blocked_tool = checked_dispatch("gmail_delete_email", {"thread_handle": "ok_handle"})
     print("[error] permission denied sanitized response:", blocked_tool)
+    # The sanitized payload never leaks the internal reason ("destructive action denied").
+    assert "error" in blocked_tool
+    assert "destructive action denied" not in str(blocked_tool)
 
 
 if __name__ == "__main__":

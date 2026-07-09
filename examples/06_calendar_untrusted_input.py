@@ -24,6 +24,7 @@ def main() -> None:
     processed = guard.process_inbound(event_notes, calendar_ctx)
     print("[calendar] cleaned content:", processed.content)
     print("[calendar] warnings:", processed.warnings)
+    assert "\u202e" not in processed.content  # bidi override stripped
 
     sg = check_extraction_allowed("calendar_content", source_id="event-8831")
     print("[calendar] KG extraction policy:", sg.policy.value, "|", sg.reason)

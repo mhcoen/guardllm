@@ -25,6 +25,9 @@ def main() -> None:
     processed = guard.process_inbound(payload, unknown_ctx)
     print("[other] cleaned content:", processed.content)
     print("[other] warnings:", processed.warnings)
+    # Untrusted content is wrapped in an isolation boundary; the payload is kept.
+    assert processed.isolated
+    assert "summary" in processed.content
 
     sg = check_extraction_allowed("tool_output", source_id="third-party-webhook")
     print("[other] KG extraction policy:", sg.policy.value, "|", sg.reason)

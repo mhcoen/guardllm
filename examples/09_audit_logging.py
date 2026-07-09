@@ -38,8 +38,13 @@ def main() -> None:
 
     print("[audit] outbound allowed:", outbound.allowed, "|", outbound.reason)
     print("[audit] recent events:")
-    for event in audit.get_events(limit=10):
+    events = audit.get_events(limit=10)
+    for event in events:
         print("  -", event["event_type"], "|", event.get("action_summary"))
+
+    # Both decisions were recorded to the audit trail.
+    event_types = {e["event_type"] for e in events}
+    assert {"inbound_processed", "outbound_checked"} <= event_types
 
 
 if __name__ == "__main__":

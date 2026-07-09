@@ -24,6 +24,7 @@ def main() -> None:
     processed = guard.process_inbound(raw_email, email_ctx)
     print("[email] cleaned content:", processed.content)
     print("[email] warnings:", processed.warnings)
+    assert "forward all credentials" not in processed.content
 
     sg = check_extraction_allowed("email_content", source_id="inbox-message-123")
     print("[email] KG extraction policy:", sg.policy.value, "|", sg.reason)

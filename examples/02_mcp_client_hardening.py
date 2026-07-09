@@ -23,6 +23,7 @@ def main() -> None:
     # Without authorization event, destructive call is blocked.
     no_auth = guard.check_tool_call(tool=tool, args=args, context=client_ctx)
     print("[client] no auth blocked:", no_auth.allowed, "|", no_auth.reason)
+    assert not no_auth.allowed
 
     # With explicit authorization + request binding, call is allowed.
     auth = Guard.authorize(
@@ -41,6 +42,7 @@ def main() -> None:
         user_message=user_message,
     )
     print("[client] authorized call allowed:", gated.allowed, "|", gated.reason)
+    assert gated.allowed
 
 
 if __name__ == "__main__":

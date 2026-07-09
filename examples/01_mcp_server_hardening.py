@@ -27,6 +27,10 @@ def main() -> None:
     processed = guard.process_inbound(inbound, server_ctx)
     print("[server] inbound cleaned:", processed.content)
     print("[server] warnings:", processed.warnings)
+    # This context is plaintext (MCP client args), so untrusted text is isolated
+    # in an <untrusted_content> boundary rather than HTML-stripped.
+    assert processed.isolated
+    assert "<untrusted_content" in processed.content
 
     allowed = guard.check_tool_call(
         tool="search_knowledge",
@@ -34,6 +38,7 @@ def main() -> None:
         context=server_ctx,
     )
     print("[server] safe tool allowed:", allowed.allowed, "|", allowed.reason)
+    assert allowed.allowed
 
     blocked = guard.check_tool_call(
         tool="gmail_send_email",  # destructive + not in scope
@@ -41,6 +46,7 @@ def main() -> None:
         context=server_ctx,
     )
     print("[server] destructive tool blocked:", blocked.allowed, "|", blocked.reason)
+    assert not blocked.allowed
 
 
 if __name__ == "__main__":

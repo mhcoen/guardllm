@@ -43,6 +43,7 @@ async def main() -> None:
     )
     ok = await gate.confirm(proposal_allowed, ctx, context_has_web_derived=True)
     print("[l12] allowed proposal:", ok)
+    assert ok is True
 
     proposal_blocked = ActionProposal(
         tool_name="gmail_send_email",
@@ -52,6 +53,7 @@ async def main() -> None:
     )
     blocked = await gate.confirm(proposal_blocked, ctx, context_has_web_derived=True)
     print("[l12] blocked proposal:", blocked)
+    assert blocked is False
 
 
 if __name__ == "__main__":

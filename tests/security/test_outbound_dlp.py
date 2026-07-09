@@ -140,6 +140,25 @@ class TestSecretScanning:
         # Just verify it doesn't crash
         assert isinstance(found, list)
 
+    def test_short_random_token_20_to_22_chars_flagged(self):
+        """M1: 20-22 char random tokens must be catchable. Their theoretical
+        max entropy (log2(L) = 4.32-4.46) is below the 4.5 absolute threshold,
+        so a length-aware threshold is required to flag them."""
+        for token in ("aB3xK9mQ7pL2vN8wR5tZ", "aB3xK9mQ7pL2vN8wR5tZq", "aB3xK9mQ7pL2vN8wR5tZq4"):
+            found = _scan_secrets(token)
+            assert any("entropy" in s.lower() for s in found), f"{token} not flagged"
+
+    def test_short_low_entropy_strings_not_flagged(self):
+        """Length-aware threshold must not flag benign long words / paths."""
+        for benign in (
+            "supercalifragilistic",
+            "pneumonoultramicroscopicsilico",
+            "the_quick_brown_fox_jumps",
+            "https_example_com_pathname",
+        ):
+            found = _scan_secrets(benign)
+            assert not any("entropy" in s.lower() for s in found), f"{benign} false positive"
+
 
 # ---------------------------------------------------------------------------
 # OutboundDLP.check

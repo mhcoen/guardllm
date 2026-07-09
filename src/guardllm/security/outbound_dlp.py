@@ -45,6 +45,12 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 _ENTROPY_THRESHOLD = 4.5
 _ENTROPY_MIN_LENGTH = 20
+# A string of length L has a maximum possible Shannon entropy of log2(L).
+# For L in [20, 22] that ceiling (4.32 - 4.46 bits) is below _ENTROPY_THRESHOLD,
+# so a 20-22 char random token could NEVER trip the absolute threshold. For
+# such short tokens, flag when the entropy is within this margin of the
+# theoretical maximum for the length (i.e. near-maximal randomness) instead.
+_ENTROPY_LENGTH_MARGIN = 0.30
 
 # Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
@@ -104,7 +110,13 @@ def _scan_secrets(text: str) -> list[str]:
     for token in re.findall(r"[A-Za-z0-9+/\-_]{20,}", stripped):
         if len(token) >= _ENTROPY_MIN_LENGTH:
             entropy = _shannon_entropy(token)
-            if entropy >= _ENTROPY_THRESHOLD:
+            # Length-aware threshold: never require more entropy than the
+            # length can produce. Caps at _ENTROPY_THRESHOLD for long tokens
+            # (unchanged) but closes the 20-22 char dead zone for short ones.
+            effective_threshold = min(
+                _ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN
+            )
+            if entropy >= effective_threshold:
                 label = f"High-entropy token ({entropy:.1f} bits)"
                 if label not in found:
                     found.append(label)

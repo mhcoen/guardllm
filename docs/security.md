@@ -49,7 +49,7 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 The central orchestrator is `guardllm.security.pipeline.SecurityPipeline`, exposed through the high-level `Guard` API.
 
 Inbound path:
-1. TR39 confusable normalization (homoglyph characters mapped to ASCII)
+1. TR39 confusable normalization (homoglyph characters mapped to ASCII within mixed-script runs; legitimate single-script international text is preserved)
 2. Sanitize untrusted input (L0)
 3. Isolate by trust level (L1)
 4. Ingest for outbound DLP comparisons (L3 data prep)
@@ -73,7 +73,7 @@ Tool-call path:
 4. Optional L12 confirmation gate with G6 commitment verification: the action gate captures a canonical snapshot of tool args before the confirmation handler is called. After confirmation, `verify_commitment` checks that the args have not been mutated. If args changed between confirmation and execution, the call is rejected (prevents TOCTOU attacks on the confirmation flow).
 
 Outbound path:
-1. TR39 confusable normalization (homoglyph characters mapped to ASCII)
+1. TR39 confusable normalization (homoglyph characters mapped to ASCII within mixed-script runs; legitimate single-script international text is preserved)
 2. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters) and hex decode-then-scan for entropy detection
 3. Provenance reuse guard (L4), including deobfuscated variants
 4. Rate limiting (L6)

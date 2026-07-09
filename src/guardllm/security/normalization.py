@@ -96,21 +96,54 @@ def _build_confusable_table() -> dict[int, str]:
 _CONFUSABLE_TABLE: dict[int, str] = _build_confusable_table()
 
 
+def _char_script(ch: str) -> str | None:
+    """Best-effort Unicode script of a letter, from its character name.
+
+    Returns e.g. "LATIN", "CYRILLIC", "GREEK", or None for non-letters
+    (digits, punctuation, whitespace are script-neutral and ignored).
+    """
+    if not ch.isalpha():
+        return None
+    try:
+        name = unicodedata.name(ch)
+    except ValueError:
+        return None
+    return name.split(" ", 1)[0]
+
+
 def normalize_confusables(text: str) -> str:
-    """Map Unicode confusable characters to their ASCII canonical forms.
+    """Map homoglyph characters to their ASCII canonical forms.
 
-    Applies NFC normalization first, then maps all TR39 confusable
-    characters to ASCII equivalents. This defeats homoglyph substitution
-    attacks (e.g. Cyrillic U+0430 -> Latin 'a').
+    Applies NFC normalization, then maps TR39 confusable characters to ASCII
+    equivalents, but only within a mixed-script letter run -- the signature of
+    a homoglyph-substitution attack (e.g. Cyrillic U+0430 spliced into an
+    otherwise-Latin "b_nk" -> "bank"). Pure-script runs are left untouched, so
+    legitimate international text ("Małgorzata", "mystères") is preserved
+    rather than being flattened to ASCII.
 
-    This function should be called at every trust boundary before any
-    security-relevant operation (tagging, entropy scan, pattern matching,
-    overlap comparison).
+    This is the preserving normalizer applied to content that flows onward to
+    the model/user. Internal comparison/scanning normalizers
+    (``normalize_for_overlap``, ``strip_invisibles``) remain aggressive.
     """
     text = unicodedata.normalize("NFC", text)
     if not _CONFUSABLE_TABLE:
         return text
-    return text.translate(_CONFUSABLE_TABLE)
+
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i].isalpha():
+            j = i
+            while j < n and text[j].isalpha():
+                j += 1
+            run = text[i:j]
+            scripts = {s for s in map(_char_script, run) if s is not None}
+            out.append(run.translate(_CONFUSABLE_TABLE) if len(scripts) > 1 else run)
+            i = j
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
 
 
 def strip_invisibles(text: str) -> str:

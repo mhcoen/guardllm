@@ -394,6 +394,25 @@ class TestConfusableNormalization:
         # Cyrillic small letter a (U+0430) is a visual twin of Latin 'a'
         assert normalize_confusables("bаnk") == "bank"
 
+    def test_mixed_script_homoglyph_normalized(self):
+        """A confusable spliced into an otherwise-Latin word (mixed script)
+        is the attack signature and must be normalized."""
+        assert normalize_confusables("pаypаl") == "paypal"  # Cyrillic а in Latin
+        assert normalize_confusables("ignоre the api key") == "ignore the api key"
+
+    def test_pure_script_international_text_preserved(self):
+        """Legitimate single-script text is NOT flattened to ASCII: the
+        mapping only fires on mixed-script runs, not on accented Latin,
+        en-dashes, or non-Latin scripts."""
+        for text in (
+            "Małgorzata Rożniecka",
+            "Les mystères du Christ: Icônes",
+            "2002 – 2006 election",
+            "café",
+            "привет мир",
+        ):
+            assert normalize_confusables(text) == text, text
+
     def test_homoglyph_normalized_in_overlap_pipeline(self):
         """normalize_for_overlap must also apply confusable mapping."""
         assert normalize_for_overlap("іgnore") == "ignore"

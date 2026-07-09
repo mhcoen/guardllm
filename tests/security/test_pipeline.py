@@ -1203,3 +1203,50 @@ class TestCapabilityScopesClientMode:
             ctx,
         )
         assert result.allowed is False
+
+
+# ---------------------------------------------------------------------------
+# L6: rate limiting actually fires through the pipeline (regression)
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitWiredThroughPipeline:
+    """Regression: record() must be invoked on the success path so the
+    rate limiter accumulates state across calls and eventually blocks."""
+
+    def test_check_outbound_rate_limit_fires(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="cli_user",
+            source_id="user-1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 3}}
+            ),
+        )
+        for _ in range(3):
+            assert pipe.check_outbound("a normal message", ctx).allowed
+        blocked = pipe.check_outbound("a normal message", ctx)
+        assert blocked.allowed is False
+        assert "limit" in blocked.reason.lower()
+
+    def test_check_tool_execution_rate_limit_fires(self):
+        pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
+        ctx = SecurityContext(
+            mode="client",
+            source_type="cli_user",
+            source_id="user-1",
+            source_trust=TrustLevel.TRUSTED,
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(
+                rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 2}}
+            ),
+        )
+        for _ in range(2):
+            assert pipe.check_tool_execution("search", {"q": "x"}, ctx).allowed
+        blocked = pipe.check_tool_execution("search", {"q": "x"}, ctx)
+        assert blocked.allowed is False
+        assert "limit" in blocked.reason.lower()
+

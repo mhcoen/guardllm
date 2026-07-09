@@ -243,6 +243,10 @@ class SecurityPipeline:
                 reason="Canary token detected in outbound content",
             )
 
+        # L6: record the now-permitted outbound action so the rate limiter
+        # accumulates state across calls (otherwise check() never trips).
+        self._rate_limiter.record(action="outbound", ctx=ctx)
+
         return OutboundResult(
             allowed=True,
             reason="clean" if not dlp_result.echo_detected else "clean (echo signal only)",
@@ -311,6 +315,10 @@ class SecurityPipeline:
                     reason=bind_reason,
                     confidence="none",
                 )
+
+        # L6: record the now-permitted tool action so the rate limiter
+        # accumulates state across calls (otherwise check() never trips).
+        self._rate_limiter.record(action=tool, ctx=ctx)
 
         return policy_result
 

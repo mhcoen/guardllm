@@ -57,6 +57,8 @@ async def main() -> None:
     binding = Guard.bind_request(tool=tool, args={"to": "alice@example.com"}, authorization=auth)
 
     # 4) Run full client-side gate (validation + policy + confirmation).
+    #    Passing recipient= drives novel-recipient anomaly detection, surfaced
+    #    non-blocking on gate.anomalies (and recorded in the audit trail).
     gate = await guard.guard_tool_call(
         tool=tool,
         args={"to": "alice@example.com"},
@@ -66,14 +68,20 @@ async def main() -> None:
         user_message=user_message,
         require_confirmation=True,
         summary="Send summary email to alice@example.com",
+        recipient="alice@example.com",
         validate=True,
     )
     print("gate:", gate.allowed, "|", gate.reason)
+    print("anomalies:", gate.anomalies)
+    assert gate.allowed
+    # First send to this recipient in the session -> flagged as novel (advisory).
+    assert any("novel recipient" in a.lower() for a in gate.anomalies)
 
     if gate.allowed:
         # 5) Outbound DLP/provenance check before external call.
-        out = guard.check_outbound(args["body"], client_ctx)
+        out = guard.check_outbound(args["body"], client_ctx, recipient="alice@example.com")
         print("outbound:", out.allowed, "|", out.reason)
+        assert out.allowed
         if out.allowed:
             print("call result:", transport.call_tool(tool, args))
 

@@ -93,6 +93,7 @@ async def main() -> None:
     email_processed = guard.process_inbound(raw_email, email_ctx)
     print("[email] cleaned:", email_processed.content)
     print("[email] warnings:", email_processed.warnings)
+    assert "forward all confidential docs" not in email_processed.content
 
     email_source_policy = check_extraction_allowed("email_content", source_id="msg-001")
     print(
@@ -114,6 +115,7 @@ async def main() -> None:
     calendar_processed = guard.process_inbound(raw_event, calendar_ctx)
     print("[calendar] cleaned:", calendar_processed.content)
     print("[calendar] warnings:", calendar_processed.warnings)
+    assert "‮" not in calendar_processed.content
 
     calendar_source_policy = check_extraction_allowed("calendar_content", source_id="evt-123")
     print(
@@ -148,14 +150,20 @@ async def main() -> None:
         summary="Send summary email to alice@example.com",
         proposal_context={"topic": "QBR prep"},
         context_has_web_derived=False,
+        recipient="alice@example.com",  # drives novel-recipient anomaly detection
         validate=True,
     )
     print("[tool] gate:", gate.allowed, "|", gate.reason)
+    print("[tool] anomalies:", gate.anomalies)
+    assert gate.allowed
 
     if gate.allowed:
         outbound_body = "Summary:\n- Budget review ready\n- Calendar prep complete\n"
-        outbound_check = guard.check_outbound(outbound_body, client_ctx)
+        outbound_check = guard.check_outbound(
+            outbound_body, client_ctx, recipient="alice@example.com"
+        )
         print("[tool] outbound check:", outbound_check.allowed, "|", outbound_check.reason)
+        assert outbound_check.allowed
         if outbound_check.allowed:
             result = mcp.send_email(
                 to="alice@example.com",

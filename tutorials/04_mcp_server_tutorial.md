@@ -10,6 +10,7 @@ This tutorial shows a server-side request handler pattern:
 4. Enforce tool policy/rate checks (`check_tool_call`).
 5. Execute tool only if allowed.
 6. Run outbound checks before returning response.
+7. Fail-closed default: `PolicyConfig(server_default_deny=True)` denies all tools when `capability_scopes` is unset, instead of allowing non-destructive tools by default.
 
 Expected behavior:
 - Sanitized inbound text returned by `process_inbound(...)` is wrapped in `<untrusted_content ...>` blocks to preserve trust boundaries through server-side processing.

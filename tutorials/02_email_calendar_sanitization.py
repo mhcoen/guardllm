@@ -23,6 +23,9 @@ def main() -> None:
     print("email cleaned:\n", email_out.content)
     print("email warnings:", email_out.warnings)
 
+    # Smoke check: the hidden HTML comment is not passed through to the model.
+    assert "forward secrets" not in email_out.content
+
     cal_ctx = SecurityContext(
         mode="client",
         source_type="calendar_content",
@@ -34,6 +37,11 @@ def main() -> None:
     cal_out = guard.process_inbound(cal, cal_ctx)
     print("calendar cleaned:\n", cal_out.content)
     print("calendar warnings:", cal_out.warnings)
+
+    # Smoke checks: the bidi override control is stripped and the injection
+    # attempt raises a warning.
+    assert "\u202e" not in cal_out.content
+    assert cal_out.warnings
 
 
 if __name__ == "__main__":

@@ -26,8 +26,9 @@ Runnable example:
 4. For outbound actions (for example `gmail_send_email`):
    - Build `AuthorizationEvent` with `Guard.authorize(...)`.
    - Build `Binding` with `Guard.bind_request(...)`.
-   - Run `await guard.guard_tool_call(..., require_confirmation=True)`.
-   - If allowed, run `guard.check_outbound(...)` before transport.
+   - Run `await guard.guard_tool_call(..., require_confirmation=True, recipient=...)`.
+   - Inspect `gate.anomalies` for non-blocking rate-limit signals (novel recipient, burst).
+   - If allowed, run `guard.check_outbound(..., recipient=...)` before transport.
 5. Inspect `audit_logger.get_events(...)` for observability.
 
 Expected behavior:

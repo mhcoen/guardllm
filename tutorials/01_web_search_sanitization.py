@@ -22,6 +22,10 @@ def main() -> None:
     print("cleaned:\n", processed.content)
     print("warnings:", processed.warnings)
 
+    # Smoke checks: the hidden injection is stripped, the visible content is kept.
+    assert "ignore all previous instructions" not in processed.content
+    assert "pagination" in processed.content
+
     sg = check_extraction_allowed("web_content", source_id="duckduckgo")
     print("kg policy:", sg.policy.value, "|", sg.reason)
 

@@ -77,7 +77,9 @@ def main() -> None:
         "tool": "search_knowledge",
         "args": {"query": "project roadmap milestones"},
     }
-    print(handle_mcp_request(guard, dispatcher, safe_req))
+    safe_resp = handle_mcp_request(guard, dispatcher, safe_req)
+    print(safe_resp)
+    assert "error" not in safe_resp and safe_resp.get("ok") is True
 
     print("\n=== server tutorial: blocked request (tool not in capability scopes) ===")
     blocked_req = {
@@ -85,7 +87,21 @@ def main() -> None:
         "tool": "gmail_send_email",
         "args": {"to": "attacker@example.com"},
     }
-    print(handle_mcp_request(guard, dispatcher, blocked_req))
+    blocked_resp = handle_mcp_request(guard, dispatcher, blocked_req)
+    print(blocked_resp)
+    assert "error" in blocked_resp
+
+    print("\n=== server tutorial: fail-closed default (server_default_deny) ===")
+    # If you forget to configure capability_scopes, server mode allows
+    # non-destructive tools by default. Set server_default_deny=True so a
+    # missing scope config denies everything instead of failing open.
+    locked_ctx = Guard.context_mcp_client(
+        client_id="agent-42",
+        policy=PolicyConfig(server_default_deny=True),  # no capability_scopes
+    )
+    locked = guard.check_tool_call(tool="search_knowledge", args={}, context=locked_ctx)
+    print("search_knowledge with server_default_deny:", locked.allowed, "|", locked.reason)
+    assert not locked.allowed
 
 
 if __name__ == "__main__":

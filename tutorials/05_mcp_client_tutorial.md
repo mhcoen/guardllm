@@ -8,7 +8,8 @@ This tutorial shows a client-side tool invocation pattern:
 2. Sanitize unknown-provenance inputs used in arguments/prompts.
 3. Require explicit authorization + request binding.
 4. Run `guard_tool_call(..., require_confirmation=True)`.
-5. Run outbound checks before making external MCP calls.
+5. Pass `recipient=` to drive novel-recipient anomaly detection, surfaced non-blocking on `gate.anomalies` / `OutboundResult.anomalies`.
+6. Run outbound checks before making external MCP calls.
 
 Expected behavior:
 - Any unknown-provenance input passed through `guard.process_inbound(...)` is wrapped in `<untrusted_content ...>` blocks before being used in prompts or tool arguments.

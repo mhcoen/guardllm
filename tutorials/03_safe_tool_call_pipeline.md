@@ -9,6 +9,7 @@ What it demonstrates:
 3. Bind execution to request context (`Binding`).
 4. Require L12 confirmation before destructive execution.
 5. Run outbound checks before sending content externally.
+6. Anti-replay message binding (`PolicyConfig(require_message_binding="destructive")`): the same authorization replayed after the conversation advances to a different user message is denied.
 
 Isolation note:
 - This tutorial focuses on tool gating. In a full pipeline, any unknown-provenance inbound content should first be passed through `guard.process_inbound(...)`, which wraps it in `<untrusted_content ...>` blocks before it can influence tool arguments.

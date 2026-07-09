@@ -370,6 +370,24 @@ class Guard:
         if context.policy.auto_confirm_destructive and tool in DESTRUCTIVE_TOOLS:
             require_confirmation = True
 
+        # INV-MUSE-7 / confirm_all_below: escalate to enhanced confirmation when
+        # the policy demands it for web-derived context or a low-trust principal.
+        # Without this the escalation gate never fires through the guard flow.
+        if not require_confirmation:
+            escalation_proposal = ActionProposal(
+                tool_name=tool,
+                args=args,
+                summary=summary or f"Execute tool {tool}",
+                context=proposal_context or {},
+                heightened_scrutiny=heightened_scrutiny,
+            )
+            if self._action_gate.requires_confirmation(
+                escalation_proposal,
+                context,
+                context_has_web_derived=context_has_web_derived,
+            ):
+                require_confirmation = True
+
         if validate:
             validation = self.validate_tool_args(tool, args)
             if not validation.valid:

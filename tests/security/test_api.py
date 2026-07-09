@@ -6,7 +6,7 @@ import time
 from guardllm import Guard
 from guardllm.security.audit import AuditLogger
 from guardllm.security.error_sanitizer import PermissionDeniedError
-from guardllm.security.types import PolicyConfig
+from guardllm.security.types import PolicyConfig, TrustLevel
 
 
 def test_authorize_uses_user_message_hash():
@@ -293,4 +293,116 @@ def test_auto_confirm_destructive_default_off():
         )
     )
     # Without auto_confirm_destructive, no confirmation required
+    assert result.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# H5: escalation gate (INV-MUSE-7 / confirm_all_below) wired into guard flow
+# ---------------------------------------------------------------------------
+
+
+class _CapturingHandler:
+    """Confirms and records the context dict passed by the action gate."""
+
+    def __init__(self) -> None:
+        self.context: dict | None = None
+
+    async def confirm(self, tool: str, args: dict, context: dict) -> bool:
+        self.context = context
+        return True
+
+
+def test_web_derived_context_forces_confirmation_fails_closed():
+    """H5: web-derived context escalates to confirmation; with no handler
+    configured the call fails closed (denied), where before it was allowed."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=PolicyConfig())
+    result = asyncio.run(
+        guard.guard_tool_call(
+            tool="search_knowledge",
+            args={"query": "weather"},
+            context=ctx,
+            context_has_web_derived=True,
+            require_confirmation=False,
+        )
+    )
+    assert result.allowed is False
+    assert "denied confirmation" in result.reason.lower()
+
+
+def test_web_derived_context_enhanced_confirmation_metadata():
+    """H5: the escalated confirmation carries the hardcoded web-content
+    warning and enhanced_confirmation flag (INV-MUSE-7)."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=PolicyConfig())
+    handler = _CapturingHandler()
+    ctx.confirmation_handler = handler
+    result = asyncio.run(
+        guard.guard_tool_call(
+            tool="search_knowledge",
+            args={"query": "weather"},
+            context=ctx,
+            context_has_web_derived=True,
+            summary="Search knowledge",
+            require_confirmation=False,
+        )
+    )
+    assert result.allowed is True
+    assert handler.context is not None
+    assert handler.context.get("enhanced_confirmation") is True
+    assert "web_derived_warning" in handler.context
+
+
+def test_confirm_all_below_forces_confirmation():
+    """H5: confirm_all_below escalates ALL tool calls for a principal at or
+    below the threshold; no handler -> denied."""
+    guard = Guard()  # default principal_trust = UNTRUSTED
+    ctx = Guard.context_mcp_server(
+        server_id="s1",
+        policy=PolicyConfig(confirm_all_below=TrustLevel.TRUSTED),
+    )
+    result = asyncio.run(
+        guard.guard_tool_call(
+            tool="search_knowledge",
+            args={"query": "x"},
+            context=ctx,
+            require_confirmation=False,
+        )
+    )
+    assert result.allowed is False
+    assert "denied confirmation" in result.reason.lower()
+
+
+def test_web_derived_no_escalation_when_gate_disabled():
+    """H5: escalation_gate_enabled=False disables the web-derived escalation."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(
+        server_id="s1",
+        policy=PolicyConfig(escalation_gate_enabled=False),
+    )
+    result = asyncio.run(
+        guard.guard_tool_call(
+            tool="search_knowledge",
+            args={"query": "x"},
+            context=ctx,
+            context_has_web_derived=True,
+            require_confirmation=False,
+        )
+    )
+    assert result.allowed is True
+
+
+def test_no_escalation_by_default_backward_compat():
+    """H5: with no web-derived flag and no confirm_all_below, the guard flow
+    is unchanged (no confirmation forced)."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=PolicyConfig())
+    result = asyncio.run(
+        guard.guard_tool_call(
+            tool="search_knowledge",
+            args={"query": "x"},
+            context=ctx,
+            require_confirmation=False,
+        )
+    )
     assert result.allowed is True

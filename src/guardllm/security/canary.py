@@ -12,6 +12,11 @@ import hmac
 import os
 import secrets
 
+from guardllm.security.normalization import (
+    deobfuscate_separated,
+    normalize_for_overlap,
+)
+
 # Default secret:
 # - use EPISODIC_CANARY_SECRET when configured
 # - otherwise generate a process-local random secret
@@ -36,8 +41,19 @@ def generate_canary(session_id: str, secret: bytes = _DEFAULT_SECRET) -> str:
     return f"CANARY-{mac.hexdigest()[:16]}"
 
 
+def _canonicalize(s: str) -> str:
+    """Canonicalize for canary matching: lowercase, drop invisibles and
+    any separators so a token split by spaces/hyphens/zero-width chars or
+    re-cased still matches (e.g. ``CANARY-A1B2 C3D4`` -> ``canarya1b2c3d4``)."""
+    return deobfuscate_separated(normalize_for_overlap(s))
+
+
 def detect_canary(text: str, expected: str) -> bool:
     """Check if text contains the expected canary token.
+
+    Matching is done on a canonicalized form of both sides so that
+    case changes, inserted whitespace/hyphens, or zero-width characters
+    cannot hide an exfiltrated token.
 
     Args:
         text: Content to scan (e.g. outbound email body).
@@ -46,4 +62,7 @@ def detect_canary(text: str, expected: str) -> bool:
     Returns:
         True if the canary is found (system prompt exfiltration detected).
     """
-    return expected in text
+    canon_expected = _canonicalize(expected)
+    if not canon_expected:
+        return False
+    return canon_expected in _canonicalize(text)

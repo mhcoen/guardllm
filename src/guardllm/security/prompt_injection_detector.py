@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from bs4 import BeautifulSoup, Comment
 
+from guardllm.security.normalization import strip_invisibles
 from guardllm.security.types import ContentType
 
 _URL_RE = re.compile(r"https?://\S+", re.I)
@@ -84,7 +85,10 @@ class PromptInjectionSignal:
 
 def _normalize_text(text: str) -> str:
     """Canonicalize text so rules fire on broad paraphrase forms."""
-    out = unicodedata.normalize("NFKC", text).lower()
+    # Strip zero-width/bidi/tag characters first: NFKC does not remove them,
+    # so without this an attacker splits a trigger word with U+200B and the
+    # keyword patterns never match.
+    out = unicodedata.normalize("NFKC", strip_invisibles(text)).lower()
     out = _URL_RE.sub(" url_ref ", out)
     out = _INDEX_RE.sub(" index_ref ", out)
     out = _REPEATED_ALPHA_RE.sub(r"\1\1", out)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import warnings
 
 # Zero-width and invisible characters (spec §1.2)
 _INVISIBLE_RE = re.compile(
@@ -55,6 +56,19 @@ def _build_confusable_table() -> dict[int, str]:
     try:
         from confusables import CONFUSABLE_MAP
     except ImportError:
+        # `confusables` is a declared runtime dependency. If it is missing,
+        # homoglyph normalization silently degrades to a no-op, which would
+        # reopen the TR39 confusable-substitution bypass. Fail loud rather
+        # than fail silent so operators notice the defense is disabled.
+        warnings.warn(
+            "guardllm: the 'confusables' package is not installed, so TR39 "
+            "homoglyph normalization is DISABLED. Homoglyph-substitution "
+            "attacks (e.g. Cyrillic 'a' -> Latin 'a') will pass through "
+            "un-normalized. Reinstall guardllm with its declared "
+            "dependencies to restore this defense.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return {}
 
     table: dict[int, str] = {}
@@ -97,6 +111,27 @@ def normalize_confusables(text: str) -> str:
     if not _CONFUSABLE_TABLE:
         return text
     return text.translate(_CONFUSABLE_TABLE)
+
+
+def strip_invisibles(text: str) -> str:
+    """Remove zero-width, tag-plane, and bidi control characters.
+
+    Applies NFC and TR39 confusable mapping first (so homoglyph and
+    compatibility forms collapse toward ASCII), then deletes the invisible
+    characters an attacker can insert mid-token to split a keyword or secret
+    and evade a pattern scan.
+
+    Unlike normalize_for_overlap(), this preserves case and whitespace
+    structure, so it is safe to run just before regex/keyword scans that
+    rely on word boundaries (injection detection, secret scanning).
+    """
+    text = unicodedata.normalize("NFC", text)
+    if _CONFUSABLE_TABLE:
+        text = text.translate(_CONFUSABLE_TABLE)
+    text = _INVISIBLE_RE.sub("", text)
+    text = _TAG_CHAR_RE.sub("", text)
+    text = _BIDI_RE.sub("", text)
+    return text
 
 
 def normalize_for_overlap(text: str) -> str:

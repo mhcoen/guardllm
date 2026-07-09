@@ -18,6 +18,7 @@ from guardllm.security.normalization import (
     deobfuscate_separated,
     deobfuscate_spelled,
     normalize_for_overlap,
+    strip_invisibles,
 )
 from guardllm.security.types import OutboundResult, SecurityContext
 
@@ -48,6 +49,9 @@ _ENTROPY_MIN_LENGTH = 20
 # Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
+# Whitespace run, used to build a whitespace-removed form for secret scanning
+_WHITESPACE_RE = re.compile(r"\s+")
+
 
 def _shannon_entropy(s: str) -> float:
     """Compute Shannon entropy of a string in bits per character."""
@@ -74,12 +78,30 @@ def _shannon_entropy_bytes(data: bytes) -> float:
 def _scan_secrets(text: str) -> list[str]:
     """Scan text for known secret patterns and high-entropy strings."""
     found: list[str] = []
+
+    # The secret scan is the only always-on hard block, so it must not be
+    # defeated by trivial obfuscation. Build extra forms:
+    #  - `stripped`: zero-width/bidi/tag chars removed (defeats a U+200B
+    #    inserted mid-token, e.g. "sk-abc<ZWSP>def...").
+    #  - `ws_removed`: whitespace also removed (defeats a space inserted
+    #    mid-token, e.g. "sk-abcdefghij klmno...").
+    # Patterns that legitimately contain whitespace (Bearer, PRIVATE KEY
+    # header) still match the raw `text`, so scan every form and union hits.
+    stripped = strip_invisibles(text)
+    ws_removed = _WHITESPACE_RE.sub("", stripped)
+    forms = [text]
+    for form in (stripped, ws_removed):
+        if form not in forms:
+            forms.append(form)
+
     for pattern, label in _SECRET_PATTERNS:
-        if pattern.search(text):
+        if label not in found and any(pattern.search(form) for form in forms):
             found.append(label)
 
-    # High-entropy token detection: look for long hex/base64-like tokens
-    for token in re.findall(r"[A-Za-z0-9+/\-_]{20,}", text):
+    # High-entropy token detection: look for long hex/base64-like tokens.
+    # Scan the invisible-stripped form so a zero-width char cannot split a
+    # random token below the length gate.
+    for token in re.findall(r"[A-Za-z0-9+/\-_]{20,}", stripped):
         if len(token) >= _ENTROPY_MIN_LENGTH:
             entropy = _shannon_entropy(token)
             if entropy >= _ENTROPY_THRESHOLD:

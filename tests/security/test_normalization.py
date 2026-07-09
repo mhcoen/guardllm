@@ -13,9 +13,13 @@ Covers:
 import pytest
 
 from guardllm.security.normalization import (
+    _CONFUSABLE_TABLE,
+    _build_confusable_table,
     compute_lcs_length,
     compute_ngram_overlap,
+    normalize_confusables,
     normalize_for_overlap,
+    strip_invisibles,
 )
 
 
@@ -362,3 +366,81 @@ class TestComputeNgramOverlap:
         b = "abcdefghij"
         assert compute_ngram_overlap(a, b, n=3) == 1.0
         assert compute_ngram_overlap(a, b, n=10) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# C2 regression: TR39 homoglyph normalization must stay active
+# ---------------------------------------------------------------------------
+
+
+class TestConfusableNormalization:
+    """The `confusables` dependency must be installed and homoglyph
+    normalization must actively map non-ASCII confusables to ASCII.
+
+    These tests fail if the dependency is dropped or the mapping degrades
+    to a no-op, which would reopen the homoglyph-substitution bypass
+    (e.g. Cyrillic 'a' U+0430 -> Latin 'a').
+    """
+
+    def test_confusable_table_is_populated(self):
+        """A populated table proves the TR39 data is actually loaded."""
+        assert len(_CONFUSABLE_TABLE) > 1000
+
+    def test_cyrillic_i_mapped_to_ascii(self):
+        # Cyrillic small letter i (U+0456) is a visual twin of Latin 'i'
+        assert normalize_confusables("іgnore") == "ignore"
+
+    def test_cyrillic_a_mapped_to_ascii(self):
+        # Cyrillic small letter a (U+0430) is a visual twin of Latin 'a'
+        assert normalize_confusables("bаnk") == "bank"
+
+    def test_homoglyph_normalized_in_overlap_pipeline(self):
+        """normalize_for_overlap must also apply confusable mapping."""
+        assert normalize_for_overlap("іgnore") == "ignore"
+
+    def test_missing_confusables_fails_loud_not_silent(self):
+        """If the dependency is absent, the builder must warn (fail loud)
+        and return an empty table, not silently no-op without a signal."""
+        import sys
+
+        class _Blocker:
+            def find_spec(self, name, path=None, target=None):
+                if name == "confusables":
+                    raise ImportError("blocked for test")
+                return None
+
+        blocker = _Blocker()
+        sys.meta_path.insert(0, blocker)
+        saved = sys.modules.pop("confusables", None)
+        try:
+            with pytest.warns(RuntimeWarning, match="homoglyph"):
+                table = _build_confusable_table()
+            assert table == {}
+        finally:
+            sys.meta_path.remove(blocker)
+            if saved is not None:
+                sys.modules["confusables"] = saved
+
+
+class TestStripInvisibles:
+    """strip_invisibles(): shared primitive for the always-on gates.
+
+    Unlike normalize_for_overlap it preserves case and whitespace, so it
+    is safe ahead of word-boundary regex scans (C1/C3 fixes).
+    """
+
+    def test_zero_width_stripped(self):
+        assert strip_invisibles("ig​nore") == "ignore"
+
+    def test_soft_hyphen_stripped(self):
+        assert strip_invisibles("ig­nore") == "ignore"
+
+    def test_bidi_stripped(self):
+        assert strip_invisibles("ig‮nore") == "ignore"
+
+    def test_case_and_whitespace_preserved(self):
+        # Distinguishes strip_invisibles from normalize_for_overlap.
+        assert strip_invisibles("Ig​Nore  Me") == "IgNore  Me"
+
+    def test_confusable_mapped(self):
+        assert strip_invisibles("іgnore") == "ignore"

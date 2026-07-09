@@ -1222,9 +1222,7 @@ class TestRateLimitWiredThroughPipeline:
             source_id="user-1",
             source_trust=TrustLevel.TRUSTED,
             principal_trust=TrustLevel.TRUSTED,
-            policy=PolicyConfig(
-                rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 3}}
-            ),
+            policy=PolicyConfig(rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 3}}),
         )
         for _ in range(3):
             assert pipe.check_outbound("a normal message", ctx).allowed
@@ -1240,9 +1238,7 @@ class TestRateLimitWiredThroughPipeline:
             source_id="user-1",
             source_trust=TrustLevel.TRUSTED,
             principal_trust=TrustLevel.TRUSTED,
-            policy=PolicyConfig(
-                rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 2}}
-            ),
+            policy=PolicyConfig(rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 2}}),
         )
         for _ in range(2):
             assert pipe.check_tool_execution("search", {"q": "x"}, ctx).allowed
@@ -1285,8 +1281,11 @@ class TestMessageBinding:
         ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
         auth = self._auth("hash-M1")
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx,
-            auth_event=auth, message_hash="hash-M1",
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
+            message_hash="hash-M1",
         )
         assert result.allowed is True
 
@@ -1296,8 +1295,11 @@ class TestMessageBinding:
         auth = self._auth("hash-M1")
         # Same auth replayed while the conversation has advanced to M2.
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx,
-            auth_event=auth, message_hash="hash-M2",
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
+            message_hash="hash-M2",
         )
         assert result.allowed is False
         assert "replay" in result.reason.lower()
@@ -1307,7 +1309,10 @@ class TestMessageBinding:
         ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
         auth = self._auth("hash-M1")
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx, auth_event=auth,
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is True
 
@@ -1318,8 +1323,11 @@ class TestMessageBinding:
         ctx = self._client_ctx(PolicyConfig(enable_destructive=True))
         auth = self._auth("hash-M1")
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx,
-            auth_event=auth, message_hash="",
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
+            message_hash="",
         )
         assert result.allowed is False
         assert "replay" in result.reason.lower()
@@ -1331,7 +1339,10 @@ class TestMessageBinding:
         )
         auth = self._auth("hash-M1")
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx, auth_event=auth,
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
         assert "message binding required" in result.reason.lower()
@@ -1343,8 +1354,11 @@ class TestMessageBinding:
         )
         auth = self._auth("hash-M1")
         result = pipe.check_tool_execution(
-            "gmail_send_email", {"to": "alice"}, ctx,
-            auth_event=auth, message_hash="hash-M1",
+            "gmail_send_email",
+            {"to": "alice"},
+            ctx,
+            auth_event=auth,
+            message_hash="hash-M1",
         )
         assert result.allowed is True
 
@@ -1352,11 +1366,17 @@ class TestMessageBinding:
         pipe = SecurityPipeline()
         ctx = self._client_ctx(PolicyConfig(require_message_binding="all"))
         auth = AuthorizationEvent(
-            action="search_knowledge", scope={}, message_hash="hash-M1",
-            timestamp=time.time(), source="test",
+            action="search_knowledge",
+            scope={},
+            message_hash="hash-M1",
+            timestamp=time.time(),
+            source="test",
         )
         result = pipe.check_tool_execution(
-            "search_knowledge", {}, ctx, auth_event=auth,
+            "search_knowledge",
+            {},
+            ctx,
+            auth_event=auth,
         )
         assert result.allowed is False
 
@@ -1383,9 +1403,7 @@ class TestServerDefaultDeny:
 
     def test_no_scopes_flag_off_is_legacy_allow(self):
         pipe = SecurityPipeline()
-        result = pipe.check_tool_execution(
-            "search_knowledge", {}, self._server_ctx(PolicyConfig())
-        )
+        result = pipe.check_tool_execution("search_knowledge", {}, self._server_ctx(PolicyConfig()))
         assert result.allowed is True
 
     def test_no_scopes_flag_on_denies(self):

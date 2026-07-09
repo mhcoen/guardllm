@@ -249,8 +249,8 @@ guard.validate_tool_args(tool: str, args: dict) -> ValidationResult
 ```
 
 Behavior:
-- Validates known argument names against built-in limits.
-- Unknown fields are ignored.
+- Validates known argument names against built-in size/pattern limits.
+- Applies universal safety checks (path traversal, null byte) to every argument including unknown ones and strings nested in containers; unknown fields get no size/pattern limits but are not exempt from these safety checks.
 - Emits audit event `tool_args_validated` if audit logger is configured.
 
 ### Method: `sanitize_exception`
@@ -508,11 +508,13 @@ Known argument limits currently enforced:
 - `thread_handle`: max chars `100`, regex `^[A-Za-z0-9_\-]+$`
 - `provenance`: max fields `10`, max string value chars `500`
 
-Additional checks for known string fields:
+Universal safety checks (every argument, known or unknown):
 - path traversal sequence `".."` is rejected
+- null byte (`\x00`) is rejected
+- these run on strings nested in lists/dicts (including dict keys); recursion is depth-bounded and over-deep or cyclic input is rejected
 
 Unknown argument names:
-- ignored (not rejected by validation layer)
+- no size/pattern limits are applied, but the universal safety checks above still apply, so a traversal or null-byte payload in an unknown field is rejected
 
 ## Error Sanitization Contract (`sanitize_exception`)
 

@@ -27,6 +27,7 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 ### Changed
 - `confusables` (>=1.2) is now a declared runtime dependency; when it is absent, TR39 homoglyph normalization emits a `RuntimeWarning` instead of silently degrading to a no-op.
 - `normalize_confusables` now maps homoglyphs only within mixed-script letter runs (the attack signature) instead of flattening every confusable to ASCII. Legitimate single-script international text (accented Latin, Cyrillic, en-dashes) is preserved. This also makes the benchmark deterministic across platforms and regardless of whether `confusables` is installed, resolving the cross-platform `upstream_mcpbench` discrepancy noted in the 1.1.0 checkpoint entry.
+- Pinned `soupsieve>=2.8.4` (transitive via `beautifulsoup4`) to pick up the fix for GHSA-2wc2-fm75-p42x (memory exhaustion via large comma-separated selector lists).
 
 ## [1.1.0] - 2026-05-28
 

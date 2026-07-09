@@ -439,7 +439,5 @@ class TestUniversalSafetyChecks:
         assert result.valid is False
 
     def test_reasonable_nesting_still_valid(self):
-        result = validate_arguments(
-            "t", {"opts": {"a": {"b": {"c": "/safe/path/here"}}}}
-        )
+        result = validate_arguments("t", {"opts": {"a": {"b": {"c": "/safe/path/here"}}}})
         assert result.valid is True

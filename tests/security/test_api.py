@@ -406,3 +406,68 @@ def test_no_escalation_by_default_backward_compat():
         )
     )
     assert result.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# Codex audit: check_tool_call validates by default (Medium)
+# ---------------------------------------------------------------------------
+
+
+def test_check_tool_call_validates_by_default():
+    """check_tool_call must reject invalid args (e.g. path traversal) even on
+    the direct path, not only inside guard_tool_call."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s", policy=PolicyConfig(enable_destructive=True))
+    auth = Guard.authorize(
+        action="file_delete",
+        scope={"path": "../../etc/passwd"},
+        user_message="m",
+        timestamp=time.time(),
+    )
+    r = guard.check_tool_call(
+        "file_delete", {"path": "../../etc/passwd"}, ctx, authorization=auth, user_message="m"
+    )
+    assert r.allowed is False
+    assert "validation failed" in r.reason.lower()
+
+
+def test_check_tool_call_validate_false_opts_out():
+    """validate=False keeps check_tool_call as a low-level primitive."""
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s", policy=PolicyConfig(enable_destructive=True))
+    auth = Guard.authorize(
+        action="file_delete",
+        scope={"path": "../../etc/passwd"},
+        user_message="m",
+        timestamp=time.time(),
+    )
+    r = guard.check_tool_call(
+        "file_delete",
+        {"path": "../../etc/passwd"},
+        ctx,
+        authorization=auth,
+        user_message="m",
+        validate=False,
+    )
+    assert r.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# Codex audit: context factories accept principal_trust (Medium)
+# ---------------------------------------------------------------------------
+
+
+def test_context_factory_principal_trust_matches_guard():
+    """Guard(principal_trust=X) with a factory context of the same principal
+    trust must not raise the pipeline mismatch ValueError."""
+    guard = Guard(principal_trust=TrustLevel.TRUSTED)
+    ctx = Guard.context_web(source_id="ddg", principal_trust=TrustLevel.TRUSTED)
+    assert ctx.principal_trust is TrustLevel.TRUSTED
+    out = guard.check_outbound("hello", ctx)
+    assert out.allowed is True
+
+
+def test_context_factory_principal_trust_defaults_untrusted():
+    """Backward compatible: factories still default to UNTRUSTED."""
+    assert Guard.context_web(source_id="ddg").principal_trust is TrustLevel.UNTRUSTED
+    assert Guard.context_mcp_client(client_id="c").principal_trust is TrustLevel.UNTRUSTED

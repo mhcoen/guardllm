@@ -105,12 +105,14 @@ class Guard:
         source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: PolicyConfig | None = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> SecurityContext:
         return profiles.mcp_server_response(
             server_id=server_id,
             source_trust=source_trust,
             content_type=content_type,
             policy=policy,
+            principal_trust=principal_trust,
         )
 
     @staticmethod
@@ -120,12 +122,14 @@ class Guard:
         source_trust: TrustLevel = TrustLevel.UNTRUSTED,
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: PolicyConfig | None = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> SecurityContext:
         return profiles.mcp_client_request(
             client_id=client_id,
             source_trust=source_trust,
             content_type=content_type,
             policy=policy,
+            principal_trust=principal_trust,
         )
 
     @staticmethod
@@ -134,11 +138,13 @@ class Guard:
         *,
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: PolicyConfig | None = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> SecurityContext:
         return profiles.untrusted_document(
             document_id=document_id,
             content_type=content_type,
             policy=policy,
+            principal_trust=principal_trust,
         )
 
     @staticmethod
@@ -147,11 +153,13 @@ class Guard:
         source_id: str = "web",
         content_type: ContentType = ContentType.HTML,
         policy: PolicyConfig | None = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> SecurityContext:
         return profiles.web_query_result(
             source_id=source_id,
             content_type=content_type,
             policy=policy,
+            principal_trust=principal_trust,
         )
 
     @staticmethod
@@ -160,11 +168,13 @@ class Guard:
         source_id: str = "internal",
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: PolicyConfig | None = None,
+        principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
     ) -> SecurityContext:
         return profiles.internal_sensitive(
             source_id=source_id,
             content_type=content_type,
             policy=policy,
+            principal_trust=principal_trust,
         )
 
     def reset(self) -> None:
@@ -238,8 +248,23 @@ class Guard:
         user_message: str | None = None,
         message_hash: str | None = None,
         recipient: str | None = None,
+        validate: bool = True,
     ) -> GateResult:
-        """Run policy/rate-limit/binding checks for a tool call."""
+        """Run validation, then policy/rate-limit/binding checks for a tool call.
+
+        validate defaults to True so this method is safe to call directly:
+        arguments that fail validation (e.g. path traversal) are denied before
+        any authorization decision. Pass validate=False only when validation is
+        already handled by the caller (as guard_tool_call does).
+        """
+        if validate:
+            validation = self.validate_tool_args(tool, args)
+            if not validation.valid:
+                return GateResult(
+                    allowed=False,
+                    reason=f"Validation failed: {validation.errors[0]}",
+                    confidence="none",
+                )
         msg_hash = message_hash
         if msg_hash is None and user_message is not None:
             msg_hash = self.hash_message(user_message)
@@ -413,6 +438,7 @@ class Guard:
             user_message=user_message,
             message_hash=message_hash,
             recipient=recipient,
+            validate=False,  # already validated above per the `validate` flag
         )
         if not gate.allowed:
             return gate

@@ -10,6 +10,7 @@ substitution attacks (e.g. Cyrillic 'a' -> Latin 'a').
 from __future__ import annotations
 
 import re
+import secrets
 import unicodedata
 import warnings
 
@@ -211,28 +212,86 @@ def normalize_for_overlap(text: str) -> str:
 # Shared overlap computation utilities (used by DLP and provenance)
 # ---------------------------------------------------------------------------
 
+# Hard cap on the number of characters compared by the O(m*n) LCS routine.
+# Callers should also cap ingested/outbound content, but this is a defense-in-
+# depth bound so a single comparison can never exceed MAX_OVERLAP_CHARS**2
+# work regardless of caller. 50k is far above any legitimate span of text that
+# needs verbatim-overlap detection (thresholds are 12-50 chars).
+MAX_OVERLAP_CHARS = 50_000
+
+
+# Polynomial rolling-hash parameters. The base is randomized per process so an
+# attacker cannot craft hash collisions to degrade the search; correctness does
+# not depend on it (candidate matches are verified by direct comparison).
+_LCS_HASH_MOD = (1 << 61) - 1  # Mersenne prime
+_LCS_HASH_BASE = secrets.randbelow(1 << 30) + 257
+
+
+def _has_common_substring(a: str, b: str, length: int) -> bool:
+    """Whether a and b share a common substring of exactly ``length`` chars.
+
+    Rabin-Karp: hash every window of ``a``, then scan ``b``'s windows; each hash
+    hit is verified by direct string comparison so the result is exact. O(m+n).
+    """
+    if length == 0:
+        return True
+    if length > len(a) or length > len(b):
+        return False
+    base, mod = _LCS_HASH_BASE, _LCS_HASH_MOD
+    high = pow(base, length - 1, mod)
+
+    windows: dict[int, list[int]] = {}
+    h = 0
+    for i in range(length):
+        h = (h * base + ord(a[i])) % mod
+    windows.setdefault(h, []).append(0)
+    for i in range(1, len(a) - length + 1):
+        h = ((h - ord(a[i - 1]) * high) * base + ord(a[i + length - 1])) % mod
+        windows.setdefault(h, []).append(i)
+
+    hb = 0
+    for i in range(length):
+        hb = (hb * base + ord(b[i])) % mod
+
+    def _match(bi: int, hb: int) -> bool:
+        if hb not in windows:
+            return False
+        sub = b[bi : bi + length]
+        return any(a[ai : ai + length] == sub for ai in windows[hb])
+
+    if _match(0, hb):
+        return True
+    for i in range(1, len(b) - length + 1):
+        hb = ((hb - ord(b[i - 1]) * high) * base + ord(b[i + length - 1])) % mod
+        if _match(i, hb):
+            return True
+    return False
+
 
 def compute_lcs_length(a: str, b: str) -> int:
-    """Compute longest common substring length using rolling-row DP.
+    """Compute longest common substring length.
 
-    O(m*n) time, O(min(m,n)) space. Inputs should be pre-normalized
-    via normalize_for_overlap() before calling.
+    Binary search on the length, testing each candidate with a Rabin-Karp
+    common-substring check, giving O((m+n)*log(min(m,n))) time -- a bounded
+    replacement for the naive O(m*n) DP that a large adversarial input could
+    otherwise use to exhaust CPU. Results are exact (hash hits are verified).
+    Inputs should be pre-normalized via normalize_for_overlap(); each operand
+    is truncated to MAX_OVERLAP_CHARS as a memory bound.
     """
     if not a or not b:
         return 0
-    # Ensure b is the shorter string for space efficiency
-    if len(a) < len(b):
-        a, b = b, a
-    prev = [0] * (len(b) + 1)
-    best = 0
-    for i in range(1, len(a) + 1):
-        curr = [0] * (len(b) + 1)
-        for j in range(1, len(b) + 1):
-            if a[i - 1] == b[j - 1]:
-                curr[j] = prev[j - 1] + 1
-                if curr[j] > best:
-                    best = curr[j]
-        prev = curr
+    if len(a) > MAX_OVERLAP_CHARS:
+        a = a[:MAX_OVERLAP_CHARS]
+    if len(b) > MAX_OVERLAP_CHARS:
+        b = b[:MAX_OVERLAP_CHARS]
+    lo, hi, best = 1, min(len(a), len(b)), 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if _has_common_substring(a, b, mid):
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
     return best
 
 

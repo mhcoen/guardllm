@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from guardllm.security.normalization import (
+    MAX_OVERLAP_CHARS,
     compute_lcs_length,
     compute_ngram_overlap,
     deobfuscate_reversed,
@@ -81,6 +82,9 @@ class ProvenanceTracker:
         if not check_spans:
             return (True, "clean")
 
+        # Cap the outbound content compared for overlap so a very large payload
+        # cannot drive the O(m*n) LCS routine unbounded.
+        content = content[:MAX_OVERLAP_CHARS]
         normalized_content = normalize_for_overlap(content)
 
         # Build deobfuscated variants for overlap checks
@@ -95,12 +99,17 @@ class ProvenanceTracker:
         for variant in content_variants:
             deob = " (deobfuscated)" if variant is not normalized_content else ""
             for span, label in check_spans:
-                normalized_span = normalize_for_overlap(span.text)
+                normalized_span = normalize_for_overlap(span.text)[:MAX_OVERLAP_CHARS]
                 if not normalized_span:
                     continue
 
+                # N-gram overlap (cheap, O(m+n)) computed first; gate the O(m*n)
+                # LCS behind it. A verbatim overlap >= lcs_threshold (>= 50)
+                # always shares 5-grams, so ngram == 0 implies no blocking LCS.
+                overlap = compute_ngram_overlap(variant, normalized_span, n=5)
+
                 # LCS check: configurable (default >= 50 chars) is a block
-                lcs_len = compute_lcs_length(variant, normalized_span)
+                lcs_len = compute_lcs_length(variant, normalized_span) if overlap > 0.0 else 0
                 if lcs_len >= lcs_threshold:
                     return (
                         False,
@@ -109,7 +118,6 @@ class ProvenanceTracker:
                     )
 
                 # N-gram overlap check: configurable (default >= 30%) is a block
-                overlap = compute_ngram_overlap(variant, normalized_span, n=5)
                 if overlap >= ngram_threshold:
                     return (
                         False,

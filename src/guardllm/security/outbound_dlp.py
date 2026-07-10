@@ -12,6 +12,7 @@ import re
 from collections import deque
 
 from guardllm.security.normalization import (
+    MAX_OVERLAP_CHARS,
     compute_lcs_length,
     compute_ngram_overlap,
     deobfuscate_reversed,
@@ -181,13 +182,13 @@ class OutboundDLP:
 
     def ingest_untrusted(self, content: str) -> None:
         """Normalize and buffer untrusted content for later DLP checks."""
-        normalized = normalize_for_overlap(content)
+        normalized = normalize_for_overlap(content)[:MAX_OVERLAP_CHARS]
         if normalized:
             self._buffer.append(normalized)
 
     def ingest_sensitive(self, content: str) -> None:
         """Normalize and buffer sensitive content for contaminated-context checks."""
-        normalized = normalize_for_overlap(content)
+        normalized = normalize_for_overlap(content)[:MAX_OVERLAP_CHARS]
         if normalized:
             self._sensitive_buffer.append(normalized)
 
@@ -237,6 +238,9 @@ class OutboundDLP:
         if has_quoting_directive:
             return OutboundResult(allowed=True, reason="clean (quoting)")
 
+        # Cap the outbound content compared for overlap so a very large payload
+        # cannot drive the O(m*n) LCS routine unbounded.
+        content = content[:MAX_OVERLAP_CHARS]
         normalized_content = normalize_for_overlap(content)
 
         # Build deobfuscated variants for overlap checks.
@@ -263,17 +267,27 @@ class OutboundDLP:
         # it must not block on its own.
         echo_max_lcs = 0
         echo_max_ngram = 0.0
+        echo_detected = False
         for variant, strip_seps, _label in variants:
+            if echo_detected:
+                break
             for buffered in self._buffer:
                 buf = deobfuscate_separated(buffered) if strip_seps else buffered
-                lcs_len = compute_lcs_length(variant, buf)
-                if lcs_len > echo_max_lcs:
-                    echo_max_lcs = lcs_len
                 ngram = compute_ngram_overlap(variant, buf, n=5)
                 if ngram > echo_max_ngram:
                     echo_max_ngram = ngram
-
-        echo_detected = echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold
+                # Only run the LCS when a shared 5-gram exists. A common
+                # substring of length >= the echo threshold necessarily shares
+                # 5-grams, so ngram == 0 implies LCS < 5 and it can be skipped.
+                if ngram > 0.0:
+                    lcs_len = compute_lcs_length(variant, buf)
+                    if lcs_len > echo_max_lcs:
+                        echo_max_lcs = lcs_len
+                # Echo is a boolean signal; once tripped, further scanning only
+                # refines a metadata value, so stop (bounds work on large input).
+                if echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold:
+                    echo_detected = True
+                    break
 
         # Step 3: Sensitive-leak check (BLOCK trigger).
         # Outbound vs sensitive buffer at base threshold. Echo does not
@@ -282,7 +296,11 @@ class OutboundDLP:
             for variant, strip_seps, label in variants:
                 for buffered in self._sensitive_buffer:
                     buf = deobfuscate_separated(buffered) if strip_seps else buffered
-                    lcs_len = compute_lcs_length(variant, buf)
+                    overlap = compute_ngram_overlap(variant, buf, n=5)
+                    # Gate the O(m*n) LCS behind the cheap n-gram check: a
+                    # verbatim overlap >= sensitive_lcs (>= 12) always shares
+                    # 5-grams, so ngram == 0 implies no blocking LCS.
+                    lcs_len = compute_lcs_length(variant, buf) if overlap > 0.0 else 0
                     if lcs_len >= sensitive_lcs:
                         result = OutboundResult(
                             allowed=False,
@@ -296,7 +314,6 @@ class OutboundDLP:
                         if ctx.policy.contaminated_action == "confirm":
                             result.reason = f"Confirmation required: {result.reason}"
                         return result
-                    overlap = compute_ngram_overlap(variant, buf, n=5)
                     if overlap >= ngram_threshold:
                         result = OutboundResult(
                             allowed=False,

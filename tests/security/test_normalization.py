@@ -463,3 +463,55 @@ class TestStripInvisibles:
 
     def test_confusable_mapped(self):
         assert strip_invisibles("іgnore") == "ignore"
+
+
+# ---------------------------------------------------------------------------
+# Codex audit: bounded LCS must stay exact vs the naive DP (High)
+# ---------------------------------------------------------------------------
+
+
+def _brute_lcs(a: str, b: str) -> int:
+    """Reference O(m*n) longest-common-substring DP."""
+    if not a or not b:
+        return 0
+    prev = [0] * (len(b) + 1)
+    best = 0
+    for i in range(1, len(a) + 1):
+        curr = [0] * (len(b) + 1)
+        for j in range(1, len(b) + 1):
+            if a[i - 1] == b[j - 1]:
+                curr[j] = prev[j - 1] + 1
+                best = max(best, curr[j])
+        prev = curr
+    return best
+
+
+class TestBoundedLcsExactness:
+    def test_matches_brute_force_on_random_inputs(self):
+        import random
+
+        rng = random.Random(20260710)
+        for _ in range(1500):
+            a = "".join(rng.choice("abcde") for _ in range(rng.randint(0, 40)))
+            b = "".join(rng.choice("abcde") for _ in range(rng.randint(0, 40)))
+            assert compute_lcs_length(a, b) == _brute_lcs(a, b), (a, b)
+
+    def test_edge_cases(self):
+        assert compute_lcs_length("", "x") == 0
+        assert compute_lcs_length("x", "") == 0
+        assert compute_lcs_length("abc", "abc") == 3
+        assert compute_lcs_length("aaaa", "aa") == 2
+        assert compute_lcs_length("xyz", "abc") == 0
+
+    def test_large_input_is_bounded_and_exact(self):
+        import time
+
+        from guardllm.security.normalization import MAX_OVERLAP_CHARS
+
+        a = ("the quick brown fox " * 20000)[: MAX_OVERLAP_CHARS + 5000]
+        t0 = time.perf_counter()
+        result = compute_lcs_length(a, a)
+        dt = time.perf_counter() - t0
+        # a vs a: LCS is the (capped) length; must be fast, not O(n^2).
+        assert result == min(len(a), MAX_OVERLAP_CHARS)
+        assert dt < 5.0

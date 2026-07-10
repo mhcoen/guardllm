@@ -68,17 +68,23 @@ async def guarded_call(transport, tool: str, args: dict, user_message: str):
         policy=PolicyConfig(enable_destructive=True),
     )
 
+    # Authorize, bind, gate, and dispatch the EXACT SAME args object. Never
+    # gate a subset (e.g. just {"to": ...}) and dispatch a superset: fields
+    # outside the authorized scope (bcc, body, attachments, provider options)
+    # would otherwise bypass scope, binding, validation, and confirmation.
+    # The authorization scope encodes what the user actually approved; any arg
+    # key not covered by it is rejected by guard_tool_call.
     auth = Guard.authorize(
         action=tool,
-        scope={"to": args.get("to")},
+        scope=args,
         user_message=user_message,
         timestamp=time.time(),
     )
-    binding = Guard.bind_request(tool=tool, args={"to": args.get("to")}, authorization=auth)
+    binding = Guard.bind_request(tool=tool, args=args, authorization=auth)
 
     gate = await guard.guard_tool_call(
         tool=tool,
-        args={"to": args.get("to")},
+        args=args,
         context=ctx,
         authorization=auth,
         binding=binding,

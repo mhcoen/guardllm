@@ -8,6 +8,8 @@ Covers:
 - Within limits -> allowed
 """
 
+import threading
+
 import pytest
 
 from guardllm.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
@@ -445,3 +447,48 @@ class TestRateLimitOverrides:
         )
         limiter.check("gmail_send_email", ctx)
         assert DEFAULT_LIMITS == original
+
+
+class _SlowRecordLimiter(RateLimiter):
+    """Widens the window between check() and record() so a missing lock races
+    deterministically. The delay runs inside check_and_record's critical
+    section; with the lock held, a second thread blocks on the lock instead of
+    slipping through the widened window."""
+
+    def record(self, *args, **kwargs):  # type: ignore[override]
+        import time
+
+        time.sleep(0.05)
+        return super().record(*args, **kwargs)
+
+
+class TestThreadSafety:
+    """check_and_record serializes the check-then-record so concurrent OS
+    threads cannot collectively exceed the limit."""
+
+    def test_check_and_record_never_exceeds_limit_under_threads(self, ctx):
+        limit = 1
+        n_threads = 8
+        limiter = _SlowRecordLimiter({"emails_per_hour": limit})
+        barrier = threading.Barrier(n_threads)
+        results: list[bool] = []
+        results_lock = threading.Lock()
+
+        def worker() -> None:
+            barrier.wait()  # release all threads together for maximum contention
+            r = limiter.check_and_record("gmail_send_email", ctx)
+            with results_lock:
+                results.append(r.allowed)
+
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Exactly `limit` calls are admitted, never more, regardless of races.
+        # Without the lock, several threads pass check() during the widened
+        # window before any records, and this exceeds the limit.
+        assert sum(1 for a in results if a) == limit
+        recorded = len(limiter._sessions[ctx.source_id].action_times["gmail_send_email"])
+        assert recorded == limit

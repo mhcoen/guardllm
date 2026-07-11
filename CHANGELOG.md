@@ -10,7 +10,7 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ### Fixed
 - A confirmation the user denies no longer consumes L6 rate-limit quota. The guard flow previously recorded the tool action against the rate limiter before the confirmation ran, so a denied confirmation still burned a per-session slot. The record is now deferred until the call has cleared confirmation and G6 commitment verification.
-- Confirmed tool calls can no longer exceed the rate limit under concurrency. The deferral above left the rate-limit check before the confirmation `await` and the record after it, so two concurrent confirmed calls could both pass a near-full limit before either recorded. The finalize step now re-checks and records atomically, so at most `limit` confirmed calls are admitted.
+- Confirmed tool calls can no longer exceed the rate limit under concurrency. The deferral above left the rate-limit check before the confirmation `await` and the record after it, so two concurrent confirmed calls could both pass a near-full limit before either recorded. The finalize step now re-checks and records under the rate limiter's lock (`RateLimiter.check_and_record`), so at most `limit` confirmed calls are admitted under both asyncio concurrency and multiple OS threads.
 
 ### Changed
 - Threat model (`docs/threat_model.md`) rescoped to match the implementation: request binding is described as an intra-process consistency check (recomputed argument hash, message-hash match, TTL) rather than a cryptographic binding, and authorization-event origin authenticity is stated as a host obligation (the library validates event contents, not origin). `PolicyConfig.directive_patterns` is documented as reserved and not yet wired.

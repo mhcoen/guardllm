@@ -7,6 +7,7 @@ compliance or user attentiveness.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -43,6 +44,10 @@ class RateLimiter:
     def __init__(self, limits: dict | None = None):
         self._limits = limits or DEFAULT_LIMITS
         self._sessions: dict[str, _SessionCounters] = {}
+        # Serializes the compound check-then-record so it is atomic for hosts
+        # that drive one session from multiple OS threads. check() and record()
+        # remain lock-free primitives; check_and_record() holds this across both.
+        self._lock = threading.Lock()
 
     def _get_session(self, session_id: str) -> _SessionCounters:
         if session_id not in self._sessions:
@@ -143,6 +148,28 @@ class RateLimiter:
         session.action_times[action].append(time.time())
         if recipient:
             session.known_recipients.add(recipient)
+
+    def check_and_record(
+        self,
+        action: str,
+        ctx: SecurityContext,
+        recipient: str | None = None,
+        session_id: str | None = None,
+    ) -> RateLimitResult:
+        """Atomically check the limit and record the action if it is within it.
+
+        The check and the record run under a single lock acquisition, so two
+        callers cannot both pass a near-full limit before either records. This
+        closes the check-then-record gap for hosts driving one session from
+        multiple OS threads (asyncio already serializes because there is no
+        ``await`` between the two). Returns the check result; a caller denies
+        the action when ``allowed`` is False.
+        """
+        with self._lock:
+            result = self.check(action, ctx, recipient=recipient, session_id=session_id)
+            if result.allowed:
+                self.record(action, ctx, recipient=recipient, session_id=session_id)
+            return result
 
     def _seconds_until_slot(self, times: list[float], window: float = 3600) -> int:
         """Calculate seconds until the oldest entry expires from the window."""

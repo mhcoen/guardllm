@@ -130,6 +130,8 @@ Verification: unit tests in `tests/security/test_egress_escalation.py` cover the
 
 A `SecurityPipeline` (and the `Guard` that wraps it) mutates session-scoped state without internal synchronization: the contamination and escalation flags, the DLP echo buffers, and provenance tracking are all updated in place as inbound, outbound, and tool-execution calls run. The contract is **one pipeline per session, driven sequentially**. A host that issues concurrent operations against a single pipeline (async tasks or OS threads) must serialize them itself; the library does not defend against concurrent mutation, and interleaved calls can corrupt session state or race the session-risk signals. Use a separate `Guard` per session, or hold a lock around the pipeline, whenever one session may be driven concurrently.
 
+The one internally-synchronized exception is the rate limiter's confirmation finalize (`check_and_record`, used by `guard_tool_call` after confirmation). It serializes its check-and-record under a lock, so concurrent confirmed tool calls cannot collectively exceed the limit even under real thread concurrency. This covers only that one compound; all other session-state mutation is still the host's responsibility to serialize.
+
 ## Threats Covered
 
 - Hidden-instruction prompt injection in HTML/text payloads

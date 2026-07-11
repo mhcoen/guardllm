@@ -412,16 +412,13 @@ class SecurityPipeline:
         The re-check here is NOT redundant with the earlier check in
         ``check_tool_execution``. That check ran before the confirmation
         ``await``, so two concurrent confirmations could both pass a near-full
-        limit before either recorded. Re-checking and recording here with no
-        intervening ``await`` makes the check-and-reserve atomic under asyncio,
-        so at most ``limit`` confirmed calls are ever admitted. The caller must
-        deny the call when the returned result's ``allowed`` is False.
+        limit before either recorded. ``check_and_record`` re-checks and records
+        under the rate limiter's lock, so the compound is atomic for both
+        asyncio concurrency (no ``await`` between the two) and multithreaded
+        hosts. At most ``limit`` confirmed calls are ever admitted. The caller
+        must deny the call when the returned result's ``allowed`` is False.
         """
-        rate_result = self._rate_limiter.check(action=tool, ctx=ctx, recipient=recipient)
-        if not rate_result.allowed:
-            return rate_result
-        self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
-        return rate_result
+        return self._rate_limiter.check_and_record(action=tool, ctx=ctx, recipient=recipient)
 
     def check_kg_extraction(
         self,

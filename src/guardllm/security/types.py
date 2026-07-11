@@ -109,6 +109,12 @@ class PolicyConfig:
 
     # Client mode (None = no allowlist; dict including {} = deny unless listed)
     tool_allowlist: dict[tuple, Any] | None = None
+    # RESERVED / not yet wired. The field is accepted for forward compatibility
+    # but is not consulted by the policy engine today: authorization-event
+    # origin authenticity is a host obligation, not something the library
+    # validates (see A-AS8 in docs/threat_model.md). Its disposition
+    # (deprecate vs. wire as a source-string consistency check) is undecided;
+    # kept as a constructor field to avoid a breaking change post-2.0.0.
     directive_patterns: dict[str, Any] = field(default_factory=dict)
     enable_destructive: bool = False
 

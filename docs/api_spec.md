@@ -362,7 +362,7 @@ Method:
 
 Fields:
 - `tool_allowlist: dict[tuple, Any] | None = None` (`None` = no allowlist, fall through; `{}` = deny all tools)
-- `directive_patterns: dict[str, Any] = {}`
+- `directive_patterns: dict[str, Any] = {}` (reserved / not yet wired; not consulted by the policy engine today, retained for forward compatibility)
 - `enable_destructive: bool = False`
 - `capability_scopes: dict[str, Any] | None = None` (`None` = no allowlist; `{}` = deny all tools)
 - `client_id: str | None = None`

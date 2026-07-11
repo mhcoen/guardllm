@@ -6,7 +6,7 @@ guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 
 `PolicyConfig` fields:
 - `tool_allowlist`: client-mode allowlist map for tool authorization policy (`None` = no allowlist, fall through; `{}` = deny all tools; `{tool: ...}` = allow listed tools only).
-- `directive_patterns`: optional adapter-side directive rules.
+- `directive_patterns`: **reserved / not yet wired.** Accepted for forward compatibility but not consulted by the policy engine today. The library validates an `AuthorizationEvent`'s contents, not its origin; ensuring only trusted adapters can construct events is a host obligation (see A-AS8 in `docs/threat_model.md`). Its disposition (deprecate vs. wire as a source-string consistency check) is undecided; retained as a constructor field to avoid a breaking change post-2.0.0.
 - `enable_destructive`: enable destructive tools (default `False`).
 - `capability_scopes`: server-mode allowed tool scope mapping (`None` = no allowlist; `{}` = deny all tools).
 - `client_id`: optional logical client identity.

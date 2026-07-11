@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "expected_summary": {
-    "total": 7108,
-    "passed": 7101,
+    "total": 7117,
+    "passed": 7110,
     "failed": 7,
     "pass_rate": 99.9,
     "by_suite": {
@@ -89,6 +89,10 @@
       "upstream_mcp_bench": {
         "total": 320,
         "passed": 320
+      },
+      "egress_feedback_escalation_style": {
+        "total": 9,
+        "passed": 9
       }
     }
   },

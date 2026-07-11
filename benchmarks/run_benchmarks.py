@@ -578,6 +578,65 @@ def run_tool_gate_contamination(case: dict[str, Any]) -> CaseResult:
     return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
 
 
+def run_egress_feedback_escalation(case: dict[str, Any]) -> CaseResult:
+    """Two-cycle: a DLP hard block at egress tightens a later tool call.
+
+    Cycle 1: (optional prior contamination, then) an outbound check that the
+    DLP layer hard-blocks, setting the session escalation flag on the SAME
+    Guard. Cycle 2: a tool call on that Guard, which the escalation (and any
+    contamination) gate tightens per policy.
+    """
+    guard = Guard()
+    policy = PolicyConfig(**case.get("policy", {}))
+    out_ctx = SecurityContext(
+        mode="client",
+        source_type="mcp_server",
+        source_id="server-1",
+        policy=policy,
+    )
+
+    # Optional prior contamination (forward signal) for strictest-wins cases.
+    untrusted_text = case.get("untrusted_content")
+    if untrusted_text is not None:
+        untrusted_ctx = SecurityContext(
+            mode="client",
+            source_type="web_content",
+            source_id="untrusted-source",
+            source_trust=TrustLevel.UNTRUSTED,
+            policy=policy,
+        )
+        guard.process_inbound(untrusted_text, untrusted_ctx)
+
+    # Cycle 1: an egress check. A DLP hard block sets the escalation flag; a
+    # clean outbound does not.
+    outbound_text = case.get("outbound_content")
+    if outbound_text is not None:
+        guard.check_outbound(outbound_text, out_ctx)
+
+    # A later clean outbound must NOT clear the flag (monotonicity).
+    clean_text = case.get("clean_outbound_after")
+    if clean_text is not None:
+        guard.check_outbound(clean_text, out_ctx)
+
+    # reset() at a session boundary clears the flag.
+    if case.get("reset_before_tool"):
+        guard.reset()
+
+    auth = None
+    if "auth_action" in case:
+        auth = Guard.authorize(
+            action=case["auth_action"],
+            scope=case.get("auth_scope", {}),
+            user_message=case.get("message", "authorized message"),
+        )
+
+    # Cycle 2: the tool call, tightened if the session escalated / is contaminated.
+    result = guard.check_tool_call(case["tool"], case["args"], out_ctx, authorization=auth)
+    passed = result.allowed is case["expect_allowed"]
+    details = f"allowed={result.allowed} reason={result.reason}"
+    return CaseResult(case["id"], case["suite"], case["kind"], passed, details)
+
+
 def run_case(case: dict[str, Any]) -> CaseResult:
     kind = case["kind"]
     if kind == "inbound_sanitize":
@@ -606,6 +665,8 @@ def run_case(case: dict[str, Any]) -> CaseResult:
         return asyncio.run(run_action_gate(case))
     if kind == "contaminated_exfil":
         return run_contaminated_exfil(case)
+    if kind == "egress_feedback_escalation":
+        return run_egress_feedback_escalation(case)
     return CaseResult(
         case.get("id", "unknown"),
         case.get("suite", "unknown"),

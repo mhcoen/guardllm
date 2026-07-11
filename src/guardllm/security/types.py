@@ -148,6 +148,11 @@ class PolicyConfig:
     rate_limit_overrides: dict[TrustLevel, dict[str, int]] = field(default_factory=dict)
     # Contamination-aware tool gating: "allow" | "require_auth" | "deny"
     contaminated_tool_policy: str = "allow"
+    # Egress-feedback escalation: tool gating once a DLP block has fired at
+    # egress in this session. Same option set as contaminated_tool_policy.
+    # Default "require_auth": a confirmed egress leak block is a stronger
+    # signal than mere contamination, so it tightens subsequent tool calls.
+    escalated_tool_policy: str = "require_auth"
     # L12: auto-require confirmation for destructive tool calls
     auto_confirm_destructive: bool = False
     # Source types that require non-empty source_id
@@ -166,6 +171,11 @@ class PolicyConfig:
         if self.contaminated_tool_policy not in _VALID_CONTAMINATED_TOOL_POLICIES:
             raise ValueError(
                 f"Invalid contaminated_tool_policy: '{self.contaminated_tool_policy}'. "
+                f"Valid values: {sorted(_VALID_CONTAMINATED_TOOL_POLICIES)}"
+            )
+        if self.escalated_tool_policy not in _VALID_CONTAMINATED_TOOL_POLICIES:
+            raise ValueError(
+                f"Invalid escalated_tool_policy: '{self.escalated_tool_policy}'. "
                 f"Valid values: {sorted(_VALID_CONTAMINATED_TOOL_POLICIES)}"
             )
         _VALID_MESSAGE_BINDING = {"off", "destructive", "all"}

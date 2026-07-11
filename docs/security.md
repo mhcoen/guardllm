@@ -111,6 +111,21 @@ These source types integrate directly with source-gate and provenance behavior.
 - Server mode allows non-destructive tools by default when `capability_scopes` is unset; set `PolicyConfig.server_default_deny=True` to fail closed instead.
 - OAuth/OIDC integration is supported via host-side scope-to-policy mapping (see `docs/oauth_integration.md`).
 
+## Session Risk Signals
+
+The pipeline carries two independent, monotonic, session-scoped risk signals that tighten tool authorization. Both are cleared only by `reset()`.
+
+- **Contamination (forward propagation)** — `_context_contaminated` is set in `process_inbound` when untrusted content enters the session. `check_tool_execution` then applies `PolicyConfig.contaminated_tool_policy` (default `allow`).
+- **Egress feedback escalation (backward propagation)** — implemented. `_session_escalated` is set in `check_outbound` when an **L3/DLP hard block** fires (secret pattern or sensitive-leak overlap; `dlp_result.allowed is False`). `check_tool_execution` then applies `PolicyConfig.escalated_tool_policy` (default `require_auth`). This closes the gap where an outbound DLP block left no trace and a subsequent tool call proceeded normally.
+
+The two signals are independent: either can tighten tool policy on its own. When both fire, the **strictest** policy wins (`deny` > `require_auth` > `allow`), and the denial reason enumerates the contributing triggers (e.g. `Authorization required: session contaminated and egress escalated`). Escalation only tightens tool authorization; it does not change `check_outbound` behavior on later calls. It never mutates `principal_trust`, which is immutable after construction.
+
+**Trigger scope (DLP-only, deliberate).** Escalation is keyed to DLP hard blocks only — not provenance, rate-limit, or canary blocks. A DLP hard block is the high-confidence feedback signal that a concrete leak attempt was blocked. Provenance blocks are excluded to avoid escalating on overlap false positives; the tradeoff is narrower coverage (a real cross-boundary copy caught only by provenance does not escalate).
+
+> **Host contract — `reset()`.** Calling `Guard.reset()` / `SecurityPipeline.reset()` clears both risk signals. Escalation and contamination are monotonic within a session, so hosts must call `reset()` **only at genuine session/task boundaries** — never in response to processed content and never on a fixed schedule. Resetting reactively would let an attacker clear accumulated session risk.
+
+Verification: unit tests in `tests/security/test_egress_escalation.py` cover the trigger (DLP block sets the flag; provenance/echo/allowed-outbound do not), the policy options, monotonicity within a session and across repeated tool calls, `reset()` clearing, independence from contamination, and strictest-wins ordering.
+
 ## Threats Covered
 
 - Hidden-instruction prompt injection in HTML/text payloads

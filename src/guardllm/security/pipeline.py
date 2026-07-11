@@ -31,6 +31,10 @@ from guardllm.security.types import (
     TrustLevel,
 )
 
+# Tool-gating policy strictness ranking. When multiple session-risk signals
+# fire (contamination, egress escalation), the strictest policy wins.
+_POLICY_RANK = {"allow": 0, "require_auth": 1, "deny": 2}
+
 
 class SecurityPipeline:
     """Unified security pipeline for client and server mode.
@@ -55,6 +59,7 @@ class SecurityPipeline:
         self._audit_logger = audit_logger
         self._principal_trust = principal_trust
         self._context_contaminated: bool = False
+        self._session_escalated: bool = False
         self._canary: str | None = None
         if canary_session_id:
             self._canary = generate_canary(canary_session_id)
@@ -69,9 +74,21 @@ class SecurityPipeline:
         """True once untrusted content has entered this session."""
         return self._context_contaminated
 
+    @property
+    def session_escalated(self) -> bool:
+        """True once a DLP block has fired at egress in this session."""
+        return self._session_escalated
+
     def reset(self) -> None:
-        """Reset pipeline state for a new session."""
+        """Reset pipeline state for a new session.
+
+        Clears both contamination and egress-escalation state. Hosts must call
+        this only at genuine session/task boundaries (see docs/security.md):
+        escalation is monotonic within a session and reset is the only way to
+        clear it.
+        """
         self._context_contaminated = False
+        self._session_escalated = False
         self._provenance = ProvenanceTracker()
         self._dlp = OutboundDLP()
         self._rate_limiter = RateLimiter()
@@ -202,6 +219,13 @@ class SecurityPipeline:
             contaminated=self._context_contaminated,
         )
         if not dlp_result.allowed:
+            # Egress-feedback escalation: a DLP hard block is a high-confidence
+            # signal that something bad happened this session. Record it so
+            # subsequent tool calls can be tightened (backward-propagating,
+            # the reverse complement of _context_contaminated). DLP blocks
+            # only -- echo signals return allowed=True, provenance/rate/canary
+            # blocks are handled below and do not set this flag.
+            self._session_escalated = True
             return dlp_result
 
         # L4: Provenance check
@@ -283,19 +307,35 @@ class SecurityPipeline:
                 f"principal_trust mismatch: context has {ctx.principal_trust}, "
                 f"pipeline was constructed with {self._principal_trust}"
             )
-        # Contamination-aware tool gating (cross-stage invariant)
+        # Session-risk tool gating (cross-stage invariant). Contamination
+        # (forward, from untrusted ingest) and egress escalation (backward,
+        # from a DLP block) are independent signals that each tighten tool
+        # policy. Compute one effective policy -- the strictest of the active
+        # signals -- and enumerate the contributing triggers in the reason so
+        # provenance is preserved.
+        active_signals: list[tuple[str, str]] = []
         if self._context_contaminated:
-            ctp = ctx.policy.contaminated_tool_policy
-            if ctp == "deny":
+            active_signals.append(("session contaminated", ctx.policy.contaminated_tool_policy))
+        if self._session_escalated:
+            active_signals.append(("egress escalated", ctx.policy.escalated_tool_policy))
+
+        effective_policy = "allow"
+        for _label, policy in active_signals:
+            if _POLICY_RANK[policy] > _POLICY_RANK[effective_policy]:
+                effective_policy = policy
+
+        if effective_policy != "allow":
+            triggers = " and ".join(label for label, policy in active_signals if policy != "allow")
+            if effective_policy == "deny":
                 return GateResult(
                     allowed=False,
-                    reason="Tool call denied: context contaminated",
+                    reason=f"Tool call denied: {triggers}",
                     confidence="none",
                 )
-            if ctp == "require_auth" and auth_event is None:
+            if effective_policy == "require_auth" and auth_event is None:
                 return GateResult(
                     allowed=False,
-                    reason="Authorization required: context contaminated",
+                    reason=f"Authorization required: {triggers}",
                     confidence="none",
                 )
 

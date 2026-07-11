@@ -324,6 +324,28 @@ class TestArgsCommitment:
         assert ok is True
         assert "verified" in reason
 
+    def test_whitespace_only_mutation_denies(self):
+        """G6 binds exact bytes: a whitespace-only change to a value (e.g. a
+        newline vs a space in a shell command) must fail commitment."""
+        handler = _AcceptingHandler()
+        ctx = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s1",
+            confirmation_handler=handler,
+        )
+        gate = ActionGate()
+        proposal = ActionProposal(
+            tool_name="shell_execute",
+            args={"cmd": "rm -rf a\nb"},
+            summary="run",
+            context={},
+        )
+        asyncio.run(gate.confirm(proposal, ctx))
+        ok, reason = gate.verify_commitment("shell_execute", {"cmd": "rm -rf a b"})
+        assert ok is False
+        assert "args changed" in reason
+
     def test_args_changed_denies(self):
         """Changed args after confirmation fails verification."""
         handler = _AcceptingHandler()

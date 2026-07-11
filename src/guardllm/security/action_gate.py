@@ -19,26 +19,15 @@ from guardllm.security.types import SecurityContext
 
 
 def canonicalize_args(args: dict[str, Any]) -> str:
-    """Stable canonical representation of args for commitment comparison.
+    """Exact canonical JSON representation of args for G6 commitment.
 
-    Sorts dict keys recursively, normalizes whitespace in string values,
-    and produces a deterministic JSON string.
+    Keys are sorted for order-independence, but values are preserved EXACTLY --
+    the commitment binds the precise bytes that were confirmed. No whitespace or
+    numeric normalization: for whitespace-sensitive fields (shell commands,
+    prompts, regexes, file bodies), "a\\nb" and "a b" are different payloads and
+    must not pass commitment verification.
     """
-    return json.dumps(_normalize(args), sort_keys=True, separators=(",", ":"))
-
-
-def _normalize(obj: Any) -> Any:
-    """Recursively normalize a value for canonical comparison."""
-    if isinstance(obj, dict):
-        return {k: _normalize(v) for k, v in sorted(obj.items())}
-    if isinstance(obj, list | tuple):
-        return [_normalize(item) for item in obj]
-    if isinstance(obj, str):
-        return " ".join(obj.split())
-    if isinstance(obj, float):
-        if obj == int(obj):
-            return int(obj)
-    return obj
+    return json.dumps(args, sort_keys=True, separators=(",", ":"))
 
 
 @dataclass

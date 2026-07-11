@@ -72,9 +72,10 @@ If you find a default that does not match this posture, that itself is a reporta
 
 ### Documented compatibility exceptions
 
-Two shipped defaults are deliberately permissive for backward compatibility and do not match the safe-by-default posture above. They are known, documented choices, each with a named fail-closed opt-in, and are slated for a consolidated safe-by-default review at the next major version:
+Three shipped defaults are deliberately permissive for backward compatibility and do not match the safe-by-default posture above. They are known, documented choices, each with a named fail-closed opt-in, and are slated for a consolidated safe-by-default review at the next major version:
 
 - **Server mode with `capability_scopes` unset** implicitly allows non-destructive tools rather than denying. Opt into fail-closed with `PolicyConfig(server_default_deny=True)`.
 - **`contaminated_tool_policy` defaults to `allow`**, so untrusted-ingest contamination does not by itself tighten tool authorization. Set it explicitly to `require_auth` or `deny` to fail closed.
+- **Client mode with `tool_allowlist` unset (`None`)** implicitly allows non-destructive tools that carry no authorization event, rather than denying. Opt into fail-closed by setting `tool_allowlist` explicitly: an empty dict (`{}`) denies all tools, and a populated allowlist denies anything not listed.
 
-Reports about these two specific defaults are expected and tracked, not treated as new posture violations, until that review lands. A default outside this list that fails the posture is still in scope.
+Reports about these three specific defaults are expected and tracked, not treated as new posture violations, until that review lands. A default outside this list that fails the posture is still in scope.

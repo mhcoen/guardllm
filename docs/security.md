@@ -109,6 +109,7 @@ These source types integrate directly with source-gate and provenance behavior.
 - Destructive tool calls require authorization events in client mode.
 - Request binding is optional but recommended for all write-capable actions. In addition, the policy engine binds authorizations to the current user message (a mismatching message hash is denied as replay); `PolicyConfig.require_message_binding` (`"destructive"` / `"all"`) makes a missing current hash fail closed.
 - Server mode allows non-destructive tools by default when `capability_scopes` is unset; set `PolicyConfig.server_default_deny=True` to fail closed instead.
+- `contaminated_tool_policy` defaults to `allow`, so untrusted-ingest contamination does not by itself tighten tool authorization; set it to `require_auth` or `deny` to fail closed. Both this and the `capability_scopes` default are listed under "Documented compatibility exceptions" in `SECURITY.md`.
 - OAuth/OIDC integration is supported via host-side scope-to-policy mapping (see `docs/oauth_integration.md`).
 
 ## Session Risk Signals

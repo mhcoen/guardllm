@@ -69,3 +69,12 @@ GuardLLM ships with safe-by-default settings:
 - Outbound checks fail closed when provenance is unknown
 
 If you find a default that does not match this posture, that itself is a reportable issue.
+
+### Documented compatibility exceptions
+
+Two shipped defaults are deliberately permissive for backward compatibility and do not match the safe-by-default posture above. They are known, documented choices, each with a named fail-closed opt-in, and are slated for a consolidated safe-by-default review at the next major version:
+
+- **Server mode with `capability_scopes` unset** implicitly allows non-destructive tools rather than denying. Opt into fail-closed with `PolicyConfig(server_default_deny=True)`.
+- **`contaminated_tool_policy` defaults to `allow`**, so untrusted-ingest contamination does not by itself tighten tool authorization. Set it explicitly to `require_auth` or `deny` to fail closed.
+
+Reports about these two specific defaults are expected and tracked, not treated as new posture violations, until that review lands. A default outside this list that fails the posture is still in scope.

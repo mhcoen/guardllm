@@ -19,6 +19,7 @@ Use this checklist before deploying guardllm-backed flows.
 - Enable destructive tools only where required (`PolicyConfig(enable_destructive=True)`).
 - Enforce scope-limited server policies (`capability_scopes`), and set `server_default_deny=True` so a missing scope config fails closed.
 - Require explicit authorization and request binding for write-capable tools; set `require_message_binding="destructive"` (or `"all"`) and pass the current `user_message`/`message_hash` to prevent authorization replay.
+- Treat `Binding` objects as intra-process only. Request binding is an intra-process consistency check (recomputed args hash, message hash, TTL), not a cryptographic token, so a `Binding` must never be passed across a process or trust boundary. See the Integrity boundary in `docs/threat_model.md`.
 - Require L12 confirmation for high-impact actions (`guard_tool_call(..., require_confirmation=True)`).
 - Keep session-risk tool gating tight: `contaminated_tool_policy` and `escalated_tool_policy` (default `"require_auth"` for escalation) tighten tool calls after untrusted ingest or an egress DLP block. Call `reset()` only at genuine session/task boundaries (never on processed content or a schedule), since it clears both signals.
 

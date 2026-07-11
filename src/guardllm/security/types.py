@@ -93,7 +93,16 @@ class AuthorizationEvent:
     session_id: str | None = None
 
     def binding_hash(self) -> str:
-        """Hash for request binding verification."""
+        """Hash for request binding verification.
+
+        RESERVED / not read by the verify path. ``verify_binding`` recomputes and
+        compares the args hash, message hash, and TTL directly and never calls
+        this method; ``create_binding`` derives its own hash. Retained for
+        forward compatibility (removing it is a breaking change post-2.0.0);
+        disposition is deferred. Request binding is an intra-process consistency
+        check, not a keyed/cryptographic binding (see the Integrity boundary in
+        docs/threat_model.md).
+        """
         payload = f"{self.action}:{sorted(self.scope.items())}:{self.message_hash}"
         return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -320,6 +329,13 @@ class Binding:
     tool_name: str
     args_hash: str
     message_hash: str
+    # RESERVED / not read by verify_binding. create_binding computes this
+    # SHA-256 over (tool, args_hash, message_hash), but verification checks the
+    # tool name, args hash, message hash, and TTL directly, so binding_hash is
+    # never consulted. Retained for forward compatibility (removing it is a
+    # breaking change post-2.0.0); disposition deferred. Request binding is an
+    # intra-process consistency check, not a keyed/cryptographic binding (see
+    # the Integrity boundary in docs/threat_model.md).
     binding_hash: str
     created_at: float
     ttl: float = 120.0

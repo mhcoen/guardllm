@@ -26,10 +26,10 @@ GuardLLM sits on the data path between untrusted external sources and trusted de
 
 GuardLLM enforces a label discipline across four boundaries:
 
-1. **Ingress** – content enters from a typed source (`Guard.context_web`, `Guard.context_mcp_server`, etc.). The source determines initial `source_trust`. Content is sanitized, normalized, and wrapped in `<untrusted_content>` framing.
-2. **Authorization** – a tool call is admitted only when a structured `AuthorizationEvent` matches policy. Untrusted-content-derived prompts cannot synthesize their own `AuthorizationEvent`.
-3. **Integrity** – tool-call parameters are checked for consistency via `Guard.bind_request`. Verification recomputes the argument hash and compares it, the message hash, and the TTL against the recorded `Binding`, so any modification between binding and invocation is detected. This is an intra-process consistency check, not a cryptographic (keyed) binding: `Binding` objects are created and verified inside the trusted application process and are not designed to cross a trust boundary.
-4. **Egress** – outbound payloads are checked against provenance and DLP policy. Content tagged untrusted at ingress is detected when it tries to reappear in an outbound message.
+1. **Ingress** - content enters from a typed source (`Guard.context_web`, `Guard.context_mcp_server`, etc.). The source determines initial `source_trust`. Content is sanitized, normalized, and wrapped in `<untrusted_content>` framing.
+2. **Authorization** - a tool call is admitted only when a structured `AuthorizationEvent` matches policy. Untrusted-content-derived prompts cannot synthesize their own `AuthorizationEvent`.
+3. **Integrity** - tool-call parameters are checked for consistency via `Guard.bind_request`. Verification recomputes the argument hash and compares it, the message hash, and the TTL against the recorded `Binding`, so any modification between binding and invocation is detected. This is an intra-process consistency check, not a cryptographic (keyed) binding: `Binding` objects are created and verified inside the trusted application process and are not designed to cross a trust boundary.
+4. **Egress** - outbound payloads are checked against provenance and DLP policy. Content tagged untrusted at ingress is detected when it tries to reappear in an outbound message.
 
 *Future work:* if `Binding` objects ever need to cross a process boundary, the Integrity check would need to become a keyed HMAC (or signature) over `(tool, args_hash, message_hash, created_at, ttl)` verified against a server-held secret. This is not implemented today because bindings stay within the trusted process (A-AS5).
 

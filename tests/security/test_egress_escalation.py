@@ -184,8 +184,10 @@ class TestIndependenceAndStrictness:
         # deny (contamination) is stricter than require_auth (escalation).
         result = pipe.check_tool_execution("search", {}, _ctx(policy), auth_event=_auth("search"))
         assert result.allowed is False
-        assert "denied" in result.reason.lower()
-        assert "session contaminated" in result.reason.lower()
+        # Per-trigger-policy reason format names each trigger with its policy.
+        assert result.reason == (
+            "Tool call denied: session contaminated=deny; egress escalated=require_auth"
+        )
 
     def test_escalation_deny_beats_contamination_allow(self):
         policy = PolicyConfig(contaminated_tool_policy="allow", escalated_tool_policy="deny")
@@ -194,9 +196,8 @@ class TestIndependenceAndStrictness:
         pipe.check_outbound(_SECRET, _ctx(policy))
         result = pipe.check_tool_execution("search", {}, _ctx(policy))
         assert result.allowed is False
-        assert "denied" in result.reason.lower()
         # contamination's allow does not contribute to the reason.
-        assert "egress escalated" in result.reason.lower()
+        assert result.reason == "Tool call denied: egress escalated=deny"
 
     def test_both_triggers_enumerated_in_reason(self):
         policy = PolicyConfig(
@@ -207,7 +208,18 @@ class TestIndependenceAndStrictness:
         pipe.check_outbound(_SECRET, _ctx(policy))
         result = pipe.check_tool_execution("search", {}, _ctx(policy))
         assert result.allowed is False
-        assert "session contaminated and egress escalated" in result.reason.lower()
+        # Both triggers named with their policies, semicolon-separated.
+        assert result.reason == (
+            "Authorization required: session contaminated=require_auth; "
+            "egress escalated=require_auth"
+        )
+
+    def test_single_trigger_reason_format(self):
+        """Escalation only -> just that trigger with its policy."""
+        pipe = SecurityPipeline()
+        pipe.check_outbound(_SECRET, _ctx())
+        result = pipe.check_tool_execution("search", {}, _ctx())
+        assert result.reason == "Authorization required: egress escalated=require_auth"
 
 
 class TestConfigAndProperty:

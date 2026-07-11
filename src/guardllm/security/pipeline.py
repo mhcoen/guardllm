@@ -325,7 +325,12 @@ class SecurityPipeline:
                 effective_policy = policy
 
         if effective_policy != "allow":
-            triggers = " and ".join(label for label, policy in active_signals if policy != "allow")
+            # Auditability: name each contributing trigger with its policy, e.g.
+            # "session contaminated=deny; egress escalated=require_auth", so the
+            # deciding signal is unambiguous in mixed-policy denials.
+            triggers = "; ".join(
+                f"{label}={policy}" for label, policy in active_signals if policy != "allow"
+            )
             if effective_policy == "deny":
                 return GateResult(
                     allowed=False,

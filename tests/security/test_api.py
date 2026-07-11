@@ -212,6 +212,92 @@ def test_g6_commitment_args_swapped_denied():
 
 
 # ---------------------------------------------------------------------------
+# L6: rate-limit quota is not consumed by a denied confirmation
+# ---------------------------------------------------------------------------
+
+
+class _DenyAllHandler:
+    async def confirm(self, tool: str, args: dict, context: dict) -> bool:
+        return False
+
+
+def test_denied_confirmation_does_not_consume_rate_limit_quota():
+    """Regression: a confirmation the user denies must not consume L6 quota.
+
+    With emails_per_hour=1, a denied confirmation followed by an accepted one
+    must still succeed: the denial left no rate-limit trace. Before the fix,
+    check_tool_call recorded the action before confirmation, so the denial
+    burned the single slot and the accepted call was wrongly rate-limited.
+    """
+    policy = PolicyConfig(rate_limit_overrides={TrustLevel.UNTRUSTED: {"emails_per_hour": 1}})
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=policy)
+
+    # Denied confirmation: must not consume the single slot.
+    ctx.confirmation_handler = _DenyAllHandler()
+    denied = asyncio.run(
+        guard.guard_tool_call(
+            tool="search",
+            args={"q": "x"},
+            context=ctx,
+            require_confirmation=True,
+            summary="search",
+        )
+    )
+    assert denied.allowed is False
+    assert "User denied confirmation" in denied.reason
+
+    # Accepted confirmation: the slot is still free, so this succeeds.
+    ctx.confirmation_handler = _AcceptAllHandler()
+    accepted = asyncio.run(
+        guard.guard_tool_call(
+            tool="search",
+            args={"q": "x"},
+            context=ctx,
+            require_confirmation=True,
+            summary="search",
+        )
+    )
+    assert accepted.allowed is True
+
+
+def test_confirmed_call_still_consumes_rate_limit_quota():
+    """Complement: an accepted confirmation DOES record against L6.
+
+    Ensures the deferral did not silently disable rate-limit accounting: with
+    emails_per_hour=1, the first confirmed call succeeds and the second is
+    rate-limited.
+    """
+    policy = PolicyConfig(rate_limit_overrides={TrustLevel.UNTRUSTED: {"emails_per_hour": 1}})
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=policy)
+    ctx.confirmation_handler = _AcceptAllHandler()
+
+    first = asyncio.run(
+        guard.guard_tool_call(
+            tool="search",
+            args={"q": "x"},
+            context=ctx,
+            require_confirmation=True,
+            summary="search",
+        )
+    )
+    assert first.allowed is True
+
+    second = asyncio.run(
+        guard.guard_tool_call(
+            tool="search",
+            args={"q": "x"},
+            context=ctx,
+            require_confirmation=True,
+            summary="search",
+        )
+    )
+    assert second.allowed is False
+    assert "limit" in second.reason.lower()
+
+
+# ---------------------------------------------------------------------------
 # L12: auto_confirm_destructive
 # ---------------------------------------------------------------------------
 

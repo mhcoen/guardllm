@@ -294,6 +294,7 @@ class SecurityPipeline:
         binding: Binding | None = None,
         message_hash: str | None = None,
         recipient: str | None = None,
+        record_rate_limit: bool = True,
     ) -> GateResult:
         """Policy check before tool execution.
 
@@ -301,6 +302,14 @@ class SecurityPipeline:
 
         Client mode: calling external MCP tool.
         Server mode: executing internal tool for MCP client.
+
+        record_rate_limit: when True (the default, and the correct choice for a
+        standalone check that is itself the terminal decision) a permitted call
+        is recorded against the L6 rate limiter. Pass False when a later gate in
+        the same flow can still abort the call -- e.g. the guard flow's user
+        confirmation -- so that an aborted call does not consume quota. In that
+        case the caller must invoke ``record_tool_execution`` once the call is
+        fully cleared. The rate-limit *check* still runs regardless.
         """
         if ctx.principal_trust != self._principal_trust:
             raise ValueError(
@@ -375,12 +384,31 @@ class SecurityPipeline:
 
         # L6: record the now-permitted tool action so the rate limiter
         # accumulates state across calls (otherwise check() never trips).
-        self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
+        # Deferred when record_rate_limit is False so a call that a later gate
+        # (e.g. user confirmation) may still deny does not consume quota; the
+        # caller records via record_tool_execution once the call is cleared.
+        if record_rate_limit:
+            self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
 
         # Surface non-blocking anomaly signals (burst, novel recipient) rather
         # than discarding them.
         policy_result.anomalies = rate_result.anomalies
         return policy_result
+
+    def record_tool_execution(
+        self,
+        tool: str,
+        ctx: SecurityContext,
+        recipient: str | None = None,
+    ) -> None:
+        """Record a tool action against the L6 rate limiter.
+
+        Companion to ``check_tool_execution(..., record_rate_limit=False)``:
+        the guard flow calls this only after a permitted call has also cleared
+        user confirmation and G6 commitment verification, so a denied
+        confirmation leaves no rate-limit trace.
+        """
+        self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
 
     def check_kg_extraction(
         self,

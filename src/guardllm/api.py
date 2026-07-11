@@ -249,6 +249,7 @@ class Guard:
         message_hash: str | None = None,
         recipient: str | None = None,
         validate: bool = True,
+        record_rate_limit: bool = True,
     ) -> GateResult:
         """Run validation, then policy/rate-limit/binding checks for a tool call.
 
@@ -256,6 +257,11 @@ class Guard:
         arguments that fail validation (e.g. path traversal) are denied before
         any authorization decision. Pass validate=False only when validation is
         already handled by the caller (as guard_tool_call does).
+
+        record_rate_limit defaults to True: a permitted call is the terminal
+        decision and is recorded against the rate limiter. guard_tool_call
+        passes False when a user confirmation still follows, so a denied
+        confirmation does not consume quota.
         """
         if validate:
             validation = self.validate_tool_args(tool, args)
@@ -276,6 +282,7 @@ class Guard:
             binding=binding,
             message_hash=msg_hash,
             recipient=recipient,
+            record_rate_limit=record_rate_limit,
         )
         self._audit(
             AuditEvent(
@@ -439,6 +446,10 @@ class Guard:
             message_hash=message_hash,
             recipient=recipient,
             validate=False,  # already validated above per the `validate` flag
+            # Defer L6 rate-limit accounting when a confirmation still follows,
+            # so a denied confirmation does not consume the session's quota. We
+            # record explicitly below once the call is fully cleared.
+            record_rate_limit=not require_confirmation,
         )
         if not gate.allowed:
             return gate
@@ -467,6 +478,11 @@ class Guard:
                     reason=f"Commitment verification failed: {reason}",
                     confidence="none",
                 )
+            # L6: the call is now fully cleared (permitted + confirmed +
+            # commitment verified). Record it against the rate limiter now,
+            # since check_tool_call deferred it. A denied confirmation or a
+            # failed commitment returns above, leaving no rate-limit trace.
+            self._pipeline.record_tool_execution(tool, context, recipient=recipient)
 
         return gate
 

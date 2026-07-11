@@ -4,6 +4,10 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-10
+
+This release completes the session-risk feedback mechanism designed in the "metadata circulation in the LLM systems loop" work: egress DLP verdicts now persist as session state and gate subsequent tool execution. The `escalated_tool_policy` default of `require_auth` is a behavior-changing default for any deployment that hits the DLP-block-then-tool-call sequence, so this is a major version bump.
+
 ### Added
 - Egress feedback escalation: the backward-propagating complement of `_context_contaminated`. A DLP hard block at egress (`check_outbound`) now sets a monotonic, session-scoped escalation flag, and subsequent tool calls are gated by the new `PolicyConfig.escalated_tool_policy` (`"allow"` | `"require_auth"` | `"deny"`, default `"require_auth"`). Contamination and escalation are independent signals; when both fire the strictest policy wins, and the denial reason names each contributing trigger with its policy (e.g. `session contaminated=deny; egress escalated=require_auth`). Exposed via a read-only `SecurityPipeline.session_escalated` property. Cleared only by `reset()`, which hosts must call only at genuine session boundaries. See "Session Risk Signals" in `docs/security.md`.
 - Benchmark kind `egress_feedback_escalation` covering the mechanism (require_auth default, deny/allow options, strictest-wins vs contamination, monotonicity, and reset clearing).

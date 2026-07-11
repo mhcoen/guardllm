@@ -8,8 +8,8 @@ Only the most recent minor release line of GuardLLM receives security fixes.
 
 | Version | Supported |
 |--------:|:---------:|
-| 1.2.x   | Yes       |
-| < 1.2   | No        |
+| 2.0.x   | Yes       |
+| < 2.0   | No        |
 
 The version is declared in `pyproject.toml`. Older versions on PyPI will not be patched; users on older releases should upgrade.
 

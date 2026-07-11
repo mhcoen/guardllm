@@ -26,6 +26,7 @@ from guardllm.security.types import (
     GateResult,
     OutboundResult,
     ProcessedContent,
+    RateLimitResult,
     SecurityContext,
     SensitivityLevel,
     TrustLevel,
@@ -400,15 +401,27 @@ class SecurityPipeline:
         tool: str,
         ctx: SecurityContext,
         recipient: str | None = None,
-    ) -> None:
-        """Record a tool action against the L6 rate limiter.
+    ) -> RateLimitResult:
+        """Atomically re-check and record a tool action against the L6 limiter.
 
         Companion to ``check_tool_execution(..., record_rate_limit=False)``:
         the guard flow calls this only after a permitted call has also cleared
         user confirmation and G6 commitment verification, so a denied
         confirmation leaves no rate-limit trace.
+
+        The re-check here is NOT redundant with the earlier check in
+        ``check_tool_execution``. That check ran before the confirmation
+        ``await``, so two concurrent confirmations could both pass a near-full
+        limit before either recorded. Re-checking and recording here with no
+        intervening ``await`` makes the check-and-reserve atomic under asyncio,
+        so at most ``limit`` confirmed calls are ever admitted. The caller must
+        deny the call when the returned result's ``allowed`` is False.
         """
+        rate_result = self._rate_limiter.check(action=tool, ctx=ctx, recipient=recipient)
+        if not rate_result.allowed:
+            return rate_result
         self._rate_limiter.record(action=tool, ctx=ctx, recipient=recipient)
+        return rate_result
 
     def check_kg_extraction(
         self,

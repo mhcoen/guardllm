@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import time
 
+import pytest
+
 from guardllm import Guard
 from guardllm.security.audit import AuditLogger
 from guardllm.security.error_sanitizer import PermissionDeniedError
-from guardllm.security.types import PolicyConfig, TrustLevel
+from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
 def test_authorize_uses_user_message_hash():
@@ -295,6 +297,76 @@ def test_confirmed_call_still_consumes_rate_limit_quota():
     )
     assert second.allowed is False
     assert "limit" in second.reason.lower()
+
+
+class _SlowAcceptHandler:
+    """Confirms, but yields control first so two guard flows interleave."""
+
+    async def confirm(self, tool: str, args: dict, context: dict) -> bool:
+        await asyncio.sleep(0)
+        return True
+
+
+def test_concurrent_confirmations_do_not_bypass_rate_limit():
+    """Regression: two concurrent confirmed calls must not both pass a 1-call
+    limit.
+
+    The rate check runs before the confirmation await, so both flows can pass
+    the pre-confirmation check while the limit still shows a free slot. Without
+    an atomic re-check-and-record after confirmation, both would record and be
+    admitted. The fix re-checks and records with no intervening await, so at
+    most one confirmed call is admitted.
+    """
+    policy = PolicyConfig(rate_limit_overrides={TrustLevel.UNTRUSTED: {"emails_per_hour": 1}})
+    guard = Guard()
+    ctx = Guard.context_mcp_server(server_id="s1", policy=policy)
+    ctx.confirmation_handler = _SlowAcceptHandler()
+
+    async def run_two():
+        return await asyncio.gather(
+            guard.guard_tool_call(
+                tool="search",
+                args={"q": "x"},
+                context=ctx,
+                require_confirmation=True,
+                summary="search",
+            ),
+            guard.guard_tool_call(
+                tool="search",
+                args={"q": "x"},
+                context=ctx,
+                require_confirmation=True,
+                summary="search",
+            ),
+        )
+
+    results = asyncio.run(run_two())
+    allowed = [r for r in results if r.allowed]
+    denied = [r for r in results if not r.allowed]
+    assert len(allowed) == 1, [r.reason for r in results]
+    assert len(denied) == 1
+    assert "limit" in denied[0].reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# SecurityContext.mode validation
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_mode_rejected():
+    """A mode typo must raise, not silently fall through to client policy.
+
+    With mode="sever" and server_default_deny=True, an unvalidated mode would
+    take the client implicit-allow path and admit a non-destructive tool.
+    """
+    with pytest.raises(ValueError, match="mode must be"):
+        SecurityContext(mode="sever", source_type="mcp_server", source_id="s1")
+
+
+def test_valid_modes_accepted():
+    for mode in ("client", "server"):
+        ctx = SecurityContext(mode=mode, source_type="mcp_server", source_id="s1")
+        assert ctx.mode == mode
 
 
 # ---------------------------------------------------------------------------

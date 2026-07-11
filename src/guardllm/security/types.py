@@ -227,6 +227,10 @@ class SecurityContext:
     confirmation_handler: ConfirmationHandler | None = None
 
     def __post_init__(self) -> None:
+        if self.mode not in ("client", "server"):
+            # Without this guard a typo (e.g. "sever") silently falls through to
+            # the client implicit-allow path, bypassing server_default_deny.
+            raise ValueError(f"mode must be 'client' or 'server', got {self.mode!r}")
         if self.source_trust == TrustLevel.SEMI_TRUSTED:
             raise ValueError("source_trust does not allow SEMI_TRUSTED; use TRUSTED or UNTRUSTED")
 

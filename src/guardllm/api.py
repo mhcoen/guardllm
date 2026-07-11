@@ -479,10 +479,21 @@ class Guard:
                     confidence="none",
                 )
             # L6: the call is now fully cleared (permitted + confirmed +
-            # commitment verified). Record it against the rate limiter now,
-            # since check_tool_call deferred it. A denied confirmation or a
-            # failed commitment returns above, leaving no rate-limit trace.
-            self._pipeline.record_tool_execution(tool, context, recipient=recipient)
+            # commitment verified). Atomically re-check and record it against
+            # the rate limiter, since check_tool_call deferred it. The re-check
+            # closes a race where two concurrent confirmations both pass the
+            # pre-confirmation check before either records; the check and record
+            # run with no intervening await, so at most `limit` confirmed calls
+            # are admitted. A denied confirmation or a failed commitment returns
+            # above, leaving no rate-limit trace.
+            rate_final = self._pipeline.record_tool_execution(tool, context, recipient=recipient)
+            if not rate_final.allowed:
+                return GateResult(
+                    allowed=False,
+                    reason=rate_final.reason,
+                    confidence="none",
+                    anomalies=rate_final.anomalies,
+                )
 
         return gate
 

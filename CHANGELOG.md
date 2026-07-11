@@ -4,6 +4,17 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Security
+- G6 action-gate commitment now binds the exact argument bytes. `canonicalize_args` previously normalized whitespace, so a confirmed `{"cmd": "a\nb"}` and an executed `{"cmd": "a b"}` verified against the same commitment; whitespace-sensitive payloads (shell commands, prompts, regexes, file bodies) could be mutated after confirmation without tripping G6. Verification now compares exact canonical JSON.
+- `SecurityContext.mode` is validated in `__post_init__`. It was documented as `"client"` or `"server"` but never checked, and the policy engine treats only exact `"server"` as server mode. A typo such as `mode="sever"` with `server_default_deny=True` silently fell through to the client implicit-allow path and admitted a non-destructive tool. Any mode outside `{"client", "server"}` now raises `ValueError`.
+
+### Fixed
+- A confirmation the user denies no longer consumes L6 rate-limit quota. The guard flow previously recorded the tool action against the rate limiter before the confirmation ran, so a denied confirmation still burned a per-session slot. The record is now deferred until the call has cleared confirmation and G6 commitment verification.
+- Confirmed tool calls can no longer exceed the rate limit under concurrency. The deferral above left the rate-limit check before the confirmation `await` and the record after it, so two concurrent confirmed calls could both pass a near-full limit before either recorded. The finalize step now re-checks and records atomically, so at most `limit` confirmed calls are admitted.
+
+### Changed
+- Threat model (`docs/threat_model.md`) rescoped to match the implementation: request binding is described as an intra-process consistency check (recomputed argument hash, message-hash match, TTL) rather than a cryptographic binding, and authorization-event origin authenticity is stated as a host obligation (the library validates event contents, not origin). `PolicyConfig.directive_patterns` is documented as reserved and not yet wired.
+
 ## [2.0.0] - 2026-07-10
 
 This release completes the session-risk feedback mechanism designed in the "metadata circulation in the LLM systems loop" work: egress DLP verdicts now persist as session state and gate subsequent tool execution. The `escalated_tool_policy` default of `require_auth` is a behavior-changing default for any deployment that hits the DLP-block-then-tool-call sequence, so this is a major version bump.

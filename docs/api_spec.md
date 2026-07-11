@@ -215,6 +215,8 @@ guard.check_tool_call(
     user_message: str | None = None,
     message_hash: str | None = None,
     recipient: str | None = None,
+    validate: bool = True,
+    record_rate_limit: bool = True,
 ) -> GateResult
 ```
 
@@ -223,6 +225,8 @@ Behavior:
 - If `message_hash` absent and `user_message` provided, computes hash from `user_message`.
 - Anti-replay message binding: when an `authorization` is present and a current message hash is available (from `message_hash`/`user_message`), a mismatch against `authorization.message_hash` is denied as a possible replay. `PolicyConfig.require_message_binding` additionally fails closed on a missing current hash.
 - `recipient` (optional) feeds novel-recipient rate-limit anomaly detection; surfaced non-blocking on `GateResult.anomalies` and recorded in the audit event.
+- `validate` (default `True`): validate arguments before the authorization decision; pass `False` only when the caller already validated (as `guard_tool_call` does).
+- `record_rate_limit` (default `True`): a permitted call is the terminal decision and is recorded against the rate limiter. The rate-limit *check* always runs; only the *record* is gated. `guard_tool_call` passes `False` when a confirmation still follows, so a denied confirmation does not consume quota (see `guard_tool_call` below).
 - Emits audit event `tool_call_checked` if audit logger is configured.
 
 ### Method: `check_outbound`
@@ -314,9 +318,10 @@ await guard.guard_tool_call(
 Execution order:
 1. Confirmation escalation: `require_confirmation` is forced to `True` when policy demands it, even if the caller passed `False`. This fires for a destructive tool under `auto_confirm_destructive`, for web-derived context (`context_has_web_derived=True`) under `escalation_gate_enabled`, and for a principal at or below `confirm_all_below`. Escalation fails closed: if confirmation is required and no handler is configured, the call is denied.
 2. Optional validation (`validate=True` by default)
-3. Tool policy/rate/binding checks (`check_tool_call`), including anti-replay message binding
+3. Tool policy/rate/binding checks (`check_tool_call`). When a confirmation follows (`require_confirmation=True`), this call passes `record_rate_limit=False`: the rate-limit *check* runs but the slot is not consumed yet, so a call denied at confirmation leaves no rate-limit trace.
 4. Optional/escalated confirmation (`require_confirmation=True`)
 5. G6 commitment verification: after confirmation, verifies that tool args have not been mutated since the confirmation handler was called. If args changed, the call is rejected with `"Commitment verification failed"`. This prevents TOCTOU attacks where args are swapped between confirmation and execution.
+6. Rate-limit finalize (confirmation path only): once the call has cleared confirmation and G6, the rate-limit slot is re-checked and recorded atomically. Re-checking here (not just recording) closes a race where two concurrent confirmations both pass the step-3 check before either records; the check and record run with no intervening `await`, so at most `limit` confirmed calls are admitted. If the limit is now reached, the call is denied with the rate-limit reason.
 
 `recipient` (optional) is forwarded to `check_tool_call` for novel-recipient anomaly detection.
 
@@ -325,6 +330,7 @@ Return behavior:
 - Gate failure: returns gate denial from `check_tool_call`
 - Confirmation denied: `GateResult(allowed=False, reason="User denied confirmation", confidence="none")`
 - G6 commitment mismatch: `GateResult(allowed=False, reason="Commitment verification failed: ...", confidence="none")`
+- Rate-limit reached at finalize (concurrent confirmed calls): `GateResult(allowed=False, reason="Hourly limit exceeded ...", confidence="none")`
 - Success: returns gate result from `check_tool_call`
 
 ## Type Specification

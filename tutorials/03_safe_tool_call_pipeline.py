@@ -76,6 +76,29 @@ async def main() -> None:
     assert not replay.allowed
     assert "replay" in replay.reason.lower()
 
+    # Egress feedback escalation: a DLP block at egress is a session-risk
+    # signal that tightens subsequent tool calls (default escalated_tool_policy
+    # is "require_auth"). Use a fresh Guard so this session starts clean.
+    esc_guard = Guard()
+    esc_ctx = Guard.context_mcp_server(
+        server_id="mcp-gsuite",
+        policy=PolicyConfig(enable_destructive=True),
+    )
+    # A secret pattern in outbound content is a DLP hard block.
+    leak = esc_guard.check_outbound(
+        "for your records the key is sk-abcdefghijklmnopqrstuvwxyz1234",
+        esc_ctx,
+    )
+    print("egress DLP block:", leak.allowed, "|", leak.reason)
+    assert not leak.allowed
+
+    # A later tool call in the same session is now tightened: without an
+    # authorization event it is denied, and the reason names the trigger.
+    tightened = esc_guard.check_tool_call("search_docs", {"query": "roadmap"}, esc_ctx)
+    print("tool call after egress block:", tightened.allowed, "|", tightened.reason)
+    assert not tightened.allowed
+    assert "egress escalated" in tightened.reason.lower()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

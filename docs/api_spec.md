@@ -381,7 +381,8 @@ Fields:
 - `untrusted_require_auth: bool = False`
 - `confirm_all_below: TrustLevel | None = None`
 - `rate_limit_overrides: dict[TrustLevel, dict[str, int]] = {}`
-- `contaminated_tool_policy: str = "allow"` (`"allow"` | `"require_auth"` | `"deny"`)
+- `contaminated_tool_policy: str = "allow"` (`"allow"` | `"require_auth"` | `"deny"`; tool gating when untrusted content has entered the session)
+- `escalated_tool_policy: str = "require_auth"` (`"allow"` | `"require_auth"` | `"deny"`; tool gating once an egress DLP block has fired this session)
 - `auto_confirm_destructive: bool = False`
 - `require_source_id_for: frozenset[str] = frozenset()`
 - `require_message_binding: str = "off"` (`"off"` | `"destructive"` | `"all"`; anti-replay message binding)

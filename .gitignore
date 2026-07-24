@@ -69,3 +69,9 @@ artifacts/cbx1000/source_cache/
 
 devel/
 paper/
+
+# Local-only demo pages, not ready to advertise
+demo/
+
+# Local scratch screenshots
+screenshot_*.png

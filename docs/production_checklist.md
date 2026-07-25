@@ -26,6 +26,7 @@ Use this checklist before deploying guardllm-backed flows.
 ## 4. Outbound Safety
 
 - Run `check_outbound(...)` before external calls and user-visible responses.
+- Treat content carried in tool-call arguments as an outbound channel. `check_tool_call(...)` gates the action (policy, rate limit, binding) and does not inspect argument content, so an email send that passes the tool gate still needs `check_outbound(...)` on its body (see A-AS9 in `docs/threat_model.md`).
 - Fail closed when DLP/provenance/canary checks block output.
 - Log blocked events with enough context for follow-up.
 

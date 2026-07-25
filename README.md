@@ -15,10 +15,16 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 2. **Carry security context through downstream decisions**: tool authorization, action gating, and request binding all reference the labels established at ingress.
 3. **Preserve integrity over time**: request binding and anti-replay checks prevent reuse of stale or tampered tool calls.
 4. **Enforce output and process constraints using the same context**: outbound DLP, provenance copy controls, and error sanitization use the same trust labels.
+5. **Feed enforcement outcomes back into the session**: an outbound DLP block sets a session escalation flag, and subsequent tool calls require authorization by default (`escalated_tool_policy`, default `require_auth`). Untrusted ingest contaminates the session, widening egress checks for its remainder and, when `contaminated_tool_policy` is set to `require_auth` or `deny`, gating tool calls. The pipeline is a loop, not a one-way filter: decisions in one cycle constrain the next.
 
-This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context. Composing them into a stack (`surface_stack` in [benchmarks/results.md](benchmarks/results.md)) reaches around 74% on surface controls; GuardLLM reaches 100% because downstream decisions continuously track the same security labels established at ingress.
+This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they don't share security context, and no composition of them carries state from an egress outcome into a later tool decision. Composing them into a stack (`surface_stack` in [benchmarks/results.md](benchmarks/results.md)) reaches around 74% on surface controls; GuardLLM reaches 100% because downstream decisions continuously track the same security labels established at ingress.
 
 ## Features
+
+**Session-risk propagation (cross-stage)**
+- Forward: untrusted ingest sets a session contamination flag; outbound DLP and provenance checks widen for the rest of the session, and `contaminated_tool_policy` can gate tool calls
+- Backward: an outbound DLP block sets a session escalation flag; subsequent tool calls require authorization by default (`escalated_tool_policy`, default `require_auth`)
+- The two signals are independent; when both fire, the strictest policy wins, and denial reasons name each contributing trigger
 
 **Inbound protection**
 - Input sanitization for unknown-provenance content (HTML/CSS stripping, hidden-element removal)

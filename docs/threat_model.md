@@ -74,8 +74,8 @@ The application itself, the policy configuration, and the principal identity are
 | T-IN5 | Destructive tool call from untrusted-trust principal                                     | Policy engine + `DESTRUCTIVE_TOOLS` allowlist requires explicit authorization |
 | T-IN6 | Parameter tampering between authorization and execution                                  | `Guard.bind_request` consistency check: verification recomputes the argument hash and rejects a mismatch against the recorded binding |
 | T-IN7 | Replay of stale authorization or binding                                                 | TTL / anti-replay window checked in binding verification; policy-engine message binding (`PolicyConfig.require_message_binding`) denies an authorization whose message hash does not match the current message |
-| T-IN8 | Untrusted-provenance content copied into outbound payload                                | `Guard.check_outbound` provenance + DLP                   |
-| T-IN9 | Exfiltration via canary token                                                            | Canary detection at ingress and outbound                  |
+| T-IN8 | Untrusted-provenance content copied into outbound payload                                | `Guard.check_outbound` provenance + DLP (depends on A-AS9) |
+| T-IN9 | Exfiltration via canary token                                                            | Canary detection at ingress and outbound (outbound leg depends on A-AS9) |
 | T-IN10| Internal detail leakage via exception messages                                           | `Guard.sanitize_exception`                                |
 | T-IN11| Detector evasion via low-cost obfuscation                                                | Multi-signal detector (composition penalty), normalization-before-detection |
 | T-IN12| Empty allowlist treated as allow-all                                                     | Empty allowlist denies by default                         |
@@ -107,6 +107,7 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 | A-AS6  | Time clocks are roughly synchronized for anti-replay windows                        | Anti-replay rejects legitimate calls or admits stale ones      |
 | A-AS7  | `<untrusted_content>` framing is preserved through to the model                     | Without framing the model sees untrusted text as system-level  |
 | A-AS8  | Only trusted application adapters construct `AuthorizationEvent`s                    | An attacker who can mint `AuthorizationEvent`s in-process holds authorization authority; the library validates event contents, not origin |
+| A-AS9  | The application calls `check_outbound` on every outbound channel, including the content carried in tool-call arguments, and enforces a block | Egress DLP, provenance, and canary checks never run on that channel, so untrusted or sensitive content leaves uninspected. `check_tool_call` gates the *action* (policy, rate limit, binding) and does not inspect argument content: gating a send does not inspect what is sent. A missed DLP block also means egress-feedback escalation never fires, so subsequent tool calls are not tightened |
 
 ## Defense-in-Depth Reminder
 

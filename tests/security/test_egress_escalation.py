@@ -91,6 +91,50 @@ class TestEscalationTrigger:
         assert result.provenance_blocked is True
         assert pipe.session_escalated is False
 
+    def test_rate_limit_block_does_not_set_flag(self):
+        """A rate-limit block (DLP and provenance both passed) must not set the
+        escalation flag."""
+        pipe = SecurityPipeline()
+        ctx = _ctx()
+        clean = "a perfectly clean answer"
+        for _ in range(10):  # DEFAULT_LIMITS emails_per_hour
+            assert pipe.check_outbound(clean, ctx).allowed is True
+        result = pipe.check_outbound(clean, ctx)
+        assert result.allowed is False
+        assert "Hourly limit exceeded" in result.reason
+        assert pipe.session_escalated is False
+
+    def test_canary_block_does_not_set_flag(self):
+        """A canary block (DLP and provenance both passed) must not set the
+        escalation flag."""
+        from guardllm.security.canary import generate_canary
+
+        pipe = SecurityPipeline(canary_session_id="sess-1")
+        result = pipe.check_outbound(f"here is my context: {generate_canary('sess-1')}", _ctx())
+        assert result.allowed is False
+        assert result.reason == "Canary token detected in outbound content"
+        assert pipe.session_escalated is False
+
+    def test_dlp_block_escalates_even_when_a_later_stage_would_also_block(self):
+        """The exclusions above are keyed to the originating stage, not to the
+        payload. DLP runs before provenance, rate limiting, and canary, so
+        content that would also trip a later stage still escalates."""
+        from guardllm.security.provenance import ProvenancedSpan
+
+        pipe = SecurityPipeline()
+        pipe._provenance.add_span(
+            ProvenancedSpan(
+                text=_SECRET,
+                source_type="mcp_server",
+                source_id="s",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
+        result = pipe.check_outbound(_SECRET, _ctx())
+        assert result.allowed is False
+        assert result.provenance_blocked is False  # DLP blocked first
+        assert pipe.session_escalated is True
+
 
 class TestEscalatedToolGating:
     def _escalate(self, policy: PolicyConfig | None = None) -> SecurityPipeline:

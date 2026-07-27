@@ -11,6 +11,10 @@ from guardllm import Guard
 Constructor:
 - `Guard(canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED)`
 
+Canary provisioning and lifecycle:
+- `guard.canary_token -> str | None`: read-only token for trusted host code to place in private model context.
+- `guard.reset(canary_session_id=None)`: clear transient state while retaining the current logical session and canary; pass a new ID to rotate an already-enabled canary for a new logical session.
+
 ## Context Builders
 
 Use these to declare trust boundaries explicitly:
@@ -53,7 +57,7 @@ Recommended pattern for write-capable tools:
 
 - `ProcessedContent`: sanitized content, warnings, source metadata.
 - `GateResult`: allow/deny decision and reason for tool execution, plus non-blocking rate-limit `anomalies` (burst, novel recipient).
-- `OutboundResult`: allow/deny decision and exfiltration/provenance indicators, plus non-blocking rate-limit `anomalies`.
+- `OutboundResult`: allow/deny decision and exfiltration/provenance indicators, `canary_detected`, plus non-blocking rate-limit `anomalies`.
 - `ValidationResult`: argument validation pass/fail with field-level details.
 
 ## Minimal End-to-End Example
@@ -63,6 +67,8 @@ from guardllm import Guard
 from guardllm.security.types import PolicyConfig
 
 guard = Guard(canary_session_id="session-1")
+assert guard.canary_token is not None
+# Trusted host code places guard.canary_token in private system context.
 ctx = Guard.context_mcp_server(
     server_id="mcp-mail",
     policy=PolicyConfig(

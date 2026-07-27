@@ -61,6 +61,7 @@ class SecurityPipeline:
         self._principal_trust = principal_trust
         self._context_contaminated: bool = False
         self._session_escalated: bool = False
+        self._canary_session_id: str | None = canary_session_id
         self._canary: str | None = None
         if canary_session_id:
             self._canary = generate_canary(canary_session_id)
@@ -77,17 +78,31 @@ class SecurityPipeline:
 
     @property
     def session_escalated(self) -> bool:
-        """True once a DLP block has fired at egress in this session."""
+        """True after a high-confidence exfiltration block in this session."""
         return self._session_escalated
 
-    def reset(self) -> None:
-        """Reset pipeline state for a new session.
+    @property
+    def canary_token(self) -> str | None:
+        """Return the canary trusted host code must place in private context."""
+        return self._canary
 
-        Clears both contamination and egress-escalation state. Hosts must call
-        this only at genuine session/task boundaries (see docs/security.md):
-        escalation is monotonic within a session and reset is the only way to
-        clear it.
+    def reset(self, *, canary_session_id: str | None = None) -> None:
+        """Reset transient pipeline state, optionally rotating the canary.
+
+        With no ``canary_session_id``, the current logical session and canary
+        are retained. Passing a new ID rotates an already-enabled canary while
+        clearing session risk. Canary protection cannot be enabled through
+        reset on a pipeline constructed without it.
         """
+        if canary_session_id is not None:
+            if not canary_session_id:
+                raise ValueError("canary_session_id must be non-empty")
+            if self._canary_session_id is None:
+                raise ValueError(
+                    "Cannot enable canary protection through reset; construct a new pipeline"
+                )
+            self._canary_session_id = canary_session_id
+            self._canary = generate_canary(canary_session_id)
         self._context_contaminated = False
         self._session_escalated = False
         self._provenance = ProvenanceTracker()
@@ -189,10 +204,13 @@ class SecurityPipeline:
     ) -> OutboundResult:
         """Check content leaving the system.
 
-        Runs: L3 (DLP) -> L4 (provenance) -> L6 (rate limit) -> L5 (canary).
+        Runs: L5 (remembered canary) -> L3 (DLP) -> L4 (provenance)
+        -> L6 (rate limit).
 
         Ordering rationale (spec §7, §8):
-        - DLP runs first as a coarse pre-filter (default LCS >= 14 for
+        - The remembered canary runs first because it is a more specific,
+          session-scoped signal than generic secret or entropy detection.
+        - DLP then runs as a coarse pre-filter (default LCS >= 14 for
           untrusted echo, >= 12 for sensitive leak, n-gram >= 40%,
           configurable via PolicyConfig) to catch exfiltration cheaply
           before provenance.
@@ -212,6 +230,17 @@ class SecurityPipeline:
         # TR39 confusable normalization at outbound trust boundary.
         content = normalize_confusables(content)
 
+        # L5: a remembered canary is authoritative session metadata. Attribute
+        # it before generic DLP can claim the same random-looking token as an
+        # entropy finding. Quoting never authorizes private-context disclosure.
+        if self._canary and detect_canary(content, self._canary):
+            self._session_escalated = True
+            return OutboundResult(
+                allowed=False,
+                reason="Canary token detected in outbound content",
+                canary_detected=True,
+            )
+
         # L3: DLP scan (coarse pre-filter, higher thresholds)
         dlp_result = self._dlp.check(
             content,
@@ -223,9 +252,8 @@ class SecurityPipeline:
             # Egress-feedback escalation: a DLP hard block is a high-confidence
             # signal that something bad happened this session. Record it so
             # subsequent tool calls can be tightened (backward-propagating,
-            # the reverse complement of _context_contaminated). DLP blocks
-            # only -- echo signals return allowed=True, provenance/rate/canary
-            # blocks are handled below and do not set this flag.
+            # the reverse complement of _context_contaminated). Echo signals
+            # return allowed=True; provenance and rate blocks do not escalate.
             self._session_escalated = True
             return dlp_result
 
@@ -261,14 +289,6 @@ class SecurityPipeline:
             return OutboundResult(
                 allowed=False,
                 reason=rate_result.reason,
-                anomalies=rate_result.anomalies,
-            )
-
-        # L5: Canary detection on outbound
-        if self._canary and detect_canary(content, self._canary):
-            return OutboundResult(
-                allowed=False,
-                reason="Canary token detected in outbound content",
                 anomalies=rate_result.anomalies,
             )
 
@@ -319,8 +339,8 @@ class SecurityPipeline:
             )
         # Session-risk tool gating (cross-stage invariant). Contamination
         # (forward, from untrusted ingest) and egress escalation (backward,
-        # from a DLP block) are independent signals that each tighten tool
-        # policy. Compute one effective policy -- the strictest of the active
+        # from a high-confidence exfiltration block) are independent signals
+        # that each tighten tool policy. Compute one effective policy -- the strictest of the active
         # signals -- and enumerate the contributing triggers in the reason so
         # provenance is preserved.
         active_signals: list[tuple[str, str]] = []

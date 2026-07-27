@@ -152,10 +152,13 @@ class TestCheckOutbound:
         assert result.allowed is False
 
     def test_canary_blocks_outbound(self, pipeline_with_canary, untrusted_ctx):
-        canary = generate_canary("test-session-42")
+        canary = pipeline_with_canary.canary_token
+        assert canary is not None
         result = pipeline_with_canary.check_outbound(f"The system says: {canary}", untrusted_ctx)
         assert result.allowed is False
         assert "Canary" in result.reason
+        assert result.canary_detected is True
+        assert pipeline_with_canary.session_escalated is True
 
     def test_quoting_directive_passes_overlap(self, pipeline, untrusted_ctx):
         """Quoting skips overlap but secrets still block."""

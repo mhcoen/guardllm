@@ -1,9 +1,9 @@
 """Egress feedback escalation (reverse complement of _context_contaminated).
 
-A DLP hard block at egress sets a monotonic, session-scoped _session_escalated
-flag; subsequent check_tool_execution applies escalated_tool_policy (default
-require_auth). Contamination and escalation are independent signals; when both
-fire the strictest policy wins.
+A high-confidence exfiltration block at egress sets a monotonic, session-scoped
+_session_escalated flag; subsequent check_tool_execution applies
+escalated_tool_policy (default require_auth). Contamination and escalation are
+independent signals; when both fire the strictest policy wins.
 """
 
 from __future__ import annotations
@@ -73,7 +73,8 @@ class TestEscalationTrigger:
 
     def test_provenance_block_does_not_set_flag(self):
         """A provenance block (DLP passed, only provenance tripped) must not
-        set the escalation flag -- escalation is keyed to DLP blocks only."""
+        set the escalation flag. Lexical overlap can have meaningful false
+        positives, unlike high-confidence secret or remembered-canary hits."""
         from guardllm.security.provenance import ProvenancedSpan
 
         pipe = SecurityPipeline()
@@ -104,21 +105,16 @@ class TestEscalationTrigger:
         assert "Hourly limit exceeded" in result.reason
         assert pipe.session_escalated is False
 
-    def test_canary_block_does_not_set_flag(self):
-        """A canary block (DLP and provenance both passed) must not set the
-        escalation flag."""
-        from guardllm.security.canary import generate_canary
-
+    def test_canary_block_sets_flag(self):
         pipe = SecurityPipeline(canary_session_id="sess-1")
-        result = pipe.check_outbound(f"here is my context: {generate_canary('sess-1')}", _ctx())
+        result = pipe.check_outbound(f"here is my context: {pipe.canary_token}", _ctx())
         assert result.allowed is False
         assert result.reason == "Canary token detected in outbound content"
-        assert pipe.session_escalated is False
+        assert result.canary_detected is True
+        assert pipe.session_escalated is True
 
     def test_dlp_block_escalates_even_when_a_later_stage_would_also_block(self):
-        """The exclusions above are keyed to the originating stage, not to the
-        payload. DLP runs before provenance, rate limiting, and canary, so
-        content that would also trip a later stage still escalates."""
+        """A DLP finding takes precedence over later provenance and rate checks."""
         from guardllm.security.provenance import ProvenancedSpan
 
         pipe = SecurityPipeline()
@@ -134,6 +130,66 @@ class TestEscalationTrigger:
         assert result.allowed is False
         assert result.provenance_blocked is False  # DLP blocked first
         assert pipe.session_escalated is True
+
+
+class TestCanaryPrecedence:
+    def test_canary_precedes_known_secret_pattern(self):
+        pipe = SecurityPipeline(canary_session_id="precedence-secret")
+        result = pipe.check_outbound(f"{pipe.canary_token} {_SECRET}", _ctx())
+        assert result.reason == "Canary token detected in outbound content"
+        assert result.canary_detected is True
+        assert result.secrets_found == []
+
+    def test_canary_precedes_provenance(self):
+        from guardllm.security.provenance import ProvenancedSpan
+
+        pipe = SecurityPipeline(canary_session_id="precedence-provenance")
+        content = f"private context {pipe.canary_token} " * 8
+        pipe._provenance.add_span(
+            ProvenancedSpan(
+                text=content,
+                source_type="mcp_server",
+                source_id="s",
+                source_trust=TrustLevel.UNTRUSTED,
+            )
+        )
+        result = pipe.check_outbound(content, _ctx())
+        assert result.canary_detected is True
+        assert result.provenance_blocked is False
+
+    def test_canary_precedes_exhausted_rate_limit(self):
+        pipe = SecurityPipeline(canary_session_id="precedence-rate")
+        ctx = _ctx()
+        for i in range(10):
+            assert pipe.check_outbound(f"clean answer {i}", ctx).allowed is True
+        result = pipe.check_outbound(str(pipe.canary_token), ctx)
+        assert result.canary_detected is True
+        assert result.reason == "Canary token detected in outbound content"
+
+    def test_quoting_does_not_bypass_canary(self):
+        pipe = SecurityPipeline(canary_session_id="precedence-quote")
+        result = pipe.check_outbound(
+            str(pipe.canary_token),
+            _ctx(),
+            has_quoting_directive=True,
+        )
+        assert result.canary_detected is True
+
+    def test_canary_block_does_not_consume_rate_slot(self):
+        pipe = SecurityPipeline(canary_session_id="precedence-slot")
+        ctx = _ctx()
+        for _ in range(10):
+            assert pipe.check_outbound(str(pipe.canary_token), ctx).canary_detected is True
+        assert pipe.check_outbound("clean after blocked canaries", ctx).allowed is True
+
+    def test_entropy_is_fallback_when_transformation_defeats_canary(self, monkeypatch):
+        fixed = "CANARY-a1b2c3d4e5f6a7b8"
+        monkeypatch.setattr("guardllm.security.pipeline.generate_canary", lambda _sid: fixed)
+        pipe = SecurityPipeline(canary_session_id="fallback")
+        result = pipe.check_outbound(fixed[::-1], _ctx())
+        assert result.allowed is False
+        assert result.canary_detected is False
+        assert any("entropy" in finding.lower() for finding in result.secrets_found)
 
 
 class TestEscalatedToolGating:
@@ -208,6 +264,41 @@ class TestLifecycle:
         pipe.reset()
         assert pipe.session_escalated is False
         assert pipe.check_tool_execution("search", {}, _ctx()).allowed is True
+
+    def test_reset_without_session_id_retains_canary(self):
+        pipe = SecurityPipeline(canary_session_id="same-session")
+        original = pipe.canary_token
+        pipe.reset()
+        assert pipe.canary_token == original
+
+    def test_reset_with_session_id_rotates_canary_atomically(self):
+        pipe = SecurityPipeline(canary_session_id="session-a")
+        canary_a = pipe.canary_token
+        assert canary_a is not None
+        first = pipe.check_outbound(canary_a, _ctx())
+        assert first.canary_detected is True
+        assert pipe.session_escalated is True
+
+        pipe.reset(canary_session_id="session-b")
+
+        canary_b = pipe.canary_token
+        assert canary_b is not None
+        assert canary_b != canary_a
+        assert pipe.session_escalated is False
+        old_result = pipe.check_outbound(canary_a, _ctx())
+        assert old_result.canary_detected is False
+        new_result = pipe.check_outbound(canary_b, _ctx())
+        assert new_result.canary_detected is True
+
+    def test_reset_cannot_enable_canary(self):
+        pipe = SecurityPipeline()
+        with pytest.raises(ValueError, match="Cannot enable canary protection"):
+            pipe.reset(canary_session_id="new-session")
+
+    def test_reset_rejects_empty_canary_session_id(self):
+        pipe = SecurityPipeline(canary_session_id="session-a")
+        with pytest.raises(ValueError, match="must be non-empty"):
+            pipe.reset(canary_session_id="")
 
 
 class TestIndependenceAndStrictness:

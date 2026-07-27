@@ -163,10 +163,9 @@ class PolicyConfig:
     rate_limit_overrides: dict[TrustLevel, dict[str, int]] = field(default_factory=dict)
     # Contamination-aware tool gating: "allow" | "require_auth" | "deny"
     contaminated_tool_policy: str = "allow"
-    # Egress-feedback escalation: tool gating once a DLP block has fired at
-    # egress in this session. Same option set as contaminated_tool_policy.
-    # Default "require_auth": a confirmed egress leak block is a stronger
-    # signal than mere contamination, so it tightens subsequent tool calls.
+    # Egress-feedback escalation: tool gating once a high-confidence DLP or
+    # remembered-canary block has fired. Same option set as
+    # contaminated_tool_policy. Default "require_auth".
     escalated_tool_policy: str = "require_auth"
     # L12: auto-require confirmation for destructive tool calls
     auto_confirm_destructive: bool = False
@@ -300,6 +299,8 @@ class OutboundResult:
     echo_lcs: int = 0
     # Non-blocking rate-limit anomaly signals (burst, novel recipient)
     anomalies: list[str] = field(default_factory=list)
+    # True when the primary block was the session's remembered canary.
+    canary_detected: bool = False
 
 
 @dataclass

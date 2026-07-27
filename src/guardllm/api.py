@@ -45,6 +45,11 @@ class Guard:
         self._action_gate = ActionGate()
         self._audit_logger = audit_logger
 
+    @property
+    def canary_token(self) -> str | None:
+        """Return the canary trusted host code must place in private context."""
+        return self._pipeline.canary_token
+
     @staticmethod
     def hash_message(message: str) -> str:
         """Create a stable SHA-256 hash for a user message."""
@@ -177,9 +182,9 @@ class Guard:
             principal_trust=principal_trust,
         )
 
-    def reset(self) -> None:
-        """Reset pipeline and action gate for a new session."""
-        self._pipeline.reset()
+    def reset(self, *, canary_session_id: str | None = None) -> None:
+        """Reset transient state, optionally rotating an enabled canary."""
+        self._pipeline.reset(canary_session_id=canary_session_id)
         self._action_gate = ActionGate()
 
     def process_inbound(self, content: str, context: SecurityContext) -> ProcessedContent:
@@ -319,6 +324,8 @@ class Guard:
                     "allowed": result.allowed,
                     "overlap_pct": result.overlap_pct,
                     "secrets_found": result.secrets_found,
+                    "canary_detected": result.canary_detected,
+                    "session_escalated": self._pipeline.session_escalated,
                 },
                 provenance_result={"blocked": result.provenance_blocked},
                 rate_limit_result={"anomalies": result.anomalies} if result.anomalies else None,

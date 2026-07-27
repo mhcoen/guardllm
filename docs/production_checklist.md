@@ -21,13 +21,14 @@ Use this checklist before deploying guardllm-backed flows.
 - Require explicit authorization and request binding for write-capable tools; set `require_message_binding="destructive"` (or `"all"`) and pass the current `user_message`/`message_hash` to prevent authorization replay.
 - Treat `Binding` objects as intra-process only. Request binding is an intra-process consistency check (recomputed args hash, message hash, TTL), not a cryptographic token, so a `Binding` must never be passed across a process or trust boundary. See the Integrity boundary in `docs/threat_model.md`.
 - Require L12 confirmation for high-impact actions (`guard_tool_call(..., require_confirmation=True)`).
-- Keep session-risk tool gating tight: `contaminated_tool_policy` and `escalated_tool_policy` (default `"require_auth"` for escalation) tighten tool calls after untrusted ingest or an egress DLP block. Call `reset()` only at genuine session/task boundaries (never on processed content or a schedule), since it clears both signals.
+- Keep session-risk tool gating tight: `contaminated_tool_policy` and `escalated_tool_policy` (default `"require_auth"` for escalation) tighten tool calls after untrusted ingest or a high-confidence DLP/canary block. Never reset reactively. A no-argument reset retains the current canary; pass a new canary session ID to rotate it at a genuine logical-session boundary.
 
 ## 4. Outbound Safety
 
 - Run `check_outbound(...)` before external calls and user-visible responses.
 - Treat content carried in tool-call arguments as an outbound channel. `check_tool_call(...)` gates the action (policy, rate limit, binding) and does not inspect argument content, so an email send that passes the tool gate still needs `check_outbound(...)` on its body (see A-AS9 in `docs/threat_model.md`).
 - Fail closed when DLP/provenance/canary checks block output.
+- When canaries are enabled, place `guard.canary_token` in private model context from trusted host code and never log or expose the token itself.
 - Log blocked events with enough context for follow-up.
 
 ## 5. Validation and Error Hygiene

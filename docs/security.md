@@ -11,7 +11,7 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L2 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
 | L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, hex decode-then-scan entropy detection, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
 | L4 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
-| L5 | Canary Detection | Session canary generation/detection to flag leakage/exfiltration | `guardllm.security.canary` |
+| L5 | Canary Detection | Provision and remember a session canary, then block if that exact private value appears at egress | `guardllm.security.canary` |
 | L6 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
 | L7 | Error Sanitization | Sanitize error payloads before returning to clients | `guardllm.security.error_sanitizer` |
 | L8 | OAuth Scope Resolution | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
@@ -21,7 +21,7 @@ guardllm uses a defense-in-depth security pipeline designed to harden MCP server
 | L12 | Action Gate | Optional interactive confirmation gate for sensitive actions, with G6 commitment verification | `guardllm.security.action_gate` |
 | - | Audit Logging | Structured security event logging for analysis and incident response (cross-cutting observer) | `guardllm.security.audit` |
 
-Note: Layer numbering follows pipeline execution order. L8 is documented for completeness but remains outside the library boundary.
+Note: Layer numbers are stable control identifiers, not a total execution order. L8 is documented for completeness but remains outside the library boundary.
 
 ## Guard API Coverage (Current)
 
@@ -34,7 +34,7 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 | L2 Source Gate | Implemented | `guardllm.security.source_gate.check_extraction_allowed(...)` |
 | L3 Outbound DLP | Implemented | `check_outbound(...)` |
 | L4 Provenance Tracking | Implemented | `process_inbound(...)`, `check_outbound(...)` |
-| L5 Canary Detection | Implemented | `Guard(canary_session_id=...)` + inbound/outbound checks |
+| L5 Canary Detection | Implemented | `Guard(canary_session_id=...)`, `guard.canary_token`, and inbound/outbound checks |
 | L6 Rate Limiting | Implemented | `check_tool_call(...)`, `check_outbound(...)`, `guard_tool_call(...)` |
 | L7 Error Sanitization | Implemented | `sanitize_exception(...)` |
 | L8 OAuth Scope Resolution | Not implemented in library | Host application responsibility |
@@ -50,11 +50,12 @@ The central orchestrator is `guardllm.security.pipeline.SecurityPipeline`, expos
 
 Inbound path:
 1. TR39 confusable normalization (homoglyph characters mapped to ASCII within mixed-script runs; legitimate single-script international text is preserved)
-2. Sanitize untrusted input (L0)
-3. Isolate by trust level (L1)
-4. Ingest for outbound DLP comparisons (L3 data prep)
-5. Record provenance spans (L4)
-6. Check canary presence in inbound payloads (L5)
+2. Prompt-injection signal pass
+3. Sanitize untrusted input (L0), including HTML, Unicode, and encoded-payload handling
+4. Isolate by trust level (L1)
+5. Ingest for outbound DLP comparisons (L3 data prep)
+6. Record provenance spans (L4)
+7. Check canary presence in inbound payloads (L5)
 
 Compound ingress (`process_inbound_compound`):
 - Accepts a list of (content, SecurityContext) spans representing a single message with mixed provenance (e.g., a trusted envelope wrapping a forwarded untrusted payload).
@@ -74,10 +75,10 @@ Tool-call path:
 
 Outbound path:
 1. TR39 confusable normalization (homoglyph characters mapped to ASCII within mixed-script runs; legitimate single-script international text is preserved)
-2. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters) and hex decode-then-scan for entropy detection
-3. Provenance reuse guard (L4), including deobfuscated variants
-4. Rate limiting (L6)
-5. Canary leakage detection (L5)
+2. Remembered-canary leakage detection (L5), before generic heuristics so the strongest known-value signal retains attribution
+3. DLP overlap/secret checks (L3), including deobfuscated variants (reversed text, spelled-out characters) and hex decode-then-scan for entropy detection
+4. Provenance reuse guard (L4), including deobfuscated variants
+5. Rate limiting (L6)
 
 Threshold tuning:
 - L3 and L4 overlap thresholds are configurable per context via `PolicyConfig`
@@ -115,22 +116,22 @@ These source types integrate directly with source-gate and provenance behavior.
 
 ## Session Risk Signals
 
-The pipeline carries two independent, monotonic, session-scoped risk signals that tighten tool authorization. Both are cleared only by `reset()`.
+The pipeline carries two independent, monotonic, logical-session risk signals that tighten tool authorization. Both are cleared by `reset()`; a canary-enabled host passes a new canary session ID when that reset also starts a new logical session.
 
 - **Contamination (forward propagation)** - `_context_contaminated` is set in `process_inbound` when untrusted content enters the session. `check_tool_execution` then applies `PolicyConfig.contaminated_tool_policy` (default `allow`).
-- **Egress feedback escalation (backward propagation)** - implemented. `_session_escalated` is set in `check_outbound` when an **L3/DLP hard block** fires (secret pattern or sensitive-leak overlap; `dlp_result.allowed is False`). `check_tool_execution` then applies `PolicyConfig.escalated_tool_policy` (default `require_auth`). This closes the gap where an outbound DLP block left no trace and a subsequent tool call proceeded normally.
+- **Egress feedback escalation (backward propagation)** - implemented. `_session_escalated` is set in `check_outbound` when a high-confidence exfiltration block fires: an L3/DLP hard block or a match against the remembered session canary. `check_tool_execution` then applies `PolicyConfig.escalated_tool_policy` (default `require_auth`). This closes the gap where an outbound exfiltration block left no trace and a subsequent tool call proceeded normally.
 
 The two signals are independent: either can tighten tool policy on its own. When both fire, the **strictest** policy wins (`deny` > `require_auth` > `allow`), and the denial reason names each contributing trigger with its policy so the deciding signal is unambiguous (e.g. `Tool call denied: session contaminated=deny; egress escalated=require_auth`). Escalation only tightens tool authorization; it does not change `check_outbound` behavior on later calls. It never mutates `principal_trust`, which is immutable after construction.
 
-**Trigger scope (DLP-only, deliberate).** Escalation is keyed to DLP hard blocks only - not provenance, rate-limit, or canary blocks. A DLP hard block is the high-confidence feedback signal that a concrete leak attempt was blocked. Provenance blocks are excluded to avoid escalating on overlap false positives; the tradeoff is narrower coverage (a real cross-boundary copy caught only by provenance does not escalate).
+**Trigger scope (high-confidence exfiltration).** DLP hard blocks and remembered-canary matches escalate. Provenance and rate-limit blocks do not. A remembered canary is a session-scoped value registered as private material, so it receives primary attribution even when generic entropy would also match it. Provenance blocks remain excluded to avoid escalating on lexical-overlap false positives; the tradeoff is narrower coverage when a real cross-boundary copy is caught only by provenance.
 
-> **Host contract - `reset()`.** Calling `Guard.reset()` / `SecurityPipeline.reset()` clears both risk signals. Escalation and contamination are monotonic within a session, so hosts must call `reset()` **only at genuine session/task boundaries** - never in response to processed content and never on a fixed schedule. Resetting reactively would let an attacker clear accumulated session risk.
+> **Host contract - canary provisioning and `reset()`.** When `canary_session_id` is supplied, trusted host code reads `guard.canary_token` and places that value in private model context; GuardLLM remembers the expected value outside the model. Calling `reset()` clears both risk signals but retains the same logical session and canary. Calling `reset(canary_session_id="new-id")` atomically clears risk and rotates an already-enabled canary for a new logical session. Never reset reactively in response to processed content or on a fixed schedule, because that would clear accumulated session risk.
 
-Verification: unit tests in `tests/security/test_egress_escalation.py` cover the trigger (DLP block sets the flag; provenance/echo/allowed-outbound do not), the policy options, monotonicity within a session and across repeated tool calls, `reset()` clearing, independence from contamination, and strictest-wins ordering.
+Verification: unit tests in `tests/security/test_egress_escalation.py` cover DLP and canary triggers, canary precedence, non-triggering provenance/rate/echo paths, policy options, monotonicity, reset and rotation, independence from contamination, and strictest-wins ordering.
 
 ## Concurrency and Thread Safety
 
-A `SecurityPipeline` (and the `Guard` that wraps it) mutates session-scoped state without internal synchronization: the contamination and escalation flags, the DLP echo buffers, and provenance tracking are all updated in place as inbound, outbound, and tool-execution calls run. The contract is **one pipeline per session, driven sequentially**. A host that issues concurrent operations against a single pipeline (async tasks or OS threads) must serialize them itself; the library does not defend against concurrent mutation, and interleaved calls can corrupt session state or race the session-risk signals. Use a separate `Guard` per session, or hold a lock around the pipeline, whenever one session may be driven concurrently.
+A `SecurityPipeline` (and the `Guard` that wraps it) mutates session-scoped state without internal synchronization: the remembered canary, contamination and escalation flags, DLP buffers, provenance tracking, and rate counters are updated in place as inbound, outbound, and tool-execution calls run. The contract is **one pipeline per session, driven sequentially**. A host that issues concurrent operations against a single pipeline (async tasks or OS threads) must serialize them itself; the library does not defend against concurrent mutation, and interleaved calls can corrupt session state or race the session-risk signals. Use a separate `Guard` per session, or hold a lock around the pipeline, whenever one session may be driven concurrently.
 
 The one internally-synchronized exception is the rate limiter's confirmation finalize (`check_and_record`, used by `guard_tool_call` after confirmation). It serializes its check-and-record under a lock, so concurrent confirmed tool calls cannot collectively exceed the limit even under real thread concurrency. This covers only that one compound; all other session-state mutation is still the host's responsibility to serialize.
 

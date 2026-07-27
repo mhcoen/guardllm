@@ -64,11 +64,20 @@ def test_end_to_end_tool_flow_with_binding():
 
 def test_inbound_and_outbound():
     guard = Guard(canary_session_id="s1")
+    assert guard.canary_token is not None
     ctx = Guard.context_web(source_id="web")
     processed = guard.process_inbound("<div>hello</div>", ctx)
     assert "hello" in processed.content
     outbound = guard.check_outbound("clean answer", ctx)
     assert outbound.allowed is True
+
+
+def test_guard_reset_rotates_enabled_canary():
+    guard = Guard(canary_session_id="guard-session-a")
+    canary_a = guard.canary_token
+    guard.reset(canary_session_id="guard-session-b")
+    assert guard.canary_token is not None
+    assert guard.canary_token != canary_a
 
 
 def test_validate_tool_args_failure():
@@ -91,6 +100,21 @@ def test_audit_logger_receives_events():
     guard.process_inbound("<div>hello</div>", ctx)
     events = audit.get_events(limit=10)
     assert any(e["event_type"] == "inbound_processed" for e in events)
+
+
+def test_canary_audit_has_structured_attribution_without_token():
+    audit = AuditLogger()
+    guard = Guard(canary_session_id="audit-canary", audit_logger=audit)
+    token = guard.canary_token
+    assert token is not None
+
+    result = guard.check_outbound(token, Guard.context_web(source_id="web"))
+
+    assert result.canary_detected is True
+    event = next(e for e in audit.get_events(limit=10) if e["event_type"] == "outbound_checked")
+    assert event["dlp_result"]["canary_detected"] is True
+    assert event["dlp_result"]["session_escalated"] is True
+    assert token not in str(event)
 
 
 class _AcceptAllHandler:

@@ -1,8 +1,8 @@
 """Layer 5: Canary token generation and detection (Part 5).
 
-Generates deterministic canary tokens embedded in system prompts.
-If a canary appears in outbound content, the system prompt has been
-exfiltrated.
+Generates deterministic canary tokens that trusted host code can place in
+private model context. If a remembered canary appears in outbound content,
+that private context has been exfiltrated.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def generate_canary(session_id: str, secret: bytes = _DEFAULT_SECRET) -> str:
         secret: Server secret for HMAC. Override in production.
 
     Returns:
-        Canary token string, e.g. ``CANARY-a1b2c3d4e5f6g7h8``.
+        Canary token string, e.g. ``CANARY-a1b2c3d4e5f6a7b8``.
     """
     mac = hmac.new(secret, session_id.encode(), hashlib.sha256)
     return f"CANARY-{mac.hexdigest()[:16]}"

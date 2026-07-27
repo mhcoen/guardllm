@@ -60,6 +60,8 @@ from guardllm.security.types import PolicyConfig
 
 
 guard = Guard(canary_session_id="session-1")
+assert guard.canary_token is not None
+# Add guard.canary_token to private system context before invoking the model.
 
 
 async def guarded_call(transport, tool: str, args: dict, user_message: str):

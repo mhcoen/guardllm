@@ -46,7 +46,7 @@ Recommended:
 
 - `server_default_deny=True` (server mode): deny all tools when `capability_scopes` is unset.
 - `require_message_binding="destructive"` (or `"all"`): reject write-tool authorizations that are not bound to the current user message. Pass the current `user_message`/`message_hash` at the call site.
-- `contaminated_tool_policy` / `escalated_tool_policy` (`"require_auth"` or `"deny"`): tighten tool calls after session risk. Contamination fires when untrusted content is ingested; escalation fires when an egress DLP block occurs (default `"require_auth"`). When both fire the strictest wins. Both are cleared only by `reset()`, which hosts must call only at genuine session boundaries.
+- `contaminated_tool_policy` / `escalated_tool_policy` (`"require_auth"` or `"deny"`): tighten tool calls after session risk. Contamination fires when untrusted content is ingested; escalation fires on a high-confidence DLP hard block or remembered-canary match (default `"require_auth"`). When both fire the strictest wins. `reset()` clears both signals; pass a new canary session ID when it also starts a new logical session.
 
 ## Tuning workflow
 

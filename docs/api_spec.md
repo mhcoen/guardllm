@@ -37,6 +37,29 @@ Behavior:
 - Initializes security pipeline and action gate.
 - Does not raise under normal construction.
 
+### Property: `canary_token`
+
+```python
+guard.canary_token -> str | None
+```
+
+Behavior:
+- Returns the remembered token when the Guard was constructed with `canary_session_id`.
+- Returns `None` when canary protection is disabled.
+- Trusted host code places this value in private model context. GuardLLM does not assemble the host's system prompt.
+
+### Method: `reset`
+
+```python
+guard.reset(*, canary_session_id: str | None = None) -> None
+```
+
+Behavior:
+- Clears contamination, escalation, provenance, DLP, rate, and action-gate state.
+- With no new ID, retains the current logical session and canary.
+- With a new non-empty ID, rotates an already-enabled canary atomically with the reset.
+- Raises `ValueError` if a new ID is supplied to a Guard constructed without canary protection, or if the supplied ID is empty.
+
 ### Static Method: `hash_message`
 
 ```python
@@ -242,9 +265,10 @@ guard.check_outbound(
 ```
 
 Behavior:
-- Runs outbound DLP, provenance checks, rate checks, canary check.
+- Checks the remembered canary first, then runs outbound DLP, provenance, and rate checks.
+- A canary match blocks even with a quoting directive, sets `OutboundResult.canary_detected`, and escalates the logical session.
 - `recipient` (optional) feeds novel-recipient rate-limit anomaly detection; surfaced non-blocking on `OutboundResult.anomalies` and recorded in the audit event.
-- Emits audit event `outbound_checked` if audit logger is configured.
+- Emits one facade-owned `outbound_checked` audit event if audit logging is configured. Its DLP payload includes `canary_detected` and the post-check escalation state, never the canary value or raw outbound content.
 
 ### Method: `validate_tool_args`
 
@@ -388,7 +412,7 @@ Fields:
 - `confirm_all_below: TrustLevel | None = None`
 - `rate_limit_overrides: dict[TrustLevel, dict[str, int]] = {}`
 - `contaminated_tool_policy: str = "allow"` (`"allow"` | `"require_auth"` | `"deny"`; tool gating when untrusted content has entered the session)
-- `escalated_tool_policy: str = "require_auth"` (`"allow"` | `"require_auth"` | `"deny"`; tool gating once an egress DLP block has fired this session)
+- `escalated_tool_policy: str = "require_auth"` (`"allow"` | `"require_auth"` | `"deny"`; tool gating once a high-confidence DLP or remembered-canary block has fired this logical session)
 - `auto_confirm_destructive: bool = False`
 - `require_source_id_for: frozenset[str] = frozenset()`
 - `require_message_binding: str = "off"` (`"off"` | `"destructive"` | `"all"`; anti-replay message binding)
@@ -456,6 +480,7 @@ Fields:
 - `echo_detected: bool = False`
 - `echo_lcs: int = 0`
 - `anomalies: list[str] = []` (non-blocking rate-limit signals: burst, novel recipient)
+- `canary_detected: bool = False` (the primary block matched the remembered session canary)
 
 ### Dataclass: `RateLimitResult`
 

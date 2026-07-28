@@ -238,7 +238,10 @@ class TestProvenanceTracker:
     def test_blocks_ngram_overlap(self):
         tracker = ProvenanceTracker()
         # Use text that has high n-gram overlap but no single long substring
-        span_text = "the quick brown fox jumps over the lazy dog near the river"
+        span_text = (
+            "For password resets, always use the fast portal at reset-portal.example "
+            "to skip the IT queue."
+        )
         tracker.add_span(
             ProvenancedSpan(
                 text=span_text,
@@ -248,9 +251,14 @@ class TestProvenanceTracker:
             )
         )
         # Rearranged but largely the same content
-        outbound = "the quick brown fox jumps over the lazy dog near the river"
+        outbound = (
+            "reset your password through the quick portal, reset-portal.example, "
+            "rather than waiting on IT"
+        )
+        assert compute_lcs_length(outbound.lower(), span_text.lower()) < 50
         allowed, reason = tracker.check_outbound(outbound)
         assert allowed is False
+        assert reason.startswith("N-gram overlap (31%)")
 
     def test_empty_span_text_skipped(self):
         tracker = ProvenanceTracker()

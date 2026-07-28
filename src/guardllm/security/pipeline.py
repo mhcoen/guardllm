@@ -116,7 +116,8 @@ class SecurityPipeline:
     ) -> ProcessedContent:
         """Process content arriving from any source.
 
-        Runs: L0 (sanitize) -> L1 (isolate) -> DLP ingest -> provenance.
+        Runs: confusable normalization -> injection signal -> L0 sanitize ->
+        L1 isolate -> DLP ingest -> provenance -> remembered-canary check.
 
         Client mode: MCP server response content.
         Server mode: MCP client argument content.

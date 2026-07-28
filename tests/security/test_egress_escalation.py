@@ -133,6 +133,51 @@ class TestEscalationTrigger:
 
 
 class TestCanaryPrecedence:
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            lambda token: token.upper(),
+            lambda token: f"CaNaRy - {token[7:11]} {token[11:15]} {token[15:]}",
+            lambda token: "\u200b".join(token),
+        ],
+        ids=["case", "chunk-separators", "zero-width"],
+    )
+    def test_transformed_canary_retains_pipeline_attribution(self, transform):
+        pipe = SecurityPipeline(canary_session_id="transformed-attribution")
+        result = pipe.check_outbound(transform(str(pipe.canary_token)), _ctx())
+        assert result.canary_detected is True
+        assert result.reason == "Canary token detected in outbound content"
+        assert result.secrets_found == []
+        assert pipe.session_escalated is True
+
+    def test_two_live_pipelines_keep_canary_attribution_session_local(self):
+        first = SecurityPipeline(canary_session_id="live-session-a")
+        second = SecurityPipeline(canary_session_id="live-session-b")
+        assert first.canary_token != second.canary_token
+
+        first_result = first.check_outbound(str(first.canary_token), _ctx())
+        cross_result = second.check_outbound(str(first.canary_token), _ctx())
+        second_result = second.check_outbound(str(second.canary_token), _ctx())
+
+        assert first_result.canary_detected is True
+        assert cross_result.canary_detected is False
+        assert second_result.canary_detected is True
+
+    def test_canary_precedence_across_deterministic_sample(self, monkeypatch):
+        from guardllm.security.canary import generate_canary
+
+        secret = b"deterministic-precedence-sample"
+        monkeypatch.setattr(
+            "guardllm.security.pipeline.generate_canary",
+            lambda session_id: generate_canary(session_id, secret=secret),
+        )
+        for index in range(256):
+            pipe = SecurityPipeline(canary_session_id=f"sample-{index}")
+            result = pipe.check_outbound(f"{pipe.canary_token} {_SECRET}", _ctx())
+            assert result.canary_detected is True
+            assert result.reason == "Canary token detected in outbound content"
+            assert result.secrets_found == []
+
     def test_canary_precedes_known_secret_pattern(self):
         pipe = SecurityPipeline(canary_session_id="precedence-secret")
         result = pipe.check_outbound(f"{pipe.canary_token} {_SECRET}", _ctx())

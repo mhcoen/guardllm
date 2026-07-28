@@ -272,3 +272,29 @@ def test_surface_map_promotes_the_primary_narrative():
     cards = page.split('<div class="cards">', 1)[1]
     assert 'href="guardllm_demos.html"' not in cards
     assert page.index('class="cta"') < page.index('<div class="cards">')
+
+
+def test_rails_state_their_own_lifecycle():
+    """The two rails differ in treatment, so each says why rather than leaving
+    the difference to be guessed. Per-flow terms are prose, not pills: a pill
+    border on an unlinked term reads as a disabled control."""
+    for name in MAP_PAGES:
+        page = (DEMO / name).read_text()
+        rails = page.split('<div class="rails">', 1)[1].split("</nav>", 1)[0]
+        assert "Provided by the host on each flow" in rails
+        assert "Retained by GuardLLM across calls" in rails
+
+        flow = rails.split('<div class="rail">')[1]
+        assert "<a " not in flow, "per-flow context fields own no demo and stay unlinked"
+        assert "rail-pill" not in flow, "unlinked terms must not wear the pill affordance"
+        assert '<span class="rail-terms">' in flow
+
+        session = rails.split('<div class="rail">')[2]
+        assert len(re.findall(r'class="rail-pill[^"]*"', session)) == 6
+        if name == "guardllm_surface_map.html":
+            assert session.count('<a class="rail-pill"') == 6
+        else:
+            # escalation opens the page this map is drawn on, so it is marked
+            # as current rather than linking the reader back to where they are.
+            assert session.count('<a class="rail-pill"') == 5
+            assert 'class="rail-pill is-current"' in session

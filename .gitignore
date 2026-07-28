@@ -66,6 +66,7 @@ benchmarks/datasets/*/
 !benchmarks/datasets/.gitkeep
 # Cloned upstream repos used during dataset generation (large, reproducible)
 artifacts/cbx1000/source_cache/
+artifacts/cbx1200/source_cache/
 
 devel/
 paper/

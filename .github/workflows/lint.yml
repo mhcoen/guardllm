@@ -55,3 +55,26 @@ jobs:
           python -m pip install -e '.[audit]'
           pip-audit --strict --progress-spinner off -r audit-requirements.txt || \
             (sleep 15 && pip-audit --strict --progress-spinner off -r audit-requirements.txt)
+
+  site:
+    name: Built site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Jekyll
+        # The same gem GitHub Pages builds with, pinned like every other tool
+        # in this workflow so a release cannot turn the build red on its own.
+        run: gem install github-pages -v 232 --no-document
+      - name: Build the site
+        run: github-pages build --destination _site
+      - name: Check the built output
+        # Source-level assertions cannot see excluded pages, unrendered
+        # tables of contents, or missing stylesheet rules. This checks _site.
+        run: python scripts/check_built_site.py _site

@@ -46,15 +46,28 @@ def _pages() -> list[tuple[Path, str]]:
     return pages
 
 
-def _slug(heading: str) -> str:
+def _slug(heading: str, seen: dict[str, int] | None = None) -> str:
+    """Match Kramdown, which is what builds the anchors these entries target.
+
+    Two details matter and both produced dead links. Removing punctuation can
+    leave two spaces ("DataFilter + GPT-4o"), and Kramdown turns each space into
+    a hyphen rather than collapsing the run. Repeated headings get a numeric
+    suffix, so a page with the same heading twice needs the same suffix here.
+    """
     text = re.sub(r"`([^`]*)`", r"\1", heading).strip()
     text = re.sub(r"[^\w\s-]", "", text.lower())
-    return re.sub(r"[\s]+", "-", text)
+    slug = re.sub(r"\s", "-", text)
+    if seen is None:
+        return slug
+    count = seen.get(slug, 0)
+    seen[slug] = count + 1
+    return slug if count == 0 else f"{slug}-{count}"
 
 
 def _toc(body: str) -> str:
     """Second and third level headings, skipping fenced code."""
     entries: list[str] = []
+    seen: dict[str, int] = {}
     fenced = False
     for line in body.splitlines():
         if line.startswith("```"):
@@ -67,7 +80,7 @@ def _toc(body: str) -> str:
             continue
         depth, heading = len(match.group(1)), match.group(2).strip()
         indent = "  " * (depth - 2)
-        entries.append(f"{indent}- [{heading}](#{_slug(heading)})")
+        entries.append(f"{indent}- [{heading}](#{_slug(heading, seen)})")
     if not entries:
         return ""
     return (

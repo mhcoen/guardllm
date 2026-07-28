@@ -252,3 +252,70 @@ def test_guard_state_is_per_instance_not_shared():
     assert alice._pipeline.context_contaminated is True
     assert bob._pipeline.context_contaminated is False
     assert alice._pipeline is not bob._pipeline
+
+
+def _markdown_files() -> list[Path]:
+    # Vendored upstream benchmark sources are third-party trees we do not
+    # publish or maintain; their internal links are not our claims.
+    skip = {
+        ".venv",
+        ".venv312",
+        "devel",
+        "local",
+        "dist",
+        "artifacts",
+        "paper",
+        "node_modules",
+        "upstream_sources",
+        "upstream",
+    }
+    return [
+        path
+        for path in ROOT.rglob("*.md")
+        if not any(part in skip or part.startswith(".") for part in path.relative_to(ROOT).parts)
+    ]
+
+
+def test_every_relative_documentation_link_resolves():
+    """A published link that 404s is worse than no link.
+
+    The homepage pointed "Framework Integrations" at a bare directory with no
+    index, which GitHub Pages serves as a 404, and nothing caught it.
+    """
+    broken: list[str] = []
+    for path in _markdown_files():
+        for target in re.findall(r"\]\(([^)]+)\)", path.read_text()):
+            if target.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            relative = target.split("#", 1)[0].split("?", 1)[0]
+            if not relative:
+                continue
+            resolved = (path.parent / relative).resolve()
+            if resolved.is_dir():
+                # A directory link only works if something indexes it.
+                if not (resolved / "README.md").exists() and not (resolved / "index.html").exists():
+                    broken.append(f"{path.relative_to(ROOT)} -> {target} (directory, no index)")
+            elif not resolved.exists():
+                broken.append(f"{path.relative_to(ROOT)} -> {target}")
+    assert not broken, "broken relative links:\n" + "\n".join(sorted(broken))
+
+
+def test_indexes_reach_every_published_surface():
+    """The demos and the threat model were unreachable from any index."""
+    docs_index = (DOCS / "README.md").read_text()
+    for target in ("threat_model.md", "../demo/README.md", "../tutorials/README.md"):
+        assert f"]({target})" in docs_index, target
+
+    home = (ROOT / "README.md").read_text()
+    assert "](demo/README.md)" in home
+    assert "](docs/README.md)" in home
+    assert "](docs/integrations/)" not in home, "bare directory link returns 404 on Pages"
+
+
+def test_tutorials_are_links_not_bare_filenames():
+    """All six tutorial pages were orphaned, rendered as code spans."""
+    index = (ROOT / "tutorials" / "README.md").read_text()
+    pages = sorted(p.name for p in (ROOT / "tutorials").glob("*.md") if p.name != "README.md")
+    assert len(pages) == 6
+    for name in pages:
+        assert f"]({name})" in index, f"{name} is not linked from the tutorials index"

@@ -112,7 +112,7 @@ Use automated snapshots and test restores.
 
 The hidden div was stripped, the injection attempt was flagged, and the clean content is wrapped with source and trust metadata so the model can distinguish it from trusted instructions.
 
-More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_search_untrusted_input.py](examples/03_web_search_untrusted_input.py) | [tutorials/](tutorials/)
+More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_search_untrusted_input.py](examples/03_web_search_untrusted_input.py) | [tutorials/](tutorials/README.md)
 
 ## API Surface
 
@@ -165,9 +165,10 @@ Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Ca
 
 ## Documentation
 
-- **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md)
+- **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md) | [Documentation index](docs/README.md)
+- **See it run**: [Executable demos](demo/README.md), generated from the shipped library. Each displayed result names the exact test that reproduces it. Start at the [system map](demo/guardllm_surface_map.html).
 - **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
-- **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/)
+- **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/README.md)
 - **Operations**: [Production Checklist](docs/production_checklist.md) | [Troubleshooting](docs/troubleshooting.md) | [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
 
 ## Development

@@ -6,6 +6,7 @@ This directory contains architecture and integration documentation for using gua
 
 - [quick_start.md](quick_start.md): simple, interaction-focused setup for first integration.
 - [security.md](security.md): Defense-in-depth architecture and layer-by-layer controls.
+- [threat_model.md](threat_model.md): adversaries, trust boundaries, threats, and the assumptions each mitigation rests on.
 - [api.md](api.md): Stable public API (`Guard`) and usage contract.
 - [api_spec.md](api_spec.md): exhaustive API contract (full signatures, defaults, return types, and error semantics).
 - [integration.md](integration.md): Practical integration patterns for MCP server/client systems.
@@ -16,9 +17,20 @@ This directory contains architecture and integration documentation for using gua
 - [troubleshooting.md](troubleshooting.md): common failure modes, fixes, and FAQ.
 - [production_checklist.md](production_checklist.md): deployment checklist for production hardening and operations.
 
-Tutorials live in the top-level `tutorials/` directory.
+## Runnable material
+
+- [Executable demos](../demo/README.md): self-contained pages generated from the
+  shipped library. Every displayed result carries the metadata that produced it
+  and names the exact test that reproduces it. Start at the
+  [system map](../demo/guardllm_surface_map.html).
+- [Tutorials](../tutorials/README.md): step-by-step end-to-end integrations, each
+  with a script you can run from the repo root.
+- [Benchmarks](../benchmarks/methodology.md): evaluation methodology and
+  [results](../benchmarks/results.md).
 
 ## Framework Integrations
+
+See the [integrations index](integrations/README.md), or go directly to:
 
 - [integrations/fastapi.md](integrations/fastapi.md)
 - [integrations/mcp_sdk.md](integrations/mcp_sdk.md)

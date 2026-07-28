@@ -75,7 +75,10 @@ def test_generated_demos_are_current_and_self_contained():
     assert 'class="controls" hidden' in spine
     assert "show(0,false)" in spine
     assert "if(moveFocus)steps[current].focus()" in spine
-    assert spine.index('<div class="steps ') < spine.index('<div class="system-map"')
+    # The map is now the persistent flow above the acts rather than a diagram
+    # buried in one of them, so it precedes the steps and the rail sits between.
+    assert spine.index('<div class="system-map"') < spine.index('<nav class="act-rail"')
+    assert spine.index('<nav class="act-rail"') < spine.index('<div class="steps ')
 
     binding = (DEMO / "guardllm_request_binding_demo.html").read_text()
     policy = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
@@ -312,7 +315,7 @@ LAYOUTS = {
     "guardllm_demos.html": ("layout-stepper", 0),
     "guardllm_pipeline_demo.html": ("layout-pipeline", 0),
     "guardllm_rag_demos.html": ("layout-comparison has-lead", 0),
-    "guardllm_policy_matrix_demo.html": ("layout-comparison", 0),
+    "guardllm_policy_matrix_demo.html": ("layout-stack", 0),
     "guardllm_canary_demos.html": ("layout-taxonomy", 0),
     "guardllm_tool_feedback_demo.html": ("layout-contrast", 2),
     "guardllm_security_context_demo.html": ("layout-contrast", 2),
@@ -487,11 +490,12 @@ def test_outcome_badges_match_the_fixture_outcomes():
         )
     ]
     page = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
-    steps = page.split('<div class="steps', 1)[1].split("</div></div>", 1)[0]
-    assert steps.count("BLOCKED") == sum(1 for r in policy_results if not r["allowed"])
-    assert steps.count("&gt; ALLOWED") + steps.count("✓</span> ALLOWED") == sum(
-        1 for r in policy_results if r["allowed"]
-    )
+    # The gate path badges each denial at the gate that closed, and each pass at
+    # the end, so the counts still come from the five verdicts.
+    assert page.count("BLOCKED") == sum(1 for r in policy_results if not r["allowed"])
+    assert page.count("ALLOWED") == sum(1 for r in policy_results if r["allowed"])
+    # The matrix stays the reference view and still carries every decision.
+    assert page.count('<th scope="row">') == len(policy_results)
 
     rate = scenarios["rate_limit"]
     page = (DEMO / "guardllm_rate_limit_demo.html").read_text()
@@ -517,4 +521,4 @@ def test_badges_do_not_rely_on_color_alone():
         for outcome, glyph, label in BADGE_RE.findall(page):
             assert (glyph, label) == generator.OUTCOME_BADGES[outcome], (name, outcome)
             seen += 1
-    assert seen == 31, seen
+    assert seen == 35, seen

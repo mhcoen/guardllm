@@ -1452,10 +1452,11 @@ class TestRateLimitAnomaliesSurfaced:
     def test_burst_anomaly_surfaced_on_gate_result(self):
         pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)
         ctx = self._trusted_ctx()
-        # Default burst threshold is 3 within a 10s window.
-        results = [pipe.check_tool_execution("search_docs", {}, ctx) for _ in range(4)]
+        # The proposal counts toward its own burst, so the default threshold of
+        # three flags the third call in a 10s window, not the fourth.
+        results = [pipe.check_tool_execution("search_docs", {}, ctx) for _ in range(3)]
         assert all(r.allowed for r in results)
-        assert any("burst" in a.lower() for a in results[-1].anomalies)
+        assert [r.anomalies for r in results] == [[], [], ["Rapid burst: 3 actions in 10s"]]
 
     def test_novel_recipient_surfaced_on_outbound(self):
         pipe = SecurityPipeline(principal_trust=TrustLevel.TRUSTED)

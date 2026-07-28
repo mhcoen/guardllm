@@ -41,6 +41,7 @@ Recommended:
 
 - Tune by action criticality and user volume.
 - Keep anomaly detection enabled (novel recipient / burst patterns). Pass `recipient=` to `check_tool_call`/`check_outbound` to drive novel-recipient detection; anomalies surface non-blocking on `GateResult.anomalies` / `OutboundResult.anomalies` and in the audit trail.
+- The two counters answer different questions, and they count differently. `emails_per_hour` is a hard block governing quota, so it counts only completed actions. `burst_threshold` is an advisory signal, so it counts the action being checked alongside the completed ones still inside `burst_window_seconds`: with the default `burst_threshold=3`, the third send in the window is itself flagged. Counting only completed actions would make a burst of exactly `burst_threshold` actions produce no signal at all, since the first report would arrive with the action *after* the burst.
 
 ## 6) Fail-closed options
 

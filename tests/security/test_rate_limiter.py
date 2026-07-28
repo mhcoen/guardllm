@@ -3,7 +3,7 @@
 Covers:
 - Exceed hourly limit (record 10 actions, 11th blocked) -> blocked
 - Novel recipient flagged in anomalies
-- Rapid burst detected (3+ in 10s window)
+- Rapid burst detected when the proposal is the 3rd+ action in a 10s window
 - Reset after clearing session
 - Within limits -> allowed
 """
@@ -187,29 +187,45 @@ class TestNovelRecipient:
 
 
 class TestRapidBurst:
-    """Spec test 61: rapid burst detected (3+ in 10s window)."""
+    """Spec test 61: the proposal counts toward its own burst window."""
 
     def test_burst_detected(self, limiter, ctx):
-        """3+ actions in 10s window triggers burst anomaly."""
-        # Record 3 actions in quick succession
-        for _ in range(3):
+        """The third action in a 10s window is itself flagged."""
+        # Two completed actions, so the proposal under check is the third.
+        for _ in range(2):
             limiter.record("gmail_send_email", ctx)
 
         result = limiter.check("gmail_send_email", ctx)
         assert result.allowed is True  # Burst is an anomaly, not a block
-        assert any("burst" in a.lower() or "rapid" in a.lower() for a in result.anomalies)
+        assert result.anomalies == ["Rapid burst: 3 actions in 10s"]
 
     def test_no_burst_below_threshold(self, limiter, ctx):
-        """2 actions in quick succession does not trigger burst."""
-        limiter.record("gmail_send_email", ctx)
+        """A second action in quick succession does not trigger burst."""
         limiter.record("gmail_send_email", ctx)
 
         result = limiter.check("gmail_send_email", ctx)
         assert not any("burst" in a.lower() for a in result.anomalies)
 
+    def test_exact_threshold_burst_is_never_silent(self, limiter, ctx):
+        """A burst of exactly burst_threshold actions reports itself.
+
+        Counting only prior completed actions would let an attacker send exactly
+        three messages inside the window and draw no signal at all.
+        """
+        flagged = [limiter.check_and_record("gmail_send_email", ctx).anomalies for _ in range(3)]
+        assert flagged == [[], [], ["Rapid burst: 3 actions in 10s"]]
+
+    def test_burst_count_grows_with_the_window(self, limiter, ctx):
+        """The reported count names the proposal's own position in the burst."""
+        for _ in range(3):
+            limiter.record("gmail_send_email", ctx)
+
+        result = limiter.check("gmail_send_email", ctx)
+        assert result.anomalies == ["Rapid burst: 4 actions in 10s"]
+
     def test_burst_and_novel_combine(self, limiter, ctx):
         """Burst and novel recipient can both appear in anomalies."""
-        for _ in range(3):
+        for _ in range(2):
             limiter.record("gmail_send_email", ctx)
 
         result = limiter.check("gmail_send_email", ctx, recipient="new@stranger.com")
@@ -386,11 +402,11 @@ class TestRateLimitOverrides:
             ),
         )
         # burst_threshold should still be from DEFAULT_LIMITS (3)
-        for _ in range(3):
+        for _ in range(2):
             limiter.record("gmail_send_email", ctx)
 
         result = limiter.check("gmail_send_email", ctx)
-        assert result.allowed is True  # 3 < 5 hourly limit
+        assert result.allowed is True  # 2 < 5 hourly limit
         # Burst anomaly should still trigger (uses default burst_threshold=3)
         assert any("burst" in a.lower() or "rapid" in a.lower() for a in result.anomalies)
 

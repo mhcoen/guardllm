@@ -27,7 +27,7 @@ class _SessionCounters:
 # Default limits from spec §9
 DEFAULT_LIMITS = {
     "emails_per_hour": 10,
-    "burst_threshold": 3,  # actions in burst_window_seconds
+    "burst_threshold": 3,  # actions in burst_window_seconds, counting the proposal
     "burst_window_seconds": 10,
     "novel_recipient_flag": True,
 }
@@ -81,6 +81,11 @@ class RateLimiter:
     ) -> RateLimitResult:
         """Check if an action is within rate limits.
 
+        The hourly cap blocks and counts only completed actions. The burst and
+        novel-recipient signals are advisory and never block; the burst count
+        includes the action being checked, so ``burst_threshold`` actions inside
+        the window flag the last of them rather than the one after it.
+
         Args:
             action: Action type (e.g. "gmail_send_email").
             ctx: Security context.
@@ -110,12 +115,23 @@ class RateLimiter:
                 retry_after=self._seconds_until_slot(session.action_times[action], window),
             )
 
-        # Check burst pattern
+        # Check the burst pattern the proposed action would produce, counting it
+        # alongside the prior completed actions in the window. The proposal is
+        # recorded only after every check permits it, so counting only the prior
+        # actions would make a burst of exactly burst_threshold actions invisible:
+        # the signal would first appear on the action after the burst.
+        #
+        # This deliberately differs from the hourly cap above, which counts only
+        # completed actions because it governs quota and must reflect what
+        # actually happened. The burst signal is advisory and never blocks, so
+        # naming a call that a later gate may still deny costs nothing, while
+        # missing a threshold-sized burst is a detection gap.
         burst_threshold = limits.get("burst_threshold", 3)
         burst_window = limits.get("burst_window_seconds", 10)
         recent = self._prune_old(session.action_times[action], burst_window)
-        if len(recent) >= burst_threshold:
-            anomalies.append(f"Rapid burst: {len(recent)} actions in {burst_window}s")
+        proposed_burst = len(recent) + 1
+        if proposed_burst >= burst_threshold:
+            anomalies.append(f"Rapid burst: {proposed_burst} actions in {burst_window}s")
 
         # Check novel recipient
         if (

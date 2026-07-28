@@ -118,6 +118,21 @@ class TestCanaryDetection:
         text = f"{token} middle text {token}"
         assert detect_canary(text, token) is True
 
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            lambda token: token.upper(),
+            lambda token: f"CaNaRy - {token[7:11]} {token[11:15]} {token[15:]}",
+            lambda token: "\u200b".join(token),
+            lambda token: token.replace("-", " / "),
+        ],
+        ids=["case", "chunk-separators", "zero-width", "slash-separator"],
+    )
+    def test_canonicalized_transformations_detected(self, transform):
+        """Supported case and separator transformations retain attribution."""
+        token = generate_canary("canonicalized-session", secret=b"fixed-test-secret")
+        assert detect_canary(transform(token), token) is True
+
 
 class TestCanaryIsolation:
     """Canary tokens are session-specific and secret-specific."""

@@ -53,23 +53,33 @@ def scopes_to_tool_allowlist(scopes: set[str]) -> dict:
 
 
 def check_tool_with_oauth(
+    guard: Guard,
     user_id: str,
     oauth_scopes: set[str],
     tool: str,
     args: dict,
     user_message: str,
 ) -> bool:
-    guard = Guard()
+    # The Guard is passed in, not constructed here. It owns the session state
+    # this check depends on: contamination, egress escalation, provenance, DLP
+    # history, the remembered canary, and rate counters. Building a new one per
+    # call discards all of it, so every call would look like the first.
 
+    # OAuth scopes decide which tools are eligible. That is the allowlist.
     policy = PolicyConfig(
         tool_allowlist=scopes_to_tool_allowlist(oauth_scopes),
         enable_destructive=True,
     )
     ctx = Guard.context_mcp_server(server_id=f"user:{user_id}", policy=policy)
 
+    # The authorization scope is a different question: which exact arguments
+    # were approved. It is checked against the arguments being dispatched, so
+    # putting the OAuth scope set here fails with
+    # "Scope key 'oauth_scopes' missing from args". Identity and granted scopes
+    # belong in source and session_id, which is where the audit trail reads them.
     auth = Guard.authorize(
         action=tool,
-        scope={"oauth_scopes": sorted(oauth_scopes), "user_id": user_id},
+        scope=dict(args),
         user_message=user_message,
         source="oauth_intent_adapter",
         session_id=user_id,

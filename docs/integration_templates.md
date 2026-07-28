@@ -12,13 +12,31 @@ from guardllm.security.error_sanitizer import InvalidParamsError
 from guardllm.security.types import PolicyConfig
 
 
-guard = Guard()
+# One Guard per session, never one per process. A Guard owns contamination,
+# egress escalation, provenance, DLP buffers, the remembered canary, and rate
+# counters. Sharing one across clients leaks all of that between them, and the
+# pipeline does not synchronize internally: the contract is one per session,
+# with the host serializing that session's calls.
+_guards: dict[str, Guard] = {}
+
+
+def guard_for(session_id: str) -> Guard:
+    guard = _guards.get(session_id)
+    if guard is None:
+        guard = Guard(canary_session_id=session_id)
+        _guards[session_id] = guard
+    return guard
+
+
+def end_session(session_id: str) -> None:
+    _guards.pop(session_id, None)
 
 
 def handle_request(request: dict, dispatch_tool) -> dict:
     tool = request["tool"]
     args = dict(request.get("args", {}))
     client_id = request.get("client_id", "unknown-client")
+    guard = guard_for(request.get("session_id", client_id))
 
     ctx = Guard.context_mcp_client(
         client_id=client_id,
@@ -54,21 +72,46 @@ def handle_request(request: dict, dispatch_tool) -> dict:
 Use this before calling remote MCP tools.
 
 ```python
+import dataclasses
 import time
+
 from guardllm import Guard
 from guardllm.security.types import PolicyConfig
 
 
-guard = Guard(canary_session_id="session-1")
-assert guard.canary_token is not None
-# Add guard.canary_token to private system context before invoking the model.
+class CliConfirmation:
+    """Ask the operator. Without a handler, require_confirmation always denies.
+
+    `require_confirmation=True` with no `confirmation_handler` on the context is
+    not "prompt the user": there is nothing to prompt with, so the gate fails
+    closed on every destructive call. Install a handler or do not ask for
+    confirmation.
+    """
+
+    async def confirm(self, tool: str, args: dict, context: dict) -> bool:
+        answer = input(f"Allow {tool} with {args}? [y/N] ")
+        return answer.strip().lower() == "y"
 
 
-async def guarded_call(transport, tool: str, args: dict, user_message: str):
+def guard_for(session_id: str) -> Guard:
+    """One Guard per session; see the session note at the top of this page."""
+    guard = _guards.get(session_id)
+    if guard is None:
+        guard = Guard(canary_session_id=session_id)
+        _guards[session_id] = guard
+    return guard
+
+
+async def guarded_call(guard: Guard, transport, tool: str, args: dict, user_message: str):
+    # guard.canary_token belongs in private system context before the model is
+    # invoked, so a leaked copy is identifiable at egress.
     ctx = Guard.context_mcp_server(
         server_id="mcp-gsuite",
         policy=PolicyConfig(enable_destructive=True),
     )
+    # The handler rides on the context. require_confirmation=True below is only
+    # meaningful because this is set; without it the call is denied every time.
+    ctx = dataclasses.replace(ctx, confirmation_handler=CliConfirmation())
 
     # Authorize, bind, gate, and dispatch the EXACT SAME args object. Never
     # gate a subset (e.g. just {"to": ...}) and dispatch a superset: fields
@@ -113,7 +156,9 @@ Use this before passing external content to your LLM.
 from guardllm import Guard
 from guardllm.security.types import ContentType, SecurityContext, TrustLevel
 
-guard = Guard()
+# Per session, as everywhere else on this page: this Guard will hold the
+# provenance and DLP state that later egress checks compare against.
+guard = guard_for(session_id)
 
 email_ctx = SecurityContext(
     mode="client",

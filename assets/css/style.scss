@@ -1,0 +1,29 @@
+---
+# Front matter is required for Jekyll to process this file.
+---
+
+@import "{{ site.theme }}";
+
+/* Wide tables scroll within their own box instead of clipping.
+ *
+ * The security, policy, and benchmark tables have five or more columns and
+ * were cut off on narrow screens with no way to reach the missing ones. This
+ * is the same treatment GitHub applies to tables in rendered Markdown.
+ */
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Long code blocks scroll rather than forcing the page to. */
+.markdown-body pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Keep the page itself from scrolling sideways on a phone. */
+.markdown-body {
+  overflow-wrap: break-word;
+}

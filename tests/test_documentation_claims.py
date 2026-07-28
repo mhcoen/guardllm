@@ -588,3 +588,22 @@ def test_long_references_carry_a_table_of_contents():
         # Entries must be links into the page, not bare text.
         toc = text.split("<!-- toc:start -->", 1)[1].split("<!-- toc:end -->", 1)[0]
         assert toc.count("](#") >= 8, path.name
+
+
+def test_site_stylesheet_keeps_wide_tables_reachable():
+    """Wide tables clipped on narrow screens with no way to reach the columns.
+
+    The site had no Jekyll config, so there was nowhere to hang a stylesheet.
+    """
+    config = (ROOT / "_config.yml").read_text()
+    assert "theme:" in config, "a theme is what the stylesheet extends"
+    # Jekyll must not walk the library, the tests, or the benchmark runs.
+    for excluded in ("src/", "tests/", "benchmarks/runs/", ".venv/"):
+        assert excluded in config, excluded
+
+    style = (ROOT / "assets" / "css" / "style.scss").read_text()
+    assert style.startswith("---"), "Jekyll needs front matter to process this file"
+    assert '@import "{{ site.theme }}"' in style, "must extend rather than replace the theme"
+    table_rule = style.split("table {", 1)[1].split("}", 1)[0]
+    assert "overflow-x: auto" in table_rule
+    assert "max-width: 100%" in table_rule

@@ -1,0 +1,36 @@
+# GitHub Pages build configuration.
+#
+# The site previously had no config, so Pages built it with defaults and there
+# was nowhere to hang a stylesheet. Wide security and benchmark tables clipped
+# on narrow screens with no way to reach the cut-off columns.
+#
+# This sets a supported theme so assets/css/style.scss can extend it, and
+# excludes everything that is source rather than site, so Jekyll does not walk
+# the library, the tests, or the 130MB of benchmark runs.
+
+title: GuardLLM
+description: Lifecycle security for LLM applications
+theme: jekyll-theme-primer
+
+exclude:
+  - .github/
+  - .venv/
+  - .venv312/
+  - artifacts/
+  - benchmarks/cache/
+  - benchmarks/datasets/
+  - benchmarks/runs/
+  - benchmarks/upstream/
+  - benchmarks/upstream_sources/
+  - devel/
+  - dist/
+  - examples/
+  - local/
+  - paper/
+  - scripts/
+  - src/
+  - tests/
+  - Makefile
+  - pyproject.toml
+  - requirements.txt
+  - requirements-dev.txt

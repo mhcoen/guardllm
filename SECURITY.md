@@ -64,9 +64,17 @@ The benchmark datasets under `benchmarks/` are part of GuardLLM's evaluation met
 GuardLLM ships with safe-by-default settings:
 
 - Empty allowlist denies (does not allow-all)
-- Untrusted-source destructive tool calls require an explicit `AuthorizationEvent`
+- Destructive tools are disabled by default, and enabling one in client mode still
+  requires an `AuthorizationEvent` whose scope covers every dispatched argument.
+  In server mode a destructive tool that is enabled and listed in
+  `capability_scopes` is permitted without an authorization event, which is the
+  server capability contract rather than an exception to it.
 - Inbound content is wrapped with source and trust metadata even when no warnings fire
-- Outbound checks fail closed when provenance is unknown
+- Outbound checks compare against the provenance and DLP state the session has
+  actually recorded. They do not fail closed on unknown provenance: content a
+  session never ingested returns `allowed=True, reason="clean"`. Registering
+  untrusted input through `process_inbound` is what gives egress something to
+  match against, which is the host obligation the tool-feedback demo covers.
 
 If you find a default that does not match this posture, that itself is a reportable issue.
 

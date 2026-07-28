@@ -68,7 +68,7 @@ python benchmarks/run_benchmarks.py \
 - Ruff for linting (see `[tool.ruff]` in `pyproject.toml`). Run `ruff check .` before pushing.
 - Type hints on public functions and dataclasses. We ship a `py.typed` marker; downstream users rely on the types being honest.
 - Prefer dataclasses over loose dicts for cross-module data.
-- No new runtime dependencies unless there is a clear case. `beautifulsoup4` is the only required runtime dep; keep it that way if possible.
+- No new runtime dependencies unless there is a clear case. There are three: `beautifulsoup4`, `soupsieve` (pinned to the patched release for GHSA-2wc2-fm75-p42x), and `confusables`. Keep the list this short if possible.
 
 ## Commit and PR Conventions
 

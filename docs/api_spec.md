@@ -17,8 +17,23 @@ This document is the complete public API contract for GuardLLM (`guardllm`) as i
 from guardllm import Guard
 ```
 
-`src/guardllm/__init__.py` exports:
+`src/guardllm/__init__.py` exports thirteen names. `Guard` is the facade; the
+rest are the types its methods accept and return, so they are public because
+callers need them for annotations and construction:
+
 - `Guard`
+- `AuditEvent`
+- `AuthorizationEvent`
+- `Binding`
+- `ContentType`
+- `GateResult`
+- `OutboundResult`
+- `PolicyConfig`
+- `ProcessedContent`
+- `SecurityContext`
+- `SensitivityLevel`
+- `TrustLevel`
+- `ValidationResult`
 
 ## Guard Class
 

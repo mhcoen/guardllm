@@ -4,7 +4,7 @@
     "dataset_hash": "e1cf2c24a9f1f8e27056a40073e841db7a526707debfd2adc41867309b015e89",
     "generated_at": 1771886961,
     "git_sha_short": "3ea63d3",
-    "reproduce": "python benchmarks/run_benchmarks.py",
+    "reproduce": "python benchmarks/compare_mitigations.py",
     "run_id": "comparison-20260223T224921Z-3ea63d3",
     "source_artifact": "benchmarks/results/comparison.json",
     "suite_filter": null

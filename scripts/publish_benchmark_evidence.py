@@ -59,7 +59,9 @@ def build() -> dict:
             "git_sha_short": source["git_sha_short"],
             "dataset_hash": source["dataset_hash"],
             "suite_filter": source["suite_filter"],
-            "reproduce": "python benchmarks/run_benchmarks.py",
+            # comparison.json is produced by compare_mitigations.py.
+            # run_benchmarks.py writes latest.json and does not generate it.
+            "reproduce": "python benchmarks/compare_mitigations.py",
         },
         "surface_controls": {
             "case_count": surface["count"],

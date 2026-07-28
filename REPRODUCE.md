@@ -5,7 +5,7 @@
 <!-- nav:end -->
 
 <!-- toc:start -->
-<details>
+<details markdown="1">
 <summary>On this page</summary>
 
 - [Prerequisites](#prerequisites)

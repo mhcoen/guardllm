@@ -66,7 +66,12 @@ async def generate(payload: dict, session_key: str = Depends(authenticated_sessi
         text = payload.get("text", "")
         processed = guard.process_inbound(text, ctx)
 
-        model_output = f"answer: {processed.content}"
+        # A real model answers from the protected content. This placeholder
+        # must not echo it back: copying the input verbatim reproduces the
+        # untrusted span, and egress correctly blocks it with
+        # "N-gram overlap (100%) with untrusted content". That is provenance
+        # working, but it is not what this page is demonstrating.
+        model_output = f"Received {len(processed.content)} characters of guarded input."
 
         out = guard.check_outbound(model_output, ctx)
         if not out.allowed:

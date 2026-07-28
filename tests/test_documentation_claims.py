@@ -364,6 +364,49 @@ def test_readme_scopes_the_composition_claim_to_what_was_measured():
 TEMPLATE_PAGES = ["docs/integration_templates.md", "docs/integrations/fastapi.md"]
 
 
+@pytest.fixture(autouse=True)
+def _stub_fastapi(monkeypatch):
+    """fastapi is not a runtime dependency, and skipping hid a broken example."""
+    import types
+
+    module = types.ModuleType("fastapi")
+
+    class _App:
+        def post(self, *args, **kwargs):
+            return lambda fn: fn
+
+    class _Request:
+        def __init__(self):
+            self.state = types.SimpleNamespace(session_key="authenticated:test")
+
+    module.FastAPI = lambda *a, **k: _App()
+    module.Depends = lambda fn: None
+    module.Request = _Request
+    monkeypatch.setitem(sys.modules, "fastapi", module)
+
+
+def test_published_fastapi_endpoint_returns_a_result_not_a_denial():
+    """The placeholder model echoed its input, so egress correctly blocked it.
+
+    Copying the protected content reproduces the untrusted span verbatim, and
+    check_outbound denies with an n-gram overlap. That is provenance working,
+    but the page presented it as the successful integration path.
+    """
+    import asyncio
+
+    text = (ROOT / "docs" / "integrations" / "fastapi.md").read_text()
+    block = re.findall(r"```python\n(.*?)```", text, re.S)[0]
+    namespace: dict = {"__name__": "template"}
+    exec(compile(block, "docs/integrations/fastapi.md", "exec"), namespace)  # noqa: S102
+
+    result = asyncio.run(namespace["generate"]({"text": "hello there"}, "authenticated:u1"))
+    assert "error" not in result, result
+    assert "result" in result
+
+    # The placeholder must not echo the guarded content back.
+    assert "{processed.content}" not in text
+
+
 @pytest.mark.parametrize("path", TEMPLATE_PAGES)
 def test_template_blocks_are_self_contained_and_execute(path):
     """Execute the exact fenced blocks, as the quick start test does.
@@ -377,10 +420,7 @@ def test_template_blocks_are_self_contained_and_execute(path):
     assert blocks, path
     for index, block in enumerate(blocks):
         namespace: dict = {"__name__": "template"}
-        try:
-            exec(compile(block, f"{path}#{index}", "exec"), namespace)  # noqa: S102
-        except ModuleNotFoundError as exc:  # fastapi is not a runtime dependency
-            pytest.skip(f"{exc.name} not installed")
+        exec(compile(block, f"{path}#{index}", "exec"), namespace)  # noqa: S102
         if "guard_for" in namespace:
             guard, lock = namespace["guard_for"]("session-under-test")
             again, _ = namespace["guard_for"]("session-under-test")
@@ -607,3 +647,41 @@ def test_site_stylesheet_keeps_wide_tables_reachable():
     table_rule = style.split("table {", 1)[1].split("}", 1)[0]
     assert "overflow-x: auto" in table_rule
     assert "max-width: 100%" in table_rule
+
+
+def test_published_links_do_not_target_jekyll_excluded_paths():
+    """A link can resolve on disk and still 404 on the built site.
+
+    Excluding examples/ in _config.yml did exactly that: the filesystem link
+    test passed while README.md and docs/quick_start.md both pointed into a
+    directory Jekyll no longer published.
+    """
+    config = (ROOT / "_config.yml").read_text()
+    excluded = re.findall(r"^\s*-\s+(\S+/)\s*$", config, re.M)
+    assert excluded, "expected an exclude list to check against"
+
+    offenders: list[str] = []
+    for path in (ROOT / "README.md", *(ROOT / "docs").rglob("*.md")):
+        for target in re.findall(r"\]\(([^)]+)\)", path.read_text()):
+            if target.startswith(("http", "#", "mailto:")):
+                continue
+            resolved = (path.parent / target.split("#", 1)[0]).resolve()
+            try:
+                relative = resolved.relative_to(ROOT).as_posix()
+            except ValueError:
+                continue
+            for prefix in excluded:
+                if relative.startswith(prefix.rstrip("/") + "/"):
+                    offenders.append(f"{path.relative_to(ROOT)} -> {target} (excluded: {prefix})")
+    assert not offenders, "published links into excluded directories:\n" + "\n".join(offenders)
+
+
+def test_generated_tables_of_contents_are_processed_as_markdown():
+    """Kramdown leaves Markdown inside a raw <details> as literal text.
+
+    Without markdown="1" the entries rendered as plain text on the built site,
+    so both tables of contents were inert while the source-level test passed.
+    """
+    for path in (DOCS / "api_spec.md", ROOT / "REPRODUCE.md"):
+        block = path.read_text().split("<!-- toc:start -->", 1)[1]
+        assert '<details markdown="1">' in block, path.name

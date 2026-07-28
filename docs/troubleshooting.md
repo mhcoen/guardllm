@@ -1,5 +1,9 @@
 # Troubleshooting and FAQ
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 ## My tool call was blocked. What should I check first?
 
 1. Check `GateResult.reason` from `check_tool_call(...)` or `guard_tool_call(...)`.

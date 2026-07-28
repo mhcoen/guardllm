@@ -1,5 +1,9 @@
 # Integration Templates
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 Copy-paste templates for quickly integrating guardllm into LLM applications.
 
 ## Template: MCP Server Request Guard

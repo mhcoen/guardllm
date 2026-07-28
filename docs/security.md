@@ -1,5 +1,9 @@
 # Security Architecture
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 guardllm uses a defense-in-depth security pipeline designed to harden MCP servers and MCP clients against prompt injection, data exfiltration, replay attacks, and trust-boundary violations from unknown-provenance content sources such as web search results, emails, documents, calendar data, and other untrusted inputs.
 
 ## Defense Layers

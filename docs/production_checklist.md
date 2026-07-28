@@ -1,5 +1,9 @@
 # Production Checklist
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 Use this checklist before deploying guardllm-backed flows.
 
 ## 1. Dependency and Environment

@@ -1,5 +1,9 @@
 # API Reference
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 guardllm exposes a stable facade: `guardllm.Guard`.
 
 ## Core Class

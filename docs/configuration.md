@@ -1,5 +1,9 @@
 # Configuration and Policy
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 
 ## PolicyConfig

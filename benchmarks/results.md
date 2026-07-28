@@ -1,5 +1,9 @@
 # Canonical Results (Local-Only, No Vendor APIs)
 
+<!-- nav:start -->
+[Home](../README.md) / [Benchmarks](README.md)
+<!-- nav:end -->
+
 Surface-control figures on this page and the homepage are generated from the [published surface evidence](published/surface_controls.md), which is tracked and carries its run id, commit, and dataset hash. The prompt-injection vendor comparison is not yet published this way; see the scope note in that file.
 
 This page points to the canonical run artifacts that are reproducible without paid providers.

@@ -1,5 +1,9 @@
 # Dataset Rebuild Protocol
 
+<!-- nav:start -->
+[Home](../README.md) / [Benchmarks](README.md)
+<!-- nav:end -->
+
 This protocol documents how to rebuild benchmark datasets with pinned provenance while handling non-redistributable upstream suites.
 
 ## Scope

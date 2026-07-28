@@ -1,5 +1,9 @@
 # Tutorial 04: MCP Server Hardening
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 Script:
 - `tutorials/04_mcp_server_tutorial.py`
 

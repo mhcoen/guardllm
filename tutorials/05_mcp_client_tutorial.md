@@ -1,5 +1,9 @@
 # Tutorial 05: MCP Client Hardening
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 Script:
 - `tutorials/05_mcp_client_tutorial.py`
 

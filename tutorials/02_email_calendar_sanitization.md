@@ -1,5 +1,9 @@
 # Tutorial 02: Sanitize Unknown Email and Calendar Inputs
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 Script:
 - `tutorials/02_email_calendar_sanitization.py`
 

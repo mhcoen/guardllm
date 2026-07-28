@@ -1,5 +1,9 @@
 # Tutorial: Harden a GSuite MCP Client
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 This tutorial shows how to build an MCP client that safely handles unknown-provenance GSuite inputs (email and calendar) and safely executes outbound actions.
 
 Runnable example:

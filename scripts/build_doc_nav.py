@@ -42,7 +42,23 @@ def _pages() -> list[tuple[Path, str]]:
         for path in sorted((docs / "integrations").glob("*.md"))
         if path.name != "README.md"
     ]
+    pages += [
+        (path, "[Home](../README.md) / [Tutorials](README.md)")
+        for path in sorted((ROOT / "tutorials").glob("*.md"))
+        if path.name != "README.md"
+    ]
+    pages += [
+        (path, "[Home](../README.md) / [Benchmarks](README.md)")
+        for path in sorted((ROOT / "benchmarks").glob("*.md"))
+        if path.name != "README.md"
+    ]
     pages.append((ROOT / "REPRODUCE.md", "[Home](README.md) / [Docs index](docs/README.md)"))
+    # Root documents are excluded on purpose: README.md is itself an index, and
+    # a breadcrumb on the changelog or the licence would be noise.
+    #
+    # benchmarks/published/ is excluded because another generator owns those
+    # files. Two generators writing one file means whichever runs second wins
+    # and the other's --check fails.
     return pages
 
 

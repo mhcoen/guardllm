@@ -305,18 +305,33 @@ def test_rails_state_their_own_lifecycle():
             assert 'class="rail-pill is-current"' in session
 
 
+# Every page states a shape, and no two mechanisms are drawn the same way
+# unless they genuinely share one. The stepper is reserved for the narrative,
+# where causality actually unfolds over time.
 LAYOUTS = {
+    "guardllm_demos.html": ("layout-stepper", 0),
+    "guardllm_pipeline_demo.html": ("layout-pipeline", 0),
+    "guardllm_rag_demos.html": ("layout-comparison has-lead", 0),
+    "guardllm_policy_matrix_demo.html": ("layout-comparison", 0),
+    "guardllm_canary_demos.html": ("layout-taxonomy", 0),
+    "guardllm_tool_feedback_demo.html": ("layout-contrast", 2),
+    "guardllm_security_context_demo.html": ("layout-contrast", 2),
     "guardllm_request_binding_demo.html": ("layout-branch", 2),
     "guardllm_rate_limit_demo.html": ("layout-timeline", 2),
-    "guardllm_rag_demos.html": ("layout-comparison", 0),
-    "guardllm_demos.html": ("layout-stack", 0),
 }
 
 
 def test_pages_declare_their_layout_and_groups():
+    assert LAYOUTS.keys() == {
+        path.name for path in DEMO.glob("*.html") if path.name != "guardllm_surface_map.html"
+    }
+    # Only the narrative keeps the stepper.
+    steppers = [name for name, (css, _) in LAYOUTS.items() if css == "layout-stepper"]
+    assert steppers == ["guardllm_demos.html"]
     for name, (css_class, group_count) in LAYOUTS.items():
         page = (DEMO / name).read_text()
         assert f'<div class="steps {css_class}"' in page, name
+        assert ('class="controls"' in page) == (css_class == "layout-stepper"), name
         assert len(re.findall(r'<h2 class="group-head">', page)) == group_count, name
         # Grouped layouts run in parallel, so each path numbers from one. A
         # single running count would imply an order across them.
@@ -353,3 +368,53 @@ def test_layout_must_match_the_execution_metadata():
 
     with pytest.raises(ValueError, match="Unknown page layout"):
         generator.validate_page_layout("carousel", scenarios["rag"], ())
+
+
+def test_new_layouts_reject_shapes_their_fixtures_do_not_support():
+    generator = _load_generator()
+    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+    check = generator.validate_page_layout
+
+    # Shapes actually shipped.
+    check("pipeline", scenarios["ingress"], (), displayed=len(scenarios["ingress"]["steps"]))
+    check("taxonomy", scenarios["dlp_canary"], ())
+    check("contrast", scenarios["tool_feedback"], ("open", "closed"))
+    check("contrast", scenarios["security_context"], ("untrusted", "trusted"))
+    check("comparison", scenarios["policy"], ())
+
+    # A drawn pipeline draws every instrumented site. Five rows for seven sites
+    # presents an abridged pipeline as the pipeline.
+    with pytest.raises(ValueError, match="every site has to appear"):
+        check("pipeline", scenarios["ingress"], (), displayed=5)
+    # Only nested call sites inside one enclosing call are a pipeline.
+    with pytest.raises(ValueError, match="nested call site"):
+        check("pipeline", scenarios["policy"], ())
+
+    # A grid of peers claims no cell depends on another.
+    with pytest.raises(ValueError, match="stand alone"):
+        check("taxonomy", scenarios["policy"], ())
+    with pytest.raises(ValueError, match="nested call site"):
+        check("pipeline", scenarios["dlp_canary"], ())
+    # No shipped scenario is all-independent while reusing one object, so the
+    # distinct-object rule needs a constructed case to be exercised at all.
+    shared_object = {
+        "steps": [
+            {"execution": "independent", "pipeline_id": "one"},
+            {"execution": "independent", "pipeline_id": "one"},
+            {"execution": "independent", "pipeline_id": "two"},
+        ]
+    }
+    with pytest.raises(ValueError, match="its own object"):
+        check("taxonomy", shared_object, ())
+
+    # A contrast needs two objects, one created to be compared with the other.
+    with pytest.raises(ValueError, match="exactly two objects"):
+        check("contrast", scenarios["dlp_canary"], ("a", "b"))
+    with pytest.raises(ValueError, match="exactly one branch step"):
+        check("contrast", scenarios["request_binding"], ("a", "b"))
+    with pytest.raises(ValueError, match="needs two"):
+        check("contrast", scenarios["security_context"], ("only one",))
+
+    # A lead step is a setup plus the compared cases, not one of them.
+    with pytest.raises(ValueError, match="lead step needs"):
+        check("comparison", scenarios["rag"], (), lead_step=True, displayed=3)

@@ -1787,6 +1787,9 @@ STYLE = """
 .step-group{border:1px solid var(--line);border-radius:12px;background:#101319;padding:14px}.group-head{margin:0 0 11px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.step-group .step{margin-bottom:10px}.step-group .step:last-child{margin-bottom:0}.step-group .step h3{margin:0 0 7px;font-size:16px}
 .layout-timeline .step-group .step{position:relative;padding:11px 12px 11px 28px}.layout-timeline .step-group .step h3{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--sub);margin:0 0 5px}.layout-timeline .step-group .step .badge{margin:0 0 5px}.layout-timeline .step-group .step .step-body{font-size:13px}
 .layout-timeline .step-group .step{position:relative;padding-left:28px}.layout-timeline .step-group .step::before{content:"";position:absolute;left:9px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.layout-timeline .step-group .step::after{content:"";position:absolute;left:13px;top:32px;bottom:-11px;width:1px;background:var(--line)}.layout-timeline .step-group .step:last-child::after{display:none}
+.gate-path{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:0}.gate{position:relative;padding:12px 0 12px 26px;border-left:1px solid var(--line)}.gate:last-child{border-left-color:transparent}.gate::before{content:"";position:absolute;left:-5px;top:17px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.gate strong{display:block;color:var(--text)}.gate-q{display:block;margin:1px 0 7px;color:var(--muted);font-size:13px}.gate-out{list-style:none;margin:0;padding:0;display:grid;gap:6px}.gate-out li{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;color:var(--sub);font-size:13px}.gate-out code{color:var(--sub);font-size:12px}
+.act-rail{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px}.act{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--sub);padding:5px 12px 5px 6px;font:inherit;font-size:12px;cursor:pointer;transition:border-color .12s ease,color .12s ease}.act:hover{border-color:var(--focus);color:var(--text)}.act.is-current{border-color:var(--focus);color:var(--text);background:var(--panel2)}.act-num{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:11px;font-weight:700}.act.is-current .act-num{background:var(--focus);color:#0d0f12}.act-name{white-space:nowrap;max-width:26ch;overflow:hidden;text-overflow:ellipsis}
+.act-state{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 14px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#111d29}.act-state-label{color:var(--blue);font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}.act-state .chip{font-size:12px}.act-state .chip strong{color:var(--text)}.act-note{color:var(--muted);font-size:12px}
 .badge{display:inline-flex;align-items:center;gap:5px;margin:0 0 9px;padding:2px 9px;border:1px solid;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.07em}.badge-allowed{color:var(--green);border-color:#3f6b34;background:#16241355}.badge-blocked{color:var(--red);border-color:#7a3a3a;background:#2a141455}.badge-anomaly{color:var(--amber);border-color:#7a6430;background:#25200f55}.badge-state{color:var(--sub);border-color:var(--line);background:var(--panel2)}
 .supporting h1{font-size:clamp(23px,3.2vw,31px);margin:.15em 0 .1em}.supporting .lead{font-size:16px;max-width:70ch}.caveats{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}.caveats p{margin:0 0 7px;color:var(--sub);font-size:13px}.caveats p:last-child{margin-bottom:0}.caveats strong{color:var(--text)}
 .rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
@@ -1857,7 +1860,7 @@ def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
                 f'{inner}<span class="go">You are viewing this</span></div>'
             )
         return (
-            f'<a class="{classes} map-region" href="{href}">'
+            f'<a class="{classes} map-region" href="{href}" data-region="{key}">'
             f'{inner}<span class="go">Open {html.escape(destination)} &rarr;</span></a>'
         )
 
@@ -1983,6 +1986,8 @@ def _page(
     groups: list[tuple[str, list]] | None = None,
     lead_step: bool = False,
     caveats: tuple[str, ...] = (),
+    acts: list[dict] | None = None,
+    map_current_page: str = "",
 ) -> str:
     fixture_json = json.dumps(fixture, sort_keys=True, ensure_ascii=False).replace("<", "\\u003c")
     displayed = sum(len(entries) for _, entries in groups) if groups else len(steps)
@@ -2061,6 +2066,24 @@ const controls=document.querySelector('.controls'),status=document.getElementByI
 function show(n,moveFocus=true){current=Math.max(0,Math.min(n,steps.length-1));steps.forEach((s,i)=>{s.hidden=i!==current;s.toggleAttribute('aria-current',i===current)});back.disabled=current===0;next.disabled=current===steps.length-1;status.textContent=`Step ${current+1} of ${steps.length}: ${steps[current].querySelector('h2').textContent.replace(/^\\d+\\. /,'')}`;if(moveFocus)steps[current].focus()}
 controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(current+1);document.getElementById('restart').onclick=()=>show(0);document.addEventListener('keydown',e=>{if(e.defaultPrevented)return;if(e.key==='ArrowRight')show(current+1);if(e.key==='ArrowLeft')show(current-1)});show(0,false);
 """
+    act_script = ""
+    if acts is not None and interactive:
+        # Progressive enhancement in its own block: the rail, the panel, and the
+        # highlight are hidden in the served markup and revealed here, so with
+        # scripting off every act is readable and nothing claims a state.
+        act_script = """
+const actData=JSON.parse(document.getElementById('guardllm-acts').textContent);
+const rail=document.querySelector('.act-rail'),panel=document.querySelector('.act-state');
+const actButtons=[...document.querySelectorAll('.act')];
+const contam=document.getElementById('act-contam'),escal=document.getElementById('act-escal'),note=document.getElementById('act-note');
+const regions=[...document.querySelectorAll('[data-region]')];
+function paint(n){const a=actData[n];actButtons.forEach((b,i)=>{b.classList.toggle('is-current',i===n);if(i===n){b.setAttribute('aria-current','true')}else{b.removeAttribute('aria-current')}});
+regions.forEach(r=>r.classList.toggle('active',a.regions.indexOf(r.dataset.region)!==-1));
+if(a.state){contam.textContent=a.state.context_contaminated?'yes':'no';escal.textContent=a.state.session_escalated?'yes':'no'}else{contam.textContent='not run';escal.textContent='not run'}
+note.textContent=a.note||''}
+rail.hidden=false;panel.hidden=false;actButtons.forEach((b,i)=>{b.onclick=()=>show(i)});
+const baseShow=show;show=function(n,moveFocus=true){baseShow(n,moveFocus);paint(current)};paint(0);
+"""
     mapping = fixture["mapping"]
     source_symbol = fixture["source_symbol"]
     test_node = fixture["test_node"]
@@ -2087,17 +2110,62 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         if caveats
         else ""
     )
+    # Acts drive the rail, the state panel, and which boundary the map lights.
+    # Each act names the fixture step whose state it reflects, or None where the
+    # session has not run yet, so the panel never invents a state for narration.
+    act_html = ""
+    act_json = ""
+    if acts is not None:
+        if len(acts) != len(steps):
+            raise ValueError(f"{len(acts)} acts declared for {len(steps)} steps")
+        step_states = {step["step_id"]: step["state_after"] for step in fixture["steps"]}
+        payload = []
+        for index, act in enumerate(acts):
+            named = act.get("state_step")
+            if named is not None and named not in step_states:
+                raise ValueError(f"Act {index} names unknown fixture step {named!r}")
+            payload.append(
+                {
+                    "regions": act.get("regions", []),
+                    "state": step_states[named] if named else None,
+                    "note": act.get("note", ""),
+                }
+            )
+        act_json = json.dumps(payload, sort_keys=True).replace("<", "\\u003c")
+        rail = "".join(
+            f'<button type="button" class="act" data-act="{index}">'
+            f'<span class="act-num">{index + 1}</span>'
+            f'<span class="act-name">{html.escape(entry[0])}</span></button>'
+            for index, entry in enumerate(steps)
+        )
+        act_html = (
+            '<nav class="act-rail" hidden aria-label="Acts in this narrative">'
+            f"{rail}</nav>"
+            '<div class="act-state" hidden aria-live="polite">'
+            '<span class="act-state-label">Session state</span>'
+            '<span class="chip">contamination <strong id="act-contam">not run</strong></span>'
+            '<span class="chip">escalation <strong id="act-escal">not run</strong></span>'
+            '<span class="act-note" id="act-note"></span></div>'
+        )
+
+    act_data_html = (
+        f'<script id="guardllm-acts" type="application/json">{act_json}</script>'
+        if act_json
+        else ""
+    )
+    act_script_html = f"<script>{act_script}</script>" if act_script else ""
+
     if orientation == "path":
         orientation_html = _path_strip(active)
     elif orientation == "full":
-        orientation_html = _map(active)
+        orientation_html = _map(active, current_page=map_current_page)
     elif orientation == "none":
         orientation_html = ""
     else:
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="{wrap_class}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}<details><summary>Evidence, scope, and reproduction</summary>{caveat_html}{evidence}<p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
+<body><main class="{wrap_class}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}{act_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}<details><summary>Evidence, scope, and reproduction</summary>{caveat_html}{evidence}<p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script>{act_data_html}{act_script_html}</body></html>
 """
 
 
@@ -2108,10 +2176,42 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     pages[DEMO_DIR / "guardllm_demos.html"] = _page(
         title="How one blocked leak changes the next decision",
         lead="An inbox assistant reads external text, attempts to expose a credential, and then proposes an ordinary search. GuardLLM remembers the blocked exfiltration and tightens the later call.",
-        active="ingress+model+egress+authorization",
+        active="",
         fixture=esc,
-        orientation="none",
+        orientation="full",
+        map_current_page="guardllm_demos.html",
         layout="stepper",
+        # One act per moment, each naming the fixture step whose state it shows.
+        # Setup acts name none, so the panel reads "not run" rather than
+        # borrowing a state from a call that has not happened.
+        acts=[
+            {"regions": [], "note": "No session has started."},
+            {"regions": [], "note": "The inbox is an application input."},
+            {"regions": ["ingress"], "note": "Framing is added inside the message envelope."},
+            {"regions": ["egress"], "note": "No egress check: the draft reaches the sink."},
+            {
+                "regions": ["ingress", "model"],
+                "state_step": "process_inbound",
+                "note": "Origin recorded at ingest.",
+            },
+            {
+                "regions": ["egress"],
+                "state_step": "check_outbound",
+                "note": "The block is recorded against the session.",
+            },
+            {
+                "regions": ["authorization"],
+                "state_step": "check_tool_execution:escalated",
+                "note": "The session-risk gate returns before policy runs.",
+            },
+            {
+                "regions": ["authorization"],
+                "state_step": "check_tool_execution:fresh",
+                "note": "A different session, so no recorded block to carry.",
+            },
+            {"regions": [], "note": "One route among four boundaries."},
+            {"regions": [], "note": "Detection is one signal among several."},
+        ],
         steps=[
             (
                 "The job",
@@ -2141,18 +2241,32 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                 f"Unchecked draft reaches the sink with displayed credential {esc['synthetic_secret_display']}",
             ),
             (
-                "The protected run",
-                "The host labels the email at ingress, checks the complete synthetic credential at egress, records the block, and then proposes the same non-destructive search in fresh and escalated sessions.",
-                f"Detector warning={str(esc['detector_produced_warning']).lower()} | Egress: {esc['secret_block']['reason']} | Escalated search: {esc['escalated_search']['reason']} | Fresh search: {esc['fresh_search']['reason']}",
+                "The protected run: ingest",
+                "The host labels the email at ingress. The detector produced no warning on this exact text, and the session is marked contaminated regardless, because contamination follows the declared origin.",
+                f"Detector warning={str(esc['detector_produced_warning']).lower()}",
+                "state",
+            ),
+            (
+                "The protected run: egress blocks the credential",
+                "The complete synthetic credential is checked on the way out, and the block is recorded against the session.",
+                esc["secret_block"]["reason"],
+                "blocked",
+            ),
+            (
+                "The next tool call, same session",
+                "The assistant proposes an ordinary non-destructive search. The session now carries the recorded block.",
+                esc["escalated_search"]["reason"],
+                "blocked",
+            ),
+            (
+                "The same call in a fresh session",
+                "One control: the identical proposal against a session that never blocked anything.",
+                esc["fresh_search"]["reason"],
+                "allowed",
             ),
             (
                 "Generalize",
-                HtmlFragment(
-                    '<p class="step-body">The email path is one route through the four boundaries. '
-                    "The complete reference adds web, documents, RAG, MCP, both outbound lanes, "
-                    f"and the two state rails.</p>"
-                    f"{_map('', current_page='guardllm_demos.html')}"
-                ),
+                "The email path is one route through the four boundaries. The complete reference adds web, documents, RAG, MCP, both outbound lanes, and the two state rails.",
                 "View the full system map to locate every direct-entry card.",
             ),
             (
@@ -2374,47 +2488,62 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         '<th scope="col">Authorization</th><th scope="col">Decision</th>'
         f'<th scope="col">Generated reason</th></tr></thead><tbody>{policy_matrix_body}</tbody></table></div>'
     )
+    # One annotated path through the gates, then the matrix as the reference.
+    # The five cases were previously restated as five cards above a table that
+    # already carried the same five decisions and their reasons.
+    policy_gates = [
+        ("Allowlist", "Is the tool listed for this session?", ["empty_allowlist"]),
+        ("Enablement", "Is a destructive tool enabled at all?", ["destructive_disabled"]),
+        ("Authorization", "Is there a matching authorization event?", ["destructive_no_auth"]),
+        ("Permitted", "Continues to rate limiting and binding.", []),
+    ]
+    policy_stops = {
+        "empty_allowlist": "empty allowlist",
+        "destructive_disabled": "shell_execute disabled",
+        "destructive_no_auth": "shell_execute enabled, no authorization",
+    }
+    policy_path_html = '<ol class="gate-path">'
+    for gate, question, stopped in policy_gates:
+        denials = "".join(
+            f'<li><span class="badge badge-blocked"><span aria-hidden="true">⛔</span> BLOCKED</span>'
+            f"{html.escape(policy_stops[key])}: <code>{html.escape(policy[key]['reason'])}</code></li>"
+            for key in stopped
+        )
+        passes = ""
+        if not stopped:
+            passes = "".join(
+                f'<li><span class="badge badge-allowed"><span aria-hidden="true">✓</span> ALLOWED</span>'
+                f"<code>{html.escape(policy[key]['reason'])}</code></li>"
+                for key in ("safe_no_auth", "destructive_verified")
+            )
+        policy_path_html += (
+            f'<li class="gate"><strong>{html.escape(gate)}</strong>'
+            f'<span class="gate-q">{html.escape(question)}</span>'
+            f'<ul class="gate-out">{denials}{passes}</ul></li>'
+        )
+    policy_path_html += "</ol>"
+
     pages[DEMO_DIR / "guardllm_policy_matrix_demo.html"] = _page(
         title="A scoped view of client tool policy",
-        lead="Five client-mode decisions, covering allowlist and destructive-tool enablement, then authorization.",
+        lead="Each gate returns on failure, so a denied call never reaches the gates below it.",
         caveats=(
             "These lanes assume principal trust, denylist, capability scopes, contamination and escalation policy, message binding, action and bidirectional scope checks, TTL, rate policy, and request binding have not already denied the call.",
         ),
         active="authorization",
         fixture=policy,
         interactive=False,
-        layout="comparison",
+        layout="stack",
         after_steps_html=policy_matrix_html,
         steps=[
             (
-                "Read-only, no authorization",
-                "No stricter gate applies.",
-                policy["safe_no_auth"]["reason"],
-                "allowed",
-            ),
-            (
-                "Empty allowlist",
-                "An explicitly configured empty allowlist denies every tool before authorization.",
-                policy["empty_allowlist"]["reason"],
-                "blocked",
-            ),
-            (
-                "Destructive tool disabled",
-                "Authorization is not consulted because enablement closes first.",
-                policy["destructive_disabled"]["reason"],
-                "blocked",
-            ),
-            (
-                "Destructive tool enabled, no authorization",
-                "Enablement passes, then the authorization gate closes.",
-                policy["destructive_no_auth"]["reason"],
-                "blocked",
-            ),
-            (
-                "Destructive tool with matching authorization",
-                "Action, message, scope, reverse scope, and TTL checks all pass.",
-                policy["destructive_verified"]["reason"],
-                "allowed",
+                "The gate order",
+                HtmlFragment(
+                    '<div class="step-body">Client-mode tool authorization runs these gates in '
+                    "order. Each one returns on failure, so the case that stops at enablement "
+                    "never reaches the authorization check, and its reason names the gate that "
+                    f"actually closed.</div>{policy_path_html}"
+                ),
+                "",
             ),
         ],
     )

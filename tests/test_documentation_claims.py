@@ -177,8 +177,9 @@ def test_oauth_example_authorizes_the_arguments_it_dispatches():
 def test_require_confirmation_without_a_handler_always_denies():
     """The MCP template asked for confirmation with nobody to ask.
 
-    The denial reason reads "User denied confirmation" even though no user was
-    consulted, which is why this failed quietly rather than obviously.
+    The denial reason used to read "User denied confirmation" even though no
+    user was consulted, which is why this failed quietly rather than obviously.
+    It now names the cause, and a handler that declines still reports a denial.
     """
     import asyncio
     import dataclasses
@@ -215,7 +216,7 @@ def test_require_confirmation_without_a_handler_always_denies():
 
     without = asyncio.run(attempt(None))
     assert without.allowed is False
-    assert without.reason == "User denied confirmation"
+    assert without.reason == "Confirmation unavailable: no confirmation handler configured"
 
     with_handler = asyncio.run(attempt(Approve()))
     assert with_handler.allowed is True

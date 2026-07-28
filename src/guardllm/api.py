@@ -377,6 +377,21 @@ class Guard:
             context=proposal_context or {},
             heightened_scrutiny=heightened_scrutiny,
         )
+        # A missing handler is a configuration failure, not an authorization
+        # decision. Both deny, but recording them the same way tells an operator
+        # a user declined when no user was ever asked, and leaves the audit trail
+        # asserting a decision nobody made.
+        if context.confirmation_handler is None:
+            self._audit(
+                AuditEvent(
+                    event_type="action_gate_unavailable",
+                    tool_name=tool,
+                    user_confirmed=None,
+                    action_summary=summary,
+                    session_id=context.source_id,
+                )
+            )
+            return False
         allowed = await self._action_gate.confirm(
             proposal,
             context,
@@ -472,6 +487,12 @@ class Guard:
                 context_has_web_derived=context_has_web_derived,
             )
             if not approved:
+                if context.confirmation_handler is None:
+                    return GateResult(
+                        allowed=False,
+                        reason=("Confirmation unavailable: no confirmation handler configured"),
+                        confidence="none",
+                    )
                 return GateResult(
                     allowed=False,
                     reason="User denied confirmation",

@@ -431,7 +431,7 @@ def test_auto_confirm_destructive_triggers_confirmation():
         )
     )
     assert result.allowed is False
-    assert "denied confirmation" in result.reason.lower() or "User denied" in result.reason
+    assert "no confirmation handler configured" in result.reason
 
 
 def test_auto_confirm_destructive_non_destructive_no_effect():
@@ -509,7 +509,7 @@ def test_web_derived_context_forces_confirmation_fails_closed():
         )
     )
     assert result.allowed is False
-    assert "denied confirmation" in result.reason.lower()
+    assert "no confirmation handler configured" in result.reason
 
 
 def test_web_derived_context_enhanced_confirmation_metadata():
@@ -552,7 +552,7 @@ def test_confirm_all_below_forces_confirmation():
         )
     )
     assert result.allowed is False
-    assert "denied confirmation" in result.reason.lower()
+    assert "no confirmation handler configured" in result.reason
 
 
 def test_web_derived_no_escalation_when_gate_disabled():

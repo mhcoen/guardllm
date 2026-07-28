@@ -4,6 +4,9 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Changed
+- A missing confirmation handler is now reported as a configuration failure rather than as a user decision. `guard_tool_call(..., require_confirmation=True)` against a `SecurityContext` with no `confirmation_handler` previously denied with `reason="User denied confirmation"` and audited `user_confirmed=False`, although no user was consulted: the reason read like a working confirmation flow that an operator declined, so a missing handler failed quietly rather than obviously, and the audit trail asserted a decision nobody made. The call still denies. It now returns `reason="Confirmation unavailable: no confirmation handler configured"` and emits an `action_gate_unavailable` audit event with `user_confirmed=None`. `reason="User denied confirmation"` and `user_confirmed=False` are preserved for the case a handler actually returned False. **Callers matching on the reason string for the missing-handler case need to update.**
+
 ### Security
 - G6 action-gate commitment now binds the exact argument bytes. `canonicalize_args` previously normalized whitespace, so a confirmed `{"cmd": "a\nb"}` and an executed `{"cmd": "a b"}` verified against the same commitment; whitespace-sensitive payloads (shell commands, prompts, regexes, file bodies) could be mutated after confirmation without tripping G6. Verification now compares exact canonical JSON.
 - `SecurityContext.mode` is validated in `__post_init__`. It was documented as `"client"` or `"server"` but never checked, and the policy engine treats only exact `"server"` as server mode. A typo such as `mode="sever"` with `server_default_deny=True` silently fell through to the client implicit-allow path and admitted a non-destructive tool. Any mode outside `{"client", "server"}` now raises `ValueError`.

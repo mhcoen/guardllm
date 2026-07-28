@@ -17,7 +17,7 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 4. **Enforce output and process constraints using the same context**: outbound DLP, provenance copy controls, and error sanitization use the same trust labels.
 5. **Feed enforcement outcomes back into the session**: a high-confidence outbound DLP or remembered-canary block sets a session escalation flag, and subsequent tool calls require authorization by default (`escalated_tool_policy`, default `require_auth`). Untrusted ingest contaminates the session, widening egress checks for its remainder and, when `contaminated_tool_policy` is set to `require_auth` or `deny`, gating tool calls. The pipeline is a loop, not a one-way filter: decisions in one cycle constrain the next.
 
-This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` in [benchmarks/results.md](benchmarks/results.md) reaches around 74% on surface controls, while GuardLLM reaches 100%, because downstream decisions continuously track the same security labels established at ingress. That is a measurement of one composition, not a proof that no composition could be built to do it.
+This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the tracked [comparison.json](benchmarks/results/comparison.json), while GuardLLM reaches 100%. That is a measurement of one composition, not a proof that no composition could be built to do it.
 
 ## Features
 
@@ -141,7 +141,12 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 
 GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
 
-Text benchmark (prompt-injection detection, `3823` records):
+Text benchmark (prompt-injection detection, `3823` records). **These vendor figures are not
+currently reproducible from a tracked artifact.** The injection section of the checked-in
+[comparison.json](benchmarks/results/comparison.json) is empty, and the runs that produced the
+table below live under `benchmarks/runs/`, which is not committed. Treat them as reported
+rather than verifiable until a published evidence bundle lands. The non-text figures below
+and GuardLLM's own surface result are backed by the tracked artifact.
 
 | Strategy | F1 | Precision | Recall | Avg Latency |
 |---|---:|---:|---:|---:|
@@ -159,7 +164,7 @@ Text benchmark (prompt-injection detection, `3823` records):
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 
-Non-text controls: `5230/5230` (`100%`) across 8 security kinds.
+Non-text controls: `5224/5224` (`100%`) across 8 security kinds, per the tracked [comparison.json](benchmarks/results/comparison.json).
 
 Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
 

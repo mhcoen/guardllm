@@ -184,7 +184,7 @@ def test_map_regions_link_to_real_destinations():
     # Adding a link here is a deliberate design change, not an accident. Policy
     # is deliberately absent: the Authorization boundary and the policy card
     # already open it, so a per-flow rail link would be a third path to one page.
-    assert len(destinations) == 12
+    assert len(destinations) == 13
     assert "policy" not in destinations
     for key, (href, label) in destinations.items():
         assert (DEMO / href).exists(), f"{key} points at a missing page: {href}"
@@ -192,7 +192,7 @@ def test_map_regions_link_to_real_destinations():
 
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     hrefs = [h for h in re.findall(r'<a [^>]*href="([^"]+)"', nav) if not h.startswith("#")]
-    assert len(hrefs) == 12
+    assert len(hrefs) == 13
     assert set(hrefs) == {href for href, _ in destinations.values()}
     for href in hrefs:
         assert (DEMO / href).exists()
@@ -204,7 +204,7 @@ def test_every_map_link_names_its_destination():
     labels = dict(generator.MAP_DESTINATIONS.values())
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     anchors = re.findall(r"<a class=\"[^\"]*(?:map-region|rail-pill)[^\"]*\".*?</a>", nav, re.S)
-    assert len(anchors) == 12
+    assert len(anchors) == 13
     for anchor in anchors:
         href = re.search(r'href="([^"]+)"', anchor).group(1)
         expected = labels[href]
@@ -285,9 +285,14 @@ def test_rails_state_their_own_lifecycle():
         assert "Retained by GuardLLM across calls" in rails
 
         flow = rails.split('<div class="rail">')[1]
-        assert "<a " not in flow, "per-flow context fields own no demo and stay unlinked"
+        # The five fields share one destination, so the rail is labelled once at
+        # its heading. The terms themselves stay prose: no link, no pill.
+        assert flow.count("<a ") == 1
+        assert 'href="guardllm_security_context_demo.html"' in flow
         assert "rail-pill" not in flow, "unlinked terms must not wear the pill affordance"
         assert '<span class="rail-terms">' in flow
+        terms = flow.split('<span class="rail-terms">', 1)[1]
+        assert "<a " not in terms, "per-flow context fields are prose, not links"
 
         session = rails.split('<div class="rail">')[2]
         assert len(re.findall(r'class="rail-pill[^"]*"', session)) == 6

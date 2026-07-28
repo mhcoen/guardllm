@@ -109,6 +109,7 @@ def test_headline_steps_carry_the_finding_each_page_leads_with(executed_scenario
         "rate_limit": "rapid_burst_anomaly",
         "policy": "authorization_verified",
         "request_binding": "args_hash_mismatch",
+        "security_context": "authorization_required",
     }
     # Each headline reads its layers off its own step, so a scenario whose last
     # step terminates elsewhere (RAG ends at the rate limiter) cannot be
@@ -162,7 +163,7 @@ def test_sequential_steps_preserve_state_continuity(executed_scenarios):
                 assert step["state_before"] == last_state[pipeline_id], (name, step["operation"])
                 checked += 1
             last_state[pipeline_id] = step["state_after"]
-    assert checked == 18
+    assert checked == 20
 
 
 def test_branch_and_independent_steps_are_exempt_from_continuity(executed_scenarios):
@@ -249,7 +250,7 @@ def test_allowed_pipeline_results_terminate_at_the_rate_limiter(executed_scenari
                 == step["state_before"]["rate_limited_actions"] + 1
             ), (name, step["operation"])
             checked += 1
-    assert checked == 4
+    assert checked == 5
 
 
 def test_primary_escalation_fixture(executed_scenarios):
@@ -534,6 +535,7 @@ def test_every_page_embeds_its_canonical_scenario(executed_scenarios):
         "guardllm_policy_matrix_demo.html": "policy",
         "guardllm_rate_limit_demo.html": "rate_limit",
         "guardllm_request_binding_demo.html": "request_binding",
+        "guardllm_security_context_demo.html": "security_context",
     }
     assert page_scenarios.keys() | {"guardllm_surface_map.html"} == {
         path.name for path in DEMO.glob("*.html")
@@ -677,3 +679,54 @@ class TestGeneratorRefusesUnprovenMetadata:
         pipelines["unused"] = {"object": "RateLimiter", "stateful": True, "role": "demo"}
         with pytest.raises(ValueError, match="never ran"):
             validate_scenario_steps(pipelines, [_step()], "check_outbound")
+
+
+def test_security_context_fixture(executed_scenarios):
+    """One text, two declarations, two outcomes.
+
+    The card exists to show that per-flow context is supplied rather than
+    inferred, so the load-bearing assertion is that the two branches differ
+    only in the declared field and still diverge downstream.
+    """
+    scenario = executed_scenarios["security_context"]
+    assert scenario["declared_difference"] == {
+        "field": "source_trust",
+        "untrusted": "untrusted",
+        "trusted": "trusted",
+    }
+
+    inbound = [s for s in scenario["steps"] if s["operation"] == "process_inbound"]
+    tools = [s for s in scenario["steps"] if s["operation"] == "check_tool_execution"]
+    assert len(inbound) == 2
+    assert len(tools) == 2
+
+    # The content is identical, so the detector must return the same answer on
+    # both branches. If these ever diverge the comparison proves nothing.
+    assert inbound[0]["primary_finding"] == inbound[1]["primary_finding"]
+    assert inbound[0]["finding_layer"] == inbound[1]["finding_layer"]
+    assert scenario["detector_matched_rules"] == ["instruction_override"]
+
+    # The declaration, not the content, is what moves session state.
+    assert inbound[0]["state_after"]["context_contaminated"] is True
+    assert inbound[1]["state_after"]["context_contaminated"] is False
+    assert scenario["untrusted_inbound"]["content"] != scenario["trusted_inbound"]["content"]
+    assert 'trust="untrusted"' in scenario["untrusted_inbound"]["content"]
+    assert 'trust="trusted"' in scenario["trusted_inbound"]["content"]
+
+    # Same proposal, opposite answers.
+    assert scenario["inputs"]["proposal"]["tool"] == "search"
+    assert scenario["untrusted_tool"]["allowed"] is False
+    assert scenario["trusted_tool"]["allowed"] is True
+    assert "session contaminated=require_auth" in scenario["untrusted_tool"]["reason"]
+
+    # The contamination gate returns before the policy engine, so the denied
+    # call terminates there while the permitted call continues to L6.
+    assert tools[0]["finding_layer"] == "session_risk_gate"
+    assert tools[0]["terminal_layer"] == "session_risk_gate"
+    assert tools[1]["primary_finding"] is None
+    assert tools[1]["terminal_layer"] == "rate_limit"
+
+    # The trusted branch is a fresh object compared against the untrusted one.
+    assert inbound[1]["execution"] == "branch"
+    assert inbound[1]["compares_with"] == "context-untrusted"
+    assert scenario["headline_step_id"] == "check_tool_execution:untrusted"

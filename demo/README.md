@@ -8,6 +8,7 @@ required.
 
 - `guardllm_demos.html`: primary cross-stage narrative
 - `guardllm_surface_map.html`: shared architecture map and portfolio index
+- `guardllm_security_context_demo.html`: what the host declares on each flow
 - `guardllm_pipeline_demo.html`: instrumented ingress call order
 - `guardllm_rag_demos.html`: provenance and lexical-overlap boundary
 - `guardllm_tool_feedback_demo.html`: host feedback-loop obligation

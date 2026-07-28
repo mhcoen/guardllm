@@ -169,10 +169,19 @@ def validate_scenario_steps(
     return validated
 
 
-PAGE_LAYOUTS = frozenset({"stack", "comparison", "branch", "timeline", "stepper"})
+PAGE_LAYOUTS = frozenset(
+    {"stack", "comparison", "branch", "timeline", "stepper", "pipeline", "taxonomy", "contrast"}
+)
 
 
-def validate_page_layout(layout: str, scenario: dict, group_labels: tuple[str, ...]) -> None:
+def validate_page_layout(
+    layout: str,
+    scenario: dict,
+    group_labels: tuple[str, ...],
+    *,
+    lead_step: bool = False,
+    displayed: int | None = None,
+) -> None:
     """Refuse a visual grammar the scenario's execution metadata does not support.
 
     A page's layout is a claim about structure: a fork, a sequence over time, a
@@ -238,6 +247,65 @@ def validate_page_layout(layout: str, scenario: dict, group_labels: tuple[str, .
             )
         if len(steps) < 3:
             raise ValueError("comparison layout needs at least three compared steps")
+        # The lead step is a display claim: the first row spans the grid because
+        # it sets up the rest. That needs a setup row plus the compared ones, so
+        # it is counted against what the page draws, not against the fixture.
+        if lead_step and displayed is not None and displayed < 4:
+            raise ValueError(
+                "comparison layout with a lead step needs the setup row plus at least "
+                f"three compared rows, found {displayed}"
+            )
+    elif layout == "pipeline":
+        # One drawn run through a series of call sites. That is only what the
+        # page shows if every step is a site inside the same enclosing call.
+        kinds = {step["execution"] for step in steps}
+        if kinds != {"nested"}:
+            raise ValueError(
+                f"pipeline layout needs every step to be a nested call site, found {sorted(kinds)}"
+            )
+        enclosing = {step["enclosing_operation"] for step in steps}
+        if len(enclosing) != 1:
+            raise ValueError(f"pipeline layout needs one enclosing call, found {sorted(enclosing)}")
+        # Drawing the run means drawing all of it. A page that shows a subset of
+        # the instrumented sites presents an abridged pipeline as the pipeline.
+        if displayed is not None and displayed != len(steps):
+            raise ValueError(
+                f"pipeline layout draws {displayed} rows for {len(steps)} instrumented "
+                "call sites; every site has to appear"
+            )
+    elif layout == "taxonomy":
+        # A grid of peer cases claims that no cell depends on another, which
+        # holds only when each ran against its own object.
+        if len(steps) < 3:
+            raise ValueError("taxonomy layout needs at least three cases")
+        kinds = {step["execution"] for step in steps}
+        if kinds != {"independent"}:
+            raise ValueError(
+                f"taxonomy layout needs every case to stand alone, found {sorted(kinds)}"
+            )
+        pipelines = [step["pipeline_id"] for step in steps]
+        if len(set(pipelines)) != len(pipelines):
+            raise ValueError("taxonomy layout needs each case to run against its own object")
+    elif layout == "contrast":
+        # Two sessions side by side, differing in one thing. The fixture has to
+        # record that one really was created to be compared against the other.
+        pipelines = list(dict.fromkeys(step["pipeline_id"] for step in steps))
+        if len(pipelines) != 2:
+            raise ValueError(f"contrast layout needs exactly two objects, found {pipelines}")
+        branches = [step for step in steps if step["execution"] == "branch"]
+        if len(branches) != 1:
+            raise ValueError(
+                f"contrast layout needs exactly one branch step, found {len(branches)}"
+            )
+        branch = branches[0]
+        other = [name for name in pipelines if name != branch["pipeline_id"]]
+        if branch["compares_with"] != other[0]:
+            raise ValueError(
+                f"contrast layout needs the branch to compare against {other[0]!r}, "
+                f"found {branch['compares_with']!r}"
+            )
+        if len(group_labels) != 2:
+            raise ValueError(f"contrast layout declares {len(group_labels)} groups, needs two")
 
 
 def _data(value):
@@ -1704,7 +1772,8 @@ STYLE = """
 .system-map-nav{position:relative;display:block}.skip-map{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip-map:focus{width:auto;height:auto;clip:auto;left:10px;top:10px;z-index:3;padding:7px 11px;border:1px solid var(--focus);border-radius:8px;background:var(--panel2);color:var(--text);text-decoration:none}
 .map-region{color:inherit;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}a.map-region{cursor:pointer}a.map-region:hover{border-color:var(--focus)}.map-region .go{display:block;margin-top:6px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}a.map-region:hover .go,a.map-region:focus-visible .go{color:var(--focus)}.map-region.is-current{cursor:default;border-style:solid;border-color:var(--sub)}.map-region.is-current .go{color:var(--sub)}
 .region-ingress{background:#101f2b}.region-model{background:#161a24}.region-egress{background:#1d1a2c}.region-authorization{background:#141d2e}.region-integrity{background:#182430}
-.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.steps.layout-comparison{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));align-items:start}.steps.layout-comparison>.step:first-child{grid-column:1/-1}.steps.layout-branch,.steps.layout-timeline{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.steps.layout-comparison,.steps.layout-taxonomy{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));align-items:start}.steps.layout-comparison.has-lead>.step:first-child{grid-column:1/-1}.steps.layout-branch,.steps.layout-timeline,.steps.layout-contrast{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.steps.layout-pipeline{gap:0}.layout-pipeline .step{position:relative;margin-left:14px;padding-left:26px;border-radius:0;border-top-width:0}.layout-pipeline .step:first-child{border-top-width:1px;border-radius:12px 12px 0 0}.layout-pipeline .step:last-child{border-radius:0 0 12px 12px}.layout-pipeline .step::before{content:"";position:absolute;left:9px;top:22px;width:9px;height:9px;border-radius:50%;background:var(--blue)}.layout-pipeline .step::after{content:"";position:absolute;left:13px;top:31px;bottom:-2px;width:1px;background:var(--line)}.layout-pipeline .step:last-child::after{display:none}
 .step-group{border:1px solid var(--line);border-radius:12px;background:#101319;padding:14px}.group-head{margin:0 0 11px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.step-group .step{margin-bottom:10px}.step-group .step:last-child{margin-bottom:0}.step-group .step h3{margin:0 0 7px;font-size:16px}
 .layout-timeline .step-group .step{position:relative;padding-left:28px}.layout-timeline .step-group .step::before{content:"";position:absolute;left:9px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.layout-timeline .step-group .step::after{content:"";position:absolute;left:13px;top:32px;bottom:-11px;width:1px;background:var(--line)}.layout-timeline .step-group .step:last-child::after{display:none}
 .rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
@@ -1899,9 +1968,18 @@ def _page(
     after_steps_html: str = "",
     layout: str = "stack",
     groups: list[tuple[str, list]] | None = None,
+    lead_step: bool = False,
 ) -> str:
     fixture_json = json.dumps(fixture, sort_keys=True, ensure_ascii=False).replace("<", "\\u003c")
-    validate_page_layout(layout, fixture, tuple(label for label, _ in groups or ()))
+    displayed = sum(len(entries) for _, entries in groups) if groups else len(steps)
+    validate_page_layout(
+        layout,
+        fixture,
+        tuple(label for label, _ in groups or ()),
+        lead_step=lead_step,
+        displayed=displayed,
+    )
+    lead_class = " has-lead" if lead_step else ""
 
     def render_step(index: int, entry: tuple, *, heading_tag: str, number: int) -> str:
         heading, body, result = entry
@@ -1979,7 +2057,7 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
+<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
 """
 
 
@@ -1993,6 +2071,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         active="ingress+model+egress+authorization",
         fixture=esc,
         orientation="none",
+        layout="stepper",
         steps=[
             (
                 "The job",
@@ -2045,38 +2124,50 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     ingress = s["ingress"]
+    # The pipeline layout draws the run, so it draws all of it: one row per
+    # instrumented call site, taken from the fixture rather than paraphrased.
+    # A page claiming seven sites while showing five is the mismatch this
+    # layout exists to prevent.
+    ingress_site_notes = {
+        "normalize_confusables": "Trust-boundary normalization runs before detection and sanitization.",
+        "detect_prompt_injection": "The detector emits a signal. Enforcement does not depend on every input being classified correctly.",
+        "sanitize": "One sanitizer call performs HTML extraction, Unicode handling, and encoded-payload detection.",
+        "wrap_untrusted": "Cleaned untrusted text is framed for the model while source identity stays application metadata.",
+        "dlp.ingest_untrusted": "The normalized source is buffered so egress can compare against what actually arrived.",
+        "provenance.add_span": "The span is registered, which is what later attribution reads.",
+        "detect_canary": "The arriving text is compared with the canary this configured pipeline remembers.",
+    }
+    ingress_steps = []
+    for step in ingress["steps"]:
+        output = step.get("output")
+        if output is None:
+            # Registration sites return nothing; their effect is the state they
+            # leave behind, which the fixture records separately.
+            rendered = "no return value, recorded into session state"
+        elif isinstance(output, list):
+            rendered = "; ".join(str(item) for item in output) or "no findings"
+        elif isinstance(output, dict):
+            rendered = json.dumps(output, sort_keys=True)
+        else:
+            rendered = str(output)
+        if len(rendered) > 200:
+            rendered = rendered[:200].rstrip() + "…"
+        ingress_steps.append(
+            (
+                step["operation"],
+                ingress_site_notes[step["step_id"]],
+                f"{rendered}  ·  layer: {step['terminal_layer']}",
+            )
+        )
+
     pages[DEMO_DIR / "guardllm_pipeline_demo.html"] = _page(
         title="The observed ingress call order",
         lead="The generator instruments seven security-relevant call sites on one canary-enabled SecurityPipeline.process_inbound call and records those instrumented operations in observed order. Each fixture step reports the state captured immediately around its own call, and the enclosing frame can still change state between two instrumented sites. Newly added operations require explicit instrumentation before this page can claim to show them.",
         active="Ingress",
         fixture=ingress,
-        steps=[
-            (
-                "Normalize confusables",
-                "Trust-boundary normalization runs before detection and sanitization.",
-                ingress["normalized"],
-            ),
-            (
-                "Score injection signals",
-                "The detector emits a signal. Enforcement does not depend on every input being classified correctly.",
-                f"is_attack={ingress['injection_signal']['is_attack']}; warnings={ingress['injection_signal']['warnings']}",
-            ),
-            (
-                "Sanitize",
-                "One sanitizer call performs HTML extraction, Unicode handling, and encoded-payload detection.",
-                "; ".join(ingress["sanitization"]["warnings"]),
-            ),
-            (
-                "Isolate",
-                "Untrusted cleaned text is framed for the model while source identity remains application metadata.",
-                f"isolated={ingress['processed']['isolated']}; contaminated={ingress['state']['context_contaminated']}",
-            ),
-            (
-                "Register and check the remembered canary",
-                "The original normalized source is registered for DLP and provenance, then compared with the canary remembered by this configured pipeline.",
-                " → ".join(ingress["observed_instrumented_order"]),
-            ),
-        ],
+        interactive=False,
+        layout="pipeline",
+        steps=ingress_steps,
     )
 
     rag = s["rag"]
@@ -2087,6 +2178,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         fixture=rag,
         interactive=False,
         layout="comparison",
+        lead_step=True,
         steps=[
             (
                 "Register the retrieved span",
@@ -2122,23 +2214,42 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         lead="The same document and egress guard produce opposite outcomes. The only variable is whether the tool result cycles through process_inbound before returning to the model.",
         active="ingress+egress",
         fixture=feedback,
-        steps=[
-            (
-                "Tool returns a document",
-                feedback["document"],
-                "The content contains no recognized secret pattern.",
-            ),
+        interactive=False,
+        layout="contrast",
+        steps=[],
+        groups=[
             (
                 "Loop left open",
-                "The host appends the result directly to model context. No provenance span is registered.",
-                f"registered={feedback['loop_open']['registered_spans']}; {feedback['loop_open']['result']['reason']}",
+                [
+                    (
+                        "The host appends the tool result directly",
+                        "The document goes straight into model context. process_inbound is never called, so no provenance span is registered.",
+                        f"registered spans = {feedback['loop_open']['registered_spans']}",
+                    ),
+                    (
+                        "Egress has nothing to match against",
+                        "The same guard runs on the same content.",
+                        feedback["loop_open"]["result"]["reason"],
+                    ),
+                ],
             ),
             (
                 "Loop closed",
-                "The host cycles the result through process_inbound. Provenance is now available at egress.",
-                f"registered={feedback['loop_closed']['registered_spans']}; {feedback['loop_closed']['result']['reason']}",
+                [
+                    (
+                        "The host cycles the result through process_inbound",
+                        "The identical document is ingested first, which registers its origin.",
+                        f"registered spans = {feedback['loop_closed']['registered_spans']}",
+                    ),
+                    (
+                        "Egress can now attribute the span",
+                        "The same guard runs on the same content.",
+                        feedback["loop_closed"]["result"]["reason"],
+                    ),
+                ],
             ),
         ],
+        after_steps_html=f'<p class="lane-note"><strong>One variable:</strong> both columns use the same document and the same egress guard. The only difference is the ingress call the host did or did not make. Document under test: {html.escape(feedback["document"])}</p>',
     )
 
     dlp = s["dlp_canary"]
@@ -2147,6 +2258,8 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         lead="Each signal below runs on its own fresh, named pipeline. These are independent comparisons, not one five-step session. A remembered canary receives specific attribution because GuardLLM already knows its value.",
         active="Egress",
         fixture=dlp,
+        interactive=False,
+        layout="taxonomy",
         steps=[
             (
                 "Known credential format",
@@ -2204,7 +2317,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         active="authorization",
         fixture=policy,
         interactive=False,
-        extra_class="policy-reference",
+        layout="comparison",
         after_steps_html=policy_matrix_html,
         steps=[
             (
@@ -2328,38 +2441,61 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         lead="Per-flow context is supplied by the host on every call. It is never inferred from content, and it is not retained between flows. This page runs one text through two sessions that differ in a single declared field, so the effect of the declaration can be read off the results rather than argued for.",
         active="Ingress+Authorization",
         fixture=sc,
-        steps=[
+        interactive=False,
+        layout="contrast",
+        steps=[],
+        groups=[
             (
-                "What the host declares",
-                "A SecurityContext accompanies every call: mode, source type and id, source trust, principal trust, sensitivity, content type, and policy. The library reads these; it never asks the model to infer them, and it never derives them from the content it is inspecting.",
-                f"Declared per flow, identical here except source_trust: {sc['declared_difference']['untrusted']} against {sc['declared_difference']['trusted']}.",
+                f"Host declares source_trust = {sc['declared_difference']['untrusted']}",
+                [
+                    (
+                        "Ingest",
+                        "The isolation wrapper records what the host said this source was.",
+                        sc_untrusted,
+                    ),
+                    (
+                        "Session state after ingest",
+                        "Contamination tracks the declared origin, not the text.",
+                        f"context_contaminated = {sc['steps'][0]['state_after']['context_contaminated']}",
+                    ),
+                    (
+                        "The proposal",
+                        "The contamination gate runs before the policy engine and returns there, so this call never reaches policy evaluation.",
+                        sc["untrusted_tool"]["reason"],
+                    ),
+                ],
             ),
             (
-                "One text, two declarations",
-                "The same content is ingested by two fresh sessions. Nothing about the text changes between them. The only difference is what the host said the source was.",
-                f"Detector output is identical on both branches: {', '.join(sc['detector_matched_rules'])}.",
-            ),
-            (
-                "The isolation wrapper records the declaration",
-                "Untrusted ingest is wrapped and its origin registered, so later layers can tell where a span came from without re-reading it.",
-                f"{sc_untrusted}  /  {sc_trusted}",
-            ),
-            (
-                "The declaration becomes session state",
-                "Untrusted ingest contaminates the session. The trusted branch ingests the same text and does not, because contamination tracks the declared origin rather than the content.",
-                f"context_contaminated: {sc['steps'][0]['state_after']['context_contaminated']} against {sc['steps'][1]['state_after']['context_contaminated']}.",
-            ),
-            (
-                "The same proposal, two answers",
-                "Both sessions are now asked to run one identical non-destructive tool call. The contamination gate runs before the policy engine and returns there, so the denied call never reaches policy evaluation.",
-                f"{sc['untrusted_tool']['reason']}  /  {sc['trusted_tool']['reason']}",
-            ),
-            (
-                "Why per flow and not per session",
-                "Trust, sensitivity, and content type describe one flow. A single session commonly mixes flows: an operator instruction and a retrieved web page arrive on the same session and must not inherit each other's trust. What GuardLLM does retain across a session is state it derived itself, such as contamination, provenance, DLP history, and rate counters.",
-                "Per-flow context is provided on each call. Per-session state is retained across calls by GuardLLM.",
+                f"Host declares source_trust = {sc['declared_difference']['trusted']}",
+                [
+                    (
+                        "Ingest",
+                        "Identical content, identical call, one declared field changed.",
+                        sc_trusted,
+                    ),
+                    (
+                        "Session state after ingest",
+                        "The same text does not contaminate this session.",
+                        f"context_contaminated = {sc['steps'][1]['state_after']['context_contaminated']}",
+                    ),
+                    (
+                        "The proposal",
+                        "The identical non-destructive tool call, evaluated through policy and recorded at the rate limiter.",
+                        sc["trusted_tool"]["reason"],
+                    ),
+                ],
             ),
         ],
+        after_steps_html=(
+            '<p class="lane-note"><strong>The detector saw one text and gave one answer:</strong> '
+            f"both columns matched {', '.join(sc['detector_matched_rules'])}, so the divergence "
+            "cannot be explained by what was detected. Only the declaration differs.</p>"
+            '<p class="lane-note"><strong>Why per flow and not per session:</strong> trust, '
+            "sensitivity, and content type describe one flow, and a single session commonly mixes "
+            "flows. An operator instruction and a retrieved web page arrive on the same session and "
+            "must not inherit each other's trust. What GuardLLM retains across a session is state it "
+            "derived itself: contamination, provenance, DLP history, and rate counters.</p>"
+        ),
     )
 
     cards = [

@@ -181,15 +181,18 @@ def test_map_regions_link_to_real_destinations():
     destinations = generator.MAP_DESTINATIONS
 
     # The reduced link set: every mechanism-bearing region, and nothing else.
-    # Adding a link here is a deliberate design change, not an accident.
-    assert len(destinations) == 13
+    # Adding a link here is a deliberate design change, not an accident. Policy
+    # is deliberately absent: the Authorization boundary and the policy card
+    # already open it, so a per-flow rail link would be a third path to one page.
+    assert len(destinations) == 12
+    assert "policy" not in destinations
     for key, (href, label) in destinations.items():
         assert (DEMO / href).exists(), f"{key} points at a missing page: {href}"
         assert label, f"{key} has no destination label"
 
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     hrefs = [h for h in re.findall(r'<a [^>]*href="([^"]+)"', nav) if not h.startswith("#")]
-    assert len(hrefs) == 13
+    assert len(hrefs) == 12
     assert set(hrefs) == {href for href, _ in destinations.values()}
     for href in hrefs:
         assert (DEMO / href).exists()
@@ -201,7 +204,7 @@ def test_every_map_link_names_its_destination():
     labels = dict(generator.MAP_DESTINATIONS.values())
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     anchors = re.findall(r"<a class=\"[^\"]*(?:map-region|rail-pill)[^\"]*\".*?</a>", nav, re.S)
-    assert len(anchors) == 13
+    assert len(anchors) == 12
     for anchor in anchors:
         href = re.search(r'href="([^"]+)"', anchor).group(1)
         expected = labels[href]

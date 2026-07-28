@@ -1,5 +1,69 @@
 # Reproducing Paper Results
 
+<!-- nav:start -->
+[Home](README.md) / [Docs index](docs/README.md)
+<!-- nav:end -->
+
+<!-- toc:start -->
+<details>
+<summary>On this page</summary>
+
+- [Prerequisites](#prerequisites)
+  - [Optional dependency groups](#optional-dependency-groups)
+  - [Pinned dependency versions (for exact reproduction of Tier 4 baselines)](#pinned-dependency-versions-for-exact-reproduction-of-tier-4-baselines)
+- [Tier 1: Unit Tests and Regression Suite (no API keys, no GPU)](#tier-1-unit-tests-and-regression-suite-no-api-keys-no-gpu)
+  - [Run the full test suite](#run-the-full-test-suite)
+  - [Run benchmark regression with checkpoint validation](#run-benchmark-regression-with-checkpoint-validation)
+  - [Run the eval suite (non-injection controls)](#run-the-eval-suite-non-injection-controls)
+- [How Benchmark Data Is Organized](#how-benchmark-data-is-organized)
+  - [Upstream provenance](#upstream-provenance)
+- [CSE-8000: Control Surface Evaluation (no API keys)](#cse-8000-control-surface-evaluation-no-api-keys)
+  - [Run the evaluation](#run-the-evaluation)
+  - [Run the baseline evaluation](#run-the-baseline-evaluation)
+  - [Verify oracle independence](#verify-oracle-independence)
+  - [Mutation tests](#mutation-tests)
+- [Tier 2: Cross-Boundary Exfiltration Evaluation (no API keys)](#tier-2-cross-boundary-exfiltration-evaluation-no-api-keys)
+  - [External data requirements](#external-data-requirements)
+  - [Generate CBX-1000](#generate-cbx-1000)
+  - [Evaluate CBX-1000](#evaluate-cbx-1000)
+  - [Build pool files for invariance suites](#build-pool-files-for-invariance-suites)
+  - [Generate and evaluate invariance suites](#generate-and-evaluate-invariance-suites)
+  - [Generate and evaluate benign library (false-positive measurement)](#generate-and-evaluate-benign-library-false-positive-measurement)
+- [Tier 3: Deterministic Dataset Rebuild and ROC/PR Curves (no API keys)](#tier-3-deterministic-dataset-rebuild-and-rocpr-curves-no-api-keys)
+  - [Rebuild the canonical dataset](#rebuild-the-canonical-dataset)
+  - [Run ROC/PR experiments (GuardLLM-only, local)](#run-rocpr-experiments-guardllm-only-local)
+  - [Generate ROC and PR figures](#generate-roc-and-pr-figures)
+- [Tier 4: Local Competitor Comparison (no API keys)](#tier-4-local-competitor-comparison-no-api-keys)
+  - [Run GuardLLM vs. baselines on all cases](#run-guardllm-vs-baselines-on-all-cases)
+  - [Surface control results (Table 5 claims)](#surface-control-results-table-5-claims)
+- [Tier 5: Vendor API Comparisons (requires API keys)](#tier-5-vendor-api-comparisons-requires-api-keys)
+  - [OpenAI and Anthropic](#openai-and-anthropic)
+  - [Azure Prompt Shields](#azure-prompt-shields)
+  - [AWS Bedrock Guardrails](#aws-bedrock-guardrails)
+  - [Full comparison with all vendors](#full-comparison-with-all-vendors)
+- [Tier 6: GPU Competitors](#tier-6-gpu-competitors)
+  - [ProtectAI DeBERTa](#protectai-deberta)
+  - [Meta Llama Guard 4 (12B)](#meta-llama-guard-4-12b)
+  - [DataFilter + GPT-4o (contaminated-context exfiltration)](#datafilter-gpt-4o-contaminated-context-exfiltration)
+- [Local LLM Demo (no API keys, ~6 GB model download)](#local-llm-demo-no-api-keys-6-gb-model-download)
+- [Verifying Specific Paper Claims](#verifying-specific-paper-claims)
+  - [Claim: CSE-8000 F1=1.000 across all 8 control kinds](#claim-cse-8000-f11000-across-all-8-control-kinds)
+  - [Claim: CBX-1000 attack detection (500/500, 0 FP)](#claim-cbx-1000-attack-detection-500500-0-fp)
+  - [Claim: Invariance across text sources](#claim-invariance-across-text-sources)
+  - [Claim: 0.75% false positive rate on real email text](#claim-075-false-positive-rate-on-real-email-text)
+  - [Claim: GuardLLM processes inbound content in under 0.1ms](#claim-guardllm-processes-inbound-content-in-under-01ms)
+  - [Claim: F1 = 85.46 on text-scope injection detection (3,823 records)](#claim-f1-8546-on-text-scope-injection-detection-3823-records)
+  - [Claim: 100% on surface controls](#claim-100-on-surface-controls)
+  - [Claim: ~10,000x faster than neural-based alternatives](#claim-10000x-faster-than-neural-based-alternatives)
+  - [Claim: ROC/PR curves with dev/test split](#claim-rocpr-curves-with-devtest-split)
+- [Dataset Provenance](#dataset-provenance)
+- [Git Tags](#git-tags)
+- [Output Directory Structure](#output-directory-structure)
+- [Further Documentation](#further-documentation)
+
+</details>
+<!-- toc:end -->
+
 This guide provides step-by-step instructions for reproducing every claim in the paper. Commands are organized into tiers by resource requirements.
 
 ## Prerequisites

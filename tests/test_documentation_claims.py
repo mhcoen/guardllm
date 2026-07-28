@@ -549,3 +549,42 @@ def test_threat_table_gives_both_authorization_contracts():
     security = (ROOT / "SECURITY.md").read_text()
     assert "capability_scopes" in security
     assert "server capability contract" in security
+
+
+def test_documentation_navigation_is_current():
+    """Breadcrumbs and tables of contents regenerate, so they cannot go stale."""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_doc_nav.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_every_documentation_page_offers_a_way_back():
+    """A reader arriving from search had no route to any index."""
+    pages = [p for p in (DOCS).glob("*.md") if p.name != "README.md"]
+    pages += [p for p in (DOCS / "integrations").glob("*.md") if p.name != "README.md"]
+    assert len(pages) >= 12
+    for path in pages:
+        text = path.read_text()
+        assert "<!-- nav:start -->" in text, path.name
+        assert "Docs index" in text, path.name
+        # The breadcrumb sits under the title, not buried mid-page.
+        assert text.index("<!-- nav:start -->") < 200, path.name
+
+
+def test_long_references_carry_a_table_of_contents():
+    """The API spec and reproduction guide both run past 500 lines."""
+    for path in (DOCS / "api_spec.md", ROOT / "REPRODUCE.md"):
+        text = path.read_text()
+        assert len(text.splitlines()) > 200, path.name
+        assert "<!-- toc:start -->" in text, path.name
+        assert "<summary>On this page</summary>" in text, path.name
+        # Entries must be links into the page, not bare text.
+        toc = text.split("<!-- toc:start -->", 1)[1].split("<!-- toc:end -->", 1)[0]
+        assert toc.count("](#") >= 8, path.name

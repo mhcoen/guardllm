@@ -1,5 +1,9 @@
 # GuardLLM Threat Model
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 This document states the threats GuardLLM is designed to mitigate, the assumptions it makes about its environment, and the threats it explicitly does not mitigate. It complements `docs/security.md` (architecture) and `SECURITY.md` (reporting policy).
 
 The aim is to be precise about *what GuardLLM is responsible for* so application authors can make informed decisions about what additional controls they still need.

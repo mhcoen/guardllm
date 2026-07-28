@@ -1,5 +1,9 @@
 # OAuth Integration
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 This guide shows how to combine OAuth/OIDC with GuardLLM so tool execution is constrained by user-granted scopes.
 
 Important boundary:

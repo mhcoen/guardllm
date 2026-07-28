@@ -1,5 +1,9 @@
 # Policy Tuning Guide
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 This guide explains how to tune guardllm safety controls without disabling core protections.
 
 ## Start from secure defaults

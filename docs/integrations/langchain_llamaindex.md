@@ -1,5 +1,9 @@
 # Integration: LangChain / LlamaIndex
 
+<!-- nav:start -->
+[Docs index](../README.md) / [Integrations](README.md)
+<!-- nav:end -->
+
 Treat external retrieval and tool execution as trust boundaries.
 
 ## Recommended placement

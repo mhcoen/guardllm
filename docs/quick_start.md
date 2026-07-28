@@ -1,5 +1,9 @@
 # Quick Start
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
 This guide is for integrating `guardllm` quickly into any LLM-based app, not only MCP systems.
 
 ## 1) Install and Sanity Check

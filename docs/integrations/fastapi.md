@@ -1,5 +1,9 @@
 # Integration: FastAPI
 
+<!-- nav:start -->
+[Docs index](../README.md) / [Integrations](README.md)
+<!-- nav:end -->
+
 Use this pattern to guard inbound/outbound flows in a FastAPI service.
 
 A `Guard` owns mutable session state: contamination, egress escalation,

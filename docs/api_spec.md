@@ -1,5 +1,56 @@
 # API Specification (Exhaustive)
 
+<!-- nav:start -->
+[Docs index](README.md)
+<!-- nav:end -->
+
+<!-- toc:start -->
+<details>
+<summary>On this page</summary>
+
+- [Scope and Stability](#scope-and-stability)
+- [Public Export](#public-export)
+- [Guard Class](#guard-class)
+  - [Constructor](#constructor)
+  - [Property: `canary_token`](#property-canary_token)
+  - [Method: `reset`](#method-reset)
+  - [Static Method: `hash_message`](#static-method-hash_message)
+  - [Static Method: `authorize`](#static-method-authorize)
+  - [Static Method: `bind_request`](#static-method-bind_request)
+  - [Static Method: `context_mcp_server`](#static-method-context_mcp_server)
+  - [Static Method: `context_mcp_client`](#static-method-context_mcp_client)
+  - [Static Method: `context_document`](#static-method-context_document)
+  - [Static Method: `context_web`](#static-method-context_web)
+  - [Method: `process_inbound`](#method-process_inbound)
+  - [Method: `process_inbound_compound`](#method-process_inbound_compound)
+  - [Method: `check_tool_call`](#method-check_tool_call)
+  - [Method: `check_outbound`](#method-check_outbound)
+  - [Method: `validate_tool_args`](#method-validate_tool_args)
+  - [Method: `sanitize_exception`](#method-sanitize_exception)
+  - [Async Method: `confirm_action`](#async-method-confirm_action)
+  - [Async Method: `guard_tool_call`](#async-method-guard_tool_call)
+- [Type Specification](#type-specification)
+  - [Enum: `TrustLevel`](#enum-trustlevel)
+  - [Enum: `ContentType`](#enum-contenttype)
+  - [Dataclass: `AuthorizationEvent` (frozen)](#dataclass-authorizationevent-frozen)
+  - [Dataclass: `PolicyConfig`](#dataclass-policyconfig)
+  - [Protocol Class: `ConfirmationHandler`](#protocol-class-confirmationhandler)
+  - [Dataclass: `SecurityContext`](#dataclass-securitycontext)
+  - [Dataclass: `SanitizationResult`](#dataclass-sanitizationresult)
+  - [Dataclass: `ProcessedContent`](#dataclass-processedcontent)
+  - [Dataclass: `GateResult`](#dataclass-gateresult)
+  - [Dataclass: `OutboundResult`](#dataclass-outboundresult)
+  - [Dataclass: `RateLimitResult`](#dataclass-ratelimitresult)
+  - [Dataclass: `ValidationResult`](#dataclass-validationresult)
+  - [Dataclass: `Binding`](#dataclass-binding)
+  - [Dataclass: `AuditEvent`](#dataclass-auditevent)
+- [Validation Contract (`validate_tool_args`)](#validation-contract-validate_tool_args)
+- [Error Sanitization Contract (`sanitize_exception`)](#error-sanitization-contract-sanitize_exception)
+- [Audit Logger Contract](#audit-logger-contract)
+
+</details>
+<!-- toc:end -->
+
 This document is the complete public API contract for GuardLLM (`guardllm`) as implemented in:
 - `src/guardllm/__init__.py`
 - `src/guardllm/api.py`

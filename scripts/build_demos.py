@@ -169,6 +169,77 @@ def validate_scenario_steps(
     return validated
 
 
+PAGE_LAYOUTS = frozenset({"stack", "comparison", "branch", "timeline", "stepper"})
+
+
+def validate_page_layout(layout: str, scenario: dict, group_labels: tuple[str, ...]) -> None:
+    """Refuse a visual grammar the scenario's execution metadata does not support.
+
+    A page's layout is a claim about structure: a fork, a sequence over time, a
+    set of parallel comparisons. The fixture already records what actually ran,
+    so the claim is checkable, and a page whose diagram contradicts its own
+    execution model fails generation rather than shipping an accurate set of
+    facts arranged into a misleading shape.
+    """
+    if layout not in PAGE_LAYOUTS:
+        raise ValueError(f"Unknown page layout {layout!r}")
+    steps = scenario["steps"]
+    if layout == "branch":
+        # The fork is carried by the artifact each step ran against, not by the
+        # "branch" execution kind: two paths can each build their own object.
+        artifacts = [step.get("artifact") for step in steps]
+        if any(artifact is None for artifact in artifacts):
+            raise ValueError("branch layout needs every step to name the artifact it ran against")
+        paths = list(dict.fromkeys(artifacts))
+        if len(paths) < 2:
+            raise ValueError(f"branch layout needs at least two artifact paths, found {paths}")
+        if len(group_labels) != len(paths):
+            raise ValueError(
+                f"branch layout declares {len(group_labels)} groups for {len(paths)} artifact paths"
+            )
+    elif layout == "timeline":
+        tracks: dict[str, list[dict]] = {}
+        for step in steps:
+            tracks.setdefault(step["pipeline_id"], []).append(step)
+        for pipeline_id, track in tracks.items():
+            kinds = [step["execution"] for step in track]
+            if kinds[0] != "independent" or "sequential" not in kinds[1:]:
+                raise ValueError(
+                    f"timeline layout needs {pipeline_id!r} to be one object continued "
+                    f"over time, found {kinds}"
+                )
+            # A track drawn along an axis claims an order in time, so every step
+            # on it has to record when it ran. Continuation on one object alone
+            # is not enough: a factory and the verifier it feeds have that shape
+            # too, and nothing about them is a timeline.
+            times = [step.get("time_seconds") for step in track]
+            if any(when is None for when in times):
+                raise ValueError(
+                    f"timeline layout needs every step on {pipeline_id!r} to record the time it ran"
+                )
+            latest = [max(when) if isinstance(when, list) else when for when in times]
+            if latest != sorted(latest):
+                raise ValueError(
+                    f"timeline layout needs {pipeline_id!r} to advance in time, found {latest}"
+                )
+        if len(group_labels) != len(tracks):
+            raise ValueError(
+                f"timeline layout declares {len(group_labels)} tracks for {len(tracks)} objects"
+            )
+    elif layout == "comparison":
+        # Side by side reads as independent. That is only honest when the
+        # compared calls genuinely share one object, which this scenario must
+        # then state rather than let the grid imply otherwise.
+        pipelines = {step["pipeline_id"] for step in steps}
+        if len(pipelines) != 1:
+            raise ValueError(
+                "comparison layout would imply independent objects, but this scenario "
+                f"runs against {sorted(pipelines)}"
+            )
+        if len(steps) < 3:
+            raise ValueError("comparison layout needs at least three compared steps")
+
+
 def _data(value):
     if dataclasses.is_dataclass(value):
         return _data(dataclasses.asdict(value))
@@ -1633,7 +1704,10 @@ STYLE = """
 .system-map-nav{position:relative;display:block}.skip-map{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip-map:focus{width:auto;height:auto;clip:auto;left:10px;top:10px;z-index:3;padding:7px 11px;border:1px solid var(--focus);border-radius:8px;background:var(--panel2);color:var(--text);text-decoration:none}
 .map-region{color:inherit;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}a.map-region{cursor:pointer}a.map-region:hover{border-color:var(--focus)}.map-region .go{display:block;margin-top:6px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}a.map-region:hover .go,a.map-region:focus-visible .go{color:var(--focus)}.map-region.is-current{cursor:default;border-style:solid;border-color:var(--sub)}.map-region.is-current .go{color:var(--sub)}
 .region-ingress{background:#101f2b}.region-model{background:#161a24}.region-egress{background:#1d1a2c}.region-authorization{background:#141d2e}.region-integrity{background:#182430}
-.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
+.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.steps.layout-comparison{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));align-items:start}.steps.layout-comparison>.step:first-child{grid-column:1/-1}.steps.layout-branch,.steps.layout-timeline{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.step-group{border:1px solid var(--line);border-radius:12px;background:#101319;padding:14px}.group-head{margin:0 0 11px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.step-group .step{margin-bottom:10px}.step-group .step:last-child{margin-bottom:0}.step-group .step h3{margin:0 0 7px;font-size:16px}
+.layout-timeline .step-group .step{position:relative;padding-left:28px}.layout-timeline .step-group .step::before{content:"";position:absolute;left:9px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.layout-timeline .step-group .step::after{content:"";position:absolute;left:13px;top:32px;bottom:-11px;width:1px;background:var(--line)}.layout-timeline .step-group .step:last-child::after{display:none}
+.rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
 .inert{color:var(--muted)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .cta{display:block;margin:22px 0 6px;padding:18px 20px;border:1px solid var(--focus);border-radius:12px;background:#111d29;text-decoration:none;color:inherit;transition:background-color .12s ease}.cta:hover{background:#152438}.cta strong{display:block;color:var(--text);font-size:19px}.cta span{color:var(--sub);font-size:14px}
@@ -1823,10 +1897,14 @@ def _page(
     orientation: str = "path",
     extra_class: str = "",
     after_steps_html: str = "",
+    layout: str = "stack",
+    groups: list[tuple[str, list]] | None = None,
 ) -> str:
     fixture_json = json.dumps(fixture, sort_keys=True, ensure_ascii=False).replace("<", "\\u003c")
-    step_html = []
-    for index, (heading, body, result) in enumerate(steps):
+    validate_page_layout(layout, fixture, tuple(label for label, _ in groups or ()))
+
+    def render_step(index: int, entry: tuple, *, heading_tag: str, number: int) -> str:
+        heading, body, result = entry
         tabindex = ' tabindex="-1"' if interactive else ""
         if isinstance(body, HtmlFragment):
             body_html = body.content
@@ -1842,11 +1920,30 @@ def _page(
         else:
             body_html = f'<div class="step-body">{html.escape(body)}</div>'
         result_html = f'<div class="result">{html.escape(result)}</div>' if result else ""
-        step_html.append(
+        return (
             f'<section class="step" data-step="{index}"{tabindex}>'
-            f"<h2>{index + 1}. {html.escape(heading)}</h2>"
+            f"<{heading_tag}>{number}. {html.escape(heading)}</{heading_tag}>"
             f"{body_html}{result_html}</section>"
         )
+
+    step_html = []
+    if groups:
+        # A grouped layout numbers within its own path or track, because the
+        # groups run in parallel and a single running count would imply an order
+        # across them that the fixture does not record.
+        index = 0
+        for label, entries in groups:
+            rendered = []
+            for position, entry in enumerate(entries):
+                rendered.append(render_step(index, entry, heading_tag="h3", number=position + 1))
+                index += 1
+            step_html.append(
+                f'<div class="step-group"><h2 class="group-head">{html.escape(label)}</h2>'
+                f"{''.join(rendered)}</div>"
+            )
+    else:
+        for index, entry in enumerate(steps):
+            step_html.append(render_step(index, entry, heading_tag="h2", number=index + 1))
     controls = ""
     script = ""
     if interactive:
@@ -1882,7 +1979,7 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
+<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
 """
 
 
@@ -1988,6 +2085,8 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         lead="One pipeline registers the retrieved span once, then evaluates every outbound comparison against that persistent provenance. A retrieved phishing steer needs no hidden instruction, and semantic similarity remains outside this lexical defense.",
         active="ingress+egress",
         fixture=rag,
+        interactive=False,
+        layout="comparison",
         steps=[
             (
                 "Register the retrieved span",
@@ -2154,15 +2253,26 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                 f"allowed={result['allowed']}; anomalies={result['anomalies'] or ['none']}",
             )
         )
-    rate_steps.append(
-        ("Hard hourly cap", "Ten completed sends are already recorded.", rate["hard_cap"]["reason"])
-    )
+    hard_cap_steps = [
+        (
+            "Seed the hourly window",
+            "Ten completed sends are already recorded against this recipient inside the hour.",
+            "Recorded before the checked proposal, on its own limiter.",
+        ),
+        ("Hard hourly cap", "The eleventh send is proposed.", rate["hard_cap"]["reason"]),
+    ]
     pages[DEMO_DIR / "guardllm_rate_limit_demo.html"] = _page(
         title="Rate limiting: signals versus blocks",
         lead="Recipient novelty and burst patterns are non-blocking anomalies. The hard hourly cap denies. The burst count includes the proposal being checked, so a threshold of three flags the third send inside the window rather than the one after it. Counting only completed actions would leave a burst of exactly three silent.",
         active="egress+authorization",
         fixture=rate,
-        steps=rate_steps,
+        interactive=False,
+        layout="timeline",
+        steps=[],
+        groups=[
+            ("Burst window: anomalies, not denials", rate_steps),
+            ("Hourly window: a hard cap", hard_cap_steps),
+        ],
     )
 
     binding = s["request_binding"]
@@ -2172,28 +2282,42 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         active="integrity",
         fixture=binding,
         interactive=False,
-        steps=[
+        layout="branch",
+        steps=[],
+        groups=[
             (
-                "Record the proposal",
-                json.dumps(binding["proposed_args"], sort_keys=True),
-                "Canonical argument hash stored in the binding.",
+                "Path 1: arguments mutate",
+                [
+                    (
+                        "Record the proposal",
+                        json.dumps(binding["proposed_args"], sort_keys=True),
+                        "Canonical argument hash stored in the binding.",
+                    ),
+                    (
+                        "Verify immediately before execution",
+                        "The execution payload carries an unapproved extra field, so the recomputed canonical hash no longer matches: "
+                        + json.dumps(binding["executed_args"], sort_keys=True),
+                        binding["result"]["reason"],
+                    ),
+                ],
             ),
             (
-                "Arguments mutate",
-                json.dumps(binding["executed_args"], sort_keys=True),
-                "The execution payload contains an unapproved extra field.",
-            ),
-            (
-                "Verify immediately before execution",
-                "GuardLLM recomputes the canonical argument hash.",
-                binding["result"]["reason"],
-            ),
-            (
-                "Reject replay after the binding TTL",
-                "A second binding preserves the approved arguments and is verified after its one-second TTL. The same pipeline verifies both bindings; the binding artifact is what differs.",
-                binding["expired_result"]["reason"],
+                "Path 2: binding expires",
+                [
+                    (
+                        "Record a second proposal",
+                        "A second binding preserves the approved arguments and carries a one-second TTL.",
+                        "Canonical argument hash stored in the binding.",
+                    ),
+                    (
+                        "Verify after the TTL",
+                        "The arguments are unchanged this time. Only the clock moved.",
+                        binding["expired_result"]["reason"],
+                    ),
+                ],
             ),
         ],
+        after_steps_html='<p class="lane-note"><strong>One verifier, two artifacts:</strong> both paths are checked by the same SecurityPipeline. What differs is the binding each path produced, which is why the fixture records the artifact per step rather than the object.</p>',
     )
 
     sc = s["security_context"]

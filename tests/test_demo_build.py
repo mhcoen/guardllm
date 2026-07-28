@@ -75,7 +75,7 @@ def test_generated_demos_are_current_and_self_contained():
     assert 'class="controls" hidden' in spine
     assert "show(0,false)" in spine
     assert "if(moveFocus)steps[current].focus()" in spine
-    assert spine.index('<div class="steps">') < spine.index('<div class="system-map"')
+    assert spine.index('<div class="steps ') < spine.index('<div class="system-map"')
 
     binding = (DEMO / "guardllm_request_binding_demo.html").read_text()
     policy = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
@@ -303,3 +303,53 @@ def test_rails_state_their_own_lifecycle():
             # as current rather than linking the reader back to where they are.
             assert session.count('<a class="rail-pill"') == 5
             assert 'class="rail-pill is-current"' in session
+
+
+LAYOUTS = {
+    "guardllm_request_binding_demo.html": ("layout-branch", 2),
+    "guardllm_rate_limit_demo.html": ("layout-timeline", 2),
+    "guardllm_rag_demos.html": ("layout-comparison", 0),
+    "guardllm_demos.html": ("layout-stack", 0),
+}
+
+
+def test_pages_declare_their_layout_and_groups():
+    for name, (css_class, group_count) in LAYOUTS.items():
+        page = (DEMO / name).read_text()
+        assert f'<div class="steps {css_class}"' in page, name
+        assert len(re.findall(r'<h2 class="group-head">', page)) == group_count, name
+        # Grouped layouts run in parallel, so each path numbers from one. A
+        # single running count would imply an order across them.
+        if group_count:
+            assert page.count("<h3>1.") == group_count, name
+
+
+def test_layout_must_match_the_execution_metadata():
+    """A page cannot claim a shape its own fixture does not support."""
+    generator = _load_generator()
+    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+
+    # The shapes actually shipped.
+    generator.validate_page_layout("branch", scenarios["request_binding"], ("a", "b"))
+    generator.validate_page_layout("comparison", scenarios["rag"], ())
+    generator.validate_page_layout("timeline", scenarios["rate_limit"], ("a", "b"))
+
+    # A fork needs distinct artifact paths.
+    with pytest.raises(ValueError, match="artifact"):
+        generator.validate_page_layout("branch", scenarios["rag"], ("a", "b"))
+    with pytest.raises(ValueError, match="declares 1 groups"):
+        generator.validate_page_layout("branch", scenarios["request_binding"], ("one",))
+
+    # A timeline claims order in time, so continuation on one object is not
+    # enough: a factory feeding a verifier has that shape and is not a timeline.
+    with pytest.raises(ValueError, match="record the time"):
+        generator.validate_page_layout("timeline", scenarios["request_binding"], ("a", "b"))
+    with pytest.raises(ValueError, match="declares 1 tracks"):
+        generator.validate_page_layout("timeline", scenarios["rate_limit"], ("one",))
+
+    # Side by side reads as independent, so it needs one genuinely shared object.
+    with pytest.raises(ValueError, match="independent objects"):
+        generator.validate_page_layout("comparison", scenarios["rate_limit"], ())
+
+    with pytest.raises(ValueError, match="Unknown page layout"):
+        generator.validate_page_layout("carousel", scenarios["rag"], ())

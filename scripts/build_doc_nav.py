@@ -72,7 +72,7 @@ def _toc(body: str) -> str:
         return ""
     return (
         f"{TOC_START}\n"
-        "<details>\n<summary>On this page</summary>\n\n"
+        '<details markdown="1">\n<summary>On this page</summary>\n\n'
         + "\n".join(entries)
         + f"\n\n</details>\n{TOC_END}"
     )

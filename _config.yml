@@ -7,6 +7,9 @@
 # This sets a supported theme so assets/css/style.scss can extend it, and
 # excludes everything that is source rather than site, so Jekyll does not walk
 # the library, the tests, or the 130MB of benchmark runs.
+#
+# examples/ is deliberately NOT excluded: README.md and docs/quick_start.md link
+# into it, and excluding it returned 404 for both.
 
 title: GuardLLM
 description: Lifecycle security for LLM applications
@@ -24,7 +27,6 @@ exclude:
   - benchmarks/upstream_sources/
   - devel/
   - dist/
-  - examples/
   - local/
   - paper/
   - scripts/

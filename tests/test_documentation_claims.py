@@ -8,6 +8,7 @@ the examples as published, so an example cannot rot into a lie.
 
 from __future__ import annotations
 
+import json
 import re
 from importlib.metadata import version
 from pathlib import Path
@@ -410,3 +411,41 @@ def test_reproduce_guide_publishes_no_expected_test_count():
     text = (ROOT / "REPRODUCE.md").read_text()
     assert "514 tests pass" not in text
     assert "all collected tests pass" in text
+
+
+def test_headline_benchmark_figures_match_the_tracked_artifact():
+    """The homepage quoted numbers no checked-in artifact supported.
+
+    It claimed surface_stack at "around 74%" and 5,230 surface cases, while the
+    tracked comparison.json reports 65.98% and 5,224. Nothing compared them,
+    because the artifact paths were backticked prose rather than links.
+    """
+    artifact = ROOT / "benchmarks" / "results" / "comparison.json"
+    assert artifact.exists(), "the artifact the homepage cites must be tracked"
+    data = json.loads(artifact.read_text())
+    surface = data["surface_only"]
+    count = surface["count"]
+    stack = surface["strategies"]["surface_stack"]["pass_rate"]
+    guardllm = surface["strategies"]["guardllm_surface"]["pass_rate"]
+
+    readme = (ROOT / "README.md").read_text()
+    assert f"{stack}%" in readme, f"README does not quote surface_stack {stack}%"
+    assert f"{count:,} surface cases" in readme or f"{count}/{count}" in readme
+    assert f"({guardllm:.0f}%)" in readme or f"`{guardllm:.0f}%`" in readme
+
+    # Figures that predate the tracked artifact must not reappear unqualified.
+    assert "around 74%" not in readme
+    assert "5230" not in readme
+
+
+def test_unreproducible_vendor_table_is_labelled_as_such():
+    """The injection section of the tracked artifact is empty.
+
+    The vendor comparison cannot be traced to a committed artifact, so the page
+    must say so rather than present the numbers as verifiable.
+    """
+    data = json.loads((ROOT / "benchmarks" / "results" / "comparison.json").read_text())
+    if data["injection_only"]["record_count"] == 0:
+        readme = (ROOT / "README.md").read_text()
+        assert "not\ncurrently reproducible from a tracked artifact" in readme
+        assert "benchmarks/runs/" in readme

@@ -526,3 +526,26 @@ def test_homepage_architecture_model_matches_the_implementation():
     assert "per-flow `SecurityContext` the host supplies on every call" in readme
     assert "Request binding reads neither" in readme
     assert "Error sanitization is unconditional and takes no context at all" in readme
+
+
+def test_threat_table_gives_both_authorization_contracts():
+    """T-IN5 stated only the client contract.
+
+    Server mode permits an enabled destructive tool listed in capability_scopes
+    without an AuthorizationEvent, which SECURITY.md already says. A threat
+    table that names one contract reads as a guarantee the other mode breaks.
+    """
+    row = next(
+        line
+        for line in (ROOT / "docs" / "threat_model.md").read_text().splitlines()
+        if line.startswith("| T-IN5 ")
+    )
+    assert "client mode" in row.lower()
+    assert "server mode" in row.lower()
+    assert "capability_scopes" in row
+    assert "server_default_deny" in row
+
+    # The two documents must not disagree about it.
+    security = (ROOT / "SECURITY.md").read_text()
+    assert "capability_scopes" in security
+    assert "server capability contract" in security

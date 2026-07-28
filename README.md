@@ -192,7 +192,7 @@ python benchmarks/run_benchmarks.py
 python benchmarks/compare_mitigations.py
 ```
 
-Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves. See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow and [SECURITY.md](SECURITY.md) for the vulnerability reporting policy.
+Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves. See [CONTRIBUTING.md](https://github.com/mhcoen/guardllm/blob/main/CONTRIBUTING.md) for the dev workflow and [SECURITY.md](SECURITY.md) for the vulnerability reporting policy.
 
 ## Author
 

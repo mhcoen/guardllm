@@ -356,3 +356,57 @@ def test_readme_scopes_the_composition_claim_to_what_was_measured():
     assert "no composition of them carries state" not in text
     assert "not a proof that no composition could be built" in text
     assert "surface_stack" in text
+
+
+TEMPLATE_PAGES = ["docs/integration_templates.md", "docs/integrations/fastapi.md"]
+
+
+@pytest.mark.parametrize("path", TEMPLATE_PAGES)
+def test_template_blocks_are_self_contained_and_execute(path):
+    """Execute the exact fenced blocks, as the quick start test does.
+
+    Searching for the names `guard_for` and `_guards` was not enough: one block
+    defined `guard_for` referring to a `_guards` declared in a different block,
+    so running it raised NameError while the test passed.
+    """
+    text = (ROOT / path).read_text()
+    blocks = re.findall(r"```python\n(.*?)```", text, re.S)
+    assert blocks, path
+    for index, block in enumerate(blocks):
+        namespace: dict = {"__name__": "template"}
+        try:
+            exec(compile(block, f"{path}#{index}", "exec"), namespace)  # noqa: S102
+        except ModuleNotFoundError as exc:  # fastapi is not a runtime dependency
+            pytest.skip(f"{exc.name} not installed")
+        if "guard_for" in namespace:
+            guard, lock = namespace["guard_for"]("session-under-test")
+            again, _ = namespace["guard_for"]("session-under-test")
+            assert guard is again, "guard_for must return one Guard per session"
+            other, _ = namespace["guard_for"]("a-different-session")
+            assert other is not guard, "sessions must not share a Guard"
+            assert hasattr(lock, "acquire"), "each session needs its own lock"
+            namespace["end_session"]("session-under-test")
+
+
+@pytest.mark.parametrize("path", TEMPLATE_PAGES)
+def test_templates_never_key_a_session_off_request_content(path):
+    """Taking the session key from the request body is session fixation.
+
+    A caller who names another user's session receives that user's Guard, and
+    can contaminate it, escalate it, and consume its rate budget.
+    """
+    text = (ROOT / path).read_text()
+    for forbidden in (
+        'request.get("session_id"',
+        'payload["session_id"]',
+        'payload.get("session_id"',
+        'request["session_id"]',
+    ):
+        assert forbidden not in text, f"{path} derives the session key from request input"
+    assert "never from the request body" in text or "not\n    # read out of" in text
+
+
+def test_reproduce_guide_publishes_no_expected_test_count():
+    text = (ROOT / "REPRODUCE.md").read_text()
+    assert "514 tests pass" not in text
+    assert "all collected tests pass" in text

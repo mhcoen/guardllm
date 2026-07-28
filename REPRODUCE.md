@@ -50,7 +50,7 @@ If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run ac
 pytest -q
 ```
 
-Expected: 514 tests pass (excluding the parametrized eval suite). The full suite total is asserted by `tests/test_documentation_claims.py`, which fails if this figure drifts, rather than being restated here as a number that ages.
+Expected: all collected tests pass. No count is published here. A numeric expectation drifts on every commit that adds a test, and the last one quoted here was wrong by more than six thousand.
 
 ### Run benchmark regression with checkpoint validation
 

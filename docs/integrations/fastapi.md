@@ -9,48 +9,64 @@ users, and concurrent requests would mutate it without synchronization. Hold
 one per session instead, and serialize the calls that belong to it.
 
 ```python
-from fastapi import FastAPI
+import threading
+
+from fastapi import Depends, FastAPI, Request
 from guardllm import Guard
-from guardllm.security.types import PolicyConfig
 
 app = FastAPI()
 
-# One Guard per session, not one per process. Replace this dict with whatever
-# already owns session lifetime in your service; the point is that the Guard
-# lives and dies with the session rather than with the worker.
-_guards: dict[str, Guard] = {}
+# One Guard per session, not one per process, and a lock per session because
+# the pipeline does not synchronize internally. Replace this registry with
+# whatever already owns session lifetime in your service.
+_guards: dict[str, tuple[Guard, threading.Lock]] = {}
+_registry_lock = threading.Lock()
 
 
-def guard_for(session_id: str) -> Guard:
-    guard = _guards.get(session_id)
-    if guard is None:
-        guard = Guard(canary_session_id=session_id)
-        _guards[session_id] = guard
-    return guard
+def authenticated_session_key(request: Request) -> str:
+    """Derive the key from authenticated identity, never from the request body.
+
+    A caller who can name another user's session gets that user's Guard, and
+    can contaminate it, escalate it, and consume its rate budget. Replace this
+    with your real auth dependency.
+    """
+    session_key = getattr(request.state, "session_key", None)
+    if not session_key:
+        raise PermissionError("unauthenticated request")
+    return session_key
 
 
-def end_session(session_id: str) -> None:
+def guard_for(session_key: str) -> tuple[Guard, threading.Lock]:
+    with _registry_lock:
+        entry = _guards.get(session_key)
+        if entry is None:
+            entry = (Guard(canary_session_id=session_key), threading.Lock())
+            _guards[session_key] = entry
+        return entry
+
+
+def end_session(session_key: str) -> None:
     """Drop the session's state when the session ends, so it cannot be reused."""
-    _guards.pop(session_id, None)
+    with _registry_lock:
+        _guards.pop(session_key, None)
 
 
 @app.post("/generate")
-async def generate(payload: dict):
-    session_id = payload["session_id"]
-    guard = guard_for(session_id)
+async def generate(payload: dict, session_key: str = Depends(authenticated_session_key)):
+    guard, session_lock = guard_for(session_key)
     ctx = Guard.context_web(source_id="http-client")
 
-    # Inbound hardening
-    text = payload.get("text", "")
-    processed = guard.process_inbound(text, ctx)
+    # Hold the session lock for the whole guarded sequence: ingress, the model
+    # call, and egress all read and mutate this session's state.
+    with session_lock:
+        text = payload.get("text", "")
+        processed = guard.process_inbound(text, ctx)
 
-    # Model call (placeholder)
-    model_output = f"answer: {processed.content}"
+        model_output = f"answer: {processed.content}"
 
-    # Outbound hardening
-    out = guard.check_outbound(model_output, ctx)
-    if not out.allowed:
-        return {"error": out.reason}
+        out = guard.check_outbound(model_output, ctx)
+        if not out.allowed:
+            return {"error": out.reason}
 
     return {"result": model_output}
 ```

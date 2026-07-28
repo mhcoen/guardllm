@@ -10,6 +10,7 @@ from guardllm.security.types import PolicyConfig
 app = FastAPI()
 guard = Guard()
 
+
 @app.post("/generate")
 async def generate(payload: dict):
     ctx = Guard.context_web(source_id="http-client")

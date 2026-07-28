@@ -96,8 +96,10 @@ processed = guard.process_inbound(query_result, ctx)
 
 `processed.warnings` shows what was caught:
 ```python
-["Removed 1 CSS-hidden element(s)",
- "Prompt-injection indicators detected: instruction_override, multi_signal_composition"]
+[
+    "Removed 1 CSS-hidden element(s)",
+    "Prompt-injection indicators detected: instruction_override, multi_signal_composition",
+]
 ```
 
 `processed.content` is sanitized, flagged, and isolated, ready to pass to your model:

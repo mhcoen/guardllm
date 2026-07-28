@@ -40,20 +40,14 @@ def scopes_to_tool_allowlist(scopes: set[str]) -> dict:
         allow[("gmail_get_message", "implicit")] = {"required_fields": ["message_id"]}
 
     if "gmail.send" in scopes:
-        allow[("gmail_send_email", "explicit")] = {
-            "required_fields": ["to", "subject", "body"]
-        }
+        allow[("gmail_send_email", "explicit")] = {"required_fields": ["to", "subject", "body"]}
 
     if "calendar.readonly" in scopes:
         allow[("calendar_list_events", "implicit")] = {"required_fields": []}
 
     if "calendar.events" in scopes:
-        allow[("calendar_create_event", "explicit")] = {
-            "required_fields": ["title", "start_time"]
-        }
-        allow[("calendar_update_event", "explicit")] = {
-            "required_fields": ["event_id"]
-        }
+        allow[("calendar_create_event", "explicit")] = {"required_fields": ["title", "start_time"]}
+        allow[("calendar_update_event", "explicit")] = {"required_fields": ["event_id"]}
 
     return allow
 

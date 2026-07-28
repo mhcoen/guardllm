@@ -88,7 +88,9 @@ if not result.allowed:
 Before returning model output or dispatching actions, run outbound checks.
 
 ```python
-outbound = guard.check_outbound("response text", Guard.context_web(source_id="githubusercontent.com"))
+outbound = guard.check_outbound(
+    "response text", Guard.context_web(source_id="githubusercontent.com")
+)
 if not outbound.allowed:
     raise PermissionError(outbound.reason)
 ```

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
@@ -412,6 +413,46 @@ def test_reproduce_guide_publishes_no_expected_test_count():
     text = (ROOT / "REPRODUCE.md").read_text()
     assert "514 tests pass" not in text
     assert "all collected tests pass" in text
+
+
+def test_published_evidence_bundle_is_current_and_tracked():
+    """The bundle must regenerate byte-identically from its source artifact."""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "publish_benchmark_evidence.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    bundle = json.loads((ROOT / "benchmarks" / "published" / "surface_controls.json").read_text())
+    prov = bundle["provenance"]
+    # Provenance is the point of publishing: a reader must be able to identify
+    # the run, the commit, and the data behind every figure.
+    for field in ("run_id", "git_sha_short", "dataset_hash", "generated_at", "reproduce"):
+        assert prov.get(field), field
+    assert (ROOT / prov["source_artifact"]).exists()
+
+
+def test_published_figures_match_the_bundle_not_just_the_source():
+    """Homepage numbers are pinned to the published extract readers can fetch."""
+    bundle = json.loads((ROOT / "benchmarks" / "published" / "surface_controls.json").read_text())
+    surface = bundle["surface_controls"]
+    count = surface["case_count"]
+    stack = surface["strategies"]["surface_stack"]["pass_rate"]
+    guardllm = surface["strategies"]["guardllm_surface"]["pass_rate"]
+
+    readme = (ROOT / "README.md").read_text()
+    assert f"{stack}%" in readme
+    assert f"{count:,} surface cases" in readme
+    assert f"{count}/{count}" in readme
+    assert f"{guardllm:.0f}%" in readme
+    # The pages must link the bundle, so the link test covers it too.
+    assert "benchmarks/published/surface_controls.md" in readme
+    assert "published/surface_controls.md" in (ROOT / "benchmarks" / "results.md").read_text()
 
 
 def test_headline_benchmark_figures_match_the_tracked_artifact():

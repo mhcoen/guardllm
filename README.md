@@ -17,7 +17,7 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 4. **Enforce output constraints against what the session recorded**: outbound DLP and provenance copy controls compare egress content with the spans and buffers ingest registered, widened by the contamination flag. Error sanitization is unconditional and takes no context at all.
 5. **Feed enforcement outcomes back into the session**: a high-confidence outbound DLP or remembered-canary block sets a session escalation flag, and subsequent tool calls require authorization by default (`escalated_tool_policy`, default `require_auth`). Untrusted ingest contaminates the session, widening egress checks for its remainder and, when `contaminated_tool_policy` is set to `require_auth` or `deny`, gating tool calls. The pipeline is a loop, not a one-way filter: decisions in one cycle constrain the next.
 
-This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the tracked [comparison.json](benchmarks/results/comparison.json), while GuardLLM reaches 100%, because a decision late in the session can still read what an earlier stage recorded. That is a measurement of one composition, not a proof that no composition could be built to do it.
+This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the [published surface evidence](benchmarks/published/surface_controls.md), while GuardLLM reaches 100%, because a decision late in the session can still read what an earlier stage recorded. That is a measurement of one composition, not a proof that no composition could be built to do it.
 
 ## Features
 
@@ -164,7 +164,7 @@ and GuardLLM's own surface result are backed by the tracked artifact.
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 
-Non-text controls: `5224/5224` (`100%`) across 8 security kinds, per the tracked [comparison.json](benchmarks/results/comparison.json).
+Non-text controls: `5224/5224` (`100%`) across 8 security kinds. Every figure here is generated from the [published surface evidence](benchmarks/published/surface_controls.md), which carries the run id, commit, and dataset hash that produced it.
 
 Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
 

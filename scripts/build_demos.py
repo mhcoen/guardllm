@@ -1439,14 +1439,58 @@ def build_fixtures() -> dict:
 
 
 STYLE = """
-:root{color-scheme:dark;--bg:#0d0f12;--panel:#171a1f;--panel2:#20242b;--line:#343a44;--text:#f1f4f7;--sub:#b5bdc8;--muted:#87909c;--blue:#79b8ff;--green:#9be47c;--red:#ff9292;--amber:#f2c75c}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#151922 0,var(--bg) 300px);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:1040px;margin:auto;padding:32px 20px 64px}nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}a{color:var(--blue)}h1{font-size:clamp(28px,5vw,44px);line-height:1.08;margin:.2em 0}.lead{max-width:800px;color:var(--sub);font-size:18px}.system-map{display:grid;gap:10px;margin:26px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:#101319}.sources,.sinks{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;color:var(--sub);font-size:13px}.flow{display:grid;grid-template-columns:1.1fr .8fr 1.2fr;gap:10px;align-items:stretch}.node,.boundary,.lane,.rail{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:12px;text-align:center}.node{display:grid;align-content:center}.boundary{border-style:dashed;display:grid;align-content:center;font-weight:700}.boundary small{display:block;color:var(--muted);font-size:10px;letter-spacing:.09em}.branches{display:grid;grid-template-columns:1fr 1fr;gap:10px}.lane{display:grid;gap:8px}.arrow{color:var(--muted)}.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}.path-marker{display:block;margin-top:4px;color:var(--blue);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.lane-note{margin:0;color:var(--sub);font-size:13px}.rails{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rail{text-align:left;background:#111d29;font-size:13px}.rail strong{display:block;color:var(--text)}.compact-map .sources span:not(:first-child){display:none}.steps{display:grid;gap:12px;margin-top:24px}.step{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px}.step:focus{outline:2px solid var(--blue);outline-offset:3px}.step[hidden]{display:none}.step h2{font-size:18px;margin:0 0 7px}.step-body{color:var(--text)}.messages{display:grid;gap:8px}.message{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}.message strong{display:block;color:var(--blue);font-size:12px;letter-spacing:.06em;text-transform:uppercase}.result{margin-top:12px;border-left:3px solid var(--blue);background:var(--panel2);padding:10px 12px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.controls{display:flex;align-items:center;gap:10px;margin:16px 0;flex-wrap:wrap}.controls button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}.controls button:disabled{opacity:.45;cursor:default}.status{color:var(--sub)}.evidence-strip{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.chip{border:1px solid var(--line);border-radius:999px;padding:5px 9px;color:var(--sub);font-size:13px}.chip code{color:var(--text)}details{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sub);font-size:12px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{display:block;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px;text-decoration:none}.card strong{color:var(--text);display:block}.card span{color:var(--sub);font-size:14px}.outcome{font-weight:700}.allow{color:var(--green)}.deny{color:var(--red)}.warn{color:var(--amber)}@media(max-width:760px){.flow{grid-template-columns:1fr}.branches,.rails{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+:root{color-scheme:dark;--bg:#0d0f12;--panel:#171a1f;--panel2:#20242b;--line:#343a44;--text:#f1f4f7;--sub:#b5bdc8;--muted:#87909c;--blue:#79b8ff;--green:#9be47c;--red:#ff9292;--amber:#f2c75c;--focus:#79b8ff}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#151922 0,var(--bg) 300px);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:1040px;margin:auto;padding:32px 20px 64px}nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}a{color:var(--blue)}h1{font-size:clamp(28px,5vw,44px);line-height:1.08;margin:.2em 0}.lead{max-width:800px;color:var(--sub);font-size:18px}.system-map{display:grid;gap:10px;margin:26px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:#101319}.sources,.sinks{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;color:var(--sub);font-size:13px}.flow{display:grid;grid-template-columns:1.1fr .8fr 1.2fr;gap:10px;align-items:stretch}.node,.boundary,.lane,.rail{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:12px;text-align:center}.node{display:grid;align-content:center}.boundary{border-style:dashed;display:grid;align-content:center;font-weight:700}.boundary small{display:block;color:var(--muted);font-size:10px;letter-spacing:.09em}.branches{display:grid;grid-template-columns:1fr 1fr;gap:10px}.lane{display:grid;gap:8px}.arrow{color:var(--muted)}.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}.path-marker{display:block;margin-top:4px;color:var(--blue);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.lane-note{margin:0;color:var(--sub);font-size:13px}.rails{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rail{text-align:left;background:#111d29;font-size:13px}.rail strong{display:block;color:var(--text)}.compact-map .sources>*:not(:first-child){display:none}.steps{display:grid;gap:12px;margin-top:24px}.step{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px}.step:focus{outline:2px solid var(--blue);outline-offset:3px}.step[hidden]{display:none}.step h2{font-size:18px;margin:0 0 7px}.step-body{color:var(--text)}.messages{display:grid;gap:8px}.message{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}.message strong{display:block;color:var(--blue);font-size:12px;letter-spacing:.06em;text-transform:uppercase}.result{margin-top:12px;border-left:3px solid var(--blue);background:var(--panel2);padding:10px 12px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.controls{display:flex;align-items:center;gap:10px;margin:16px 0;flex-wrap:wrap}.controls button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}.controls button:disabled{opacity:.45;cursor:default}.status{color:var(--sub)}.evidence-strip{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.chip{border:1px solid var(--line);border-radius:999px;padding:5px 9px;color:var(--sub);font-size:13px}.chip code{color:var(--text)}details{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sub);font-size:12px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{display:block;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px;text-decoration:none}.card strong{color:var(--text);display:block}.card span{color:var(--sub);font-size:14px}.outcome{font-weight:700}.allow{color:var(--green)}.deny{color:var(--red)}.warn{color:var(--amber)}@media(max-width:760px){.flow{grid-template-columns:1fr}.branches,.rails{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 .policy-reference .steps{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}.policy-reference .step{padding:14px}.policy-matrix{margin-top:24px;overflow-x:auto}.policy-matrix table{width:100%;border-collapse:collapse;background:var(--panel)}.policy-matrix th,.policy-matrix td{border:1px solid var(--line);padding:9px;text-align:left;vertical-align:top}.policy-matrix thead th{background:var(--panel2)}.policy-matrix code{color:var(--sub);font-size:12px}@media(max-width:900px){.policy-reference .steps{grid-template-columns:1fr 1fr}}@media(max-width:600px){.policy-reference .steps{grid-template-columns:1fr}}
 .path-strip{display:flex;align-items:center;gap:14px;margin:22px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#111d29;flex-wrap:wrap}.path-strip>strong{color:var(--blue);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.path-route{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.path-route span:not(.path-arrow){border:1px solid var(--line);border-radius:999px;padding:3px 8px;color:var(--sub);font-size:13px}.path-arrow{color:var(--muted)}
+.system-map-nav{position:relative;display:block}.skip-map{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip-map:focus{width:auto;height:auto;clip:auto;left:10px;top:10px;z-index:3;padding:7px 11px;border:1px solid var(--focus);border-radius:8px;background:var(--panel2);color:var(--text);text-decoration:none}
+.map-region{color:inherit;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}a.map-region{cursor:pointer}a.map-region:hover{border-color:var(--focus)}.map-region .go{display:block;margin-top:6px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}a.map-region:hover .go,a.map-region:focus-visible .go{color:var(--focus)}.map-region.is-current{cursor:default;border-style:solid;border-color:var(--sub)}.map-region.is-current .go{color:var(--sub)}
+.region-ingress{background:#101f2b}.region-model{background:#161a24}.region-egress{background:#1d1a2c}.region-authorization{background:#141d2e}.region-integrity{background:#182430}
+.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.rail-pill.is-inert{color:var(--muted);background:transparent}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
+.inert{color:var(--muted)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.cta{display:block;margin:22px 0 6px;padding:18px 20px;border:1px solid var(--focus);border-radius:12px;background:#111d29;text-decoration:none;color:inherit;transition:background-color .12s ease}.cta:hover{background:#152438}.cta strong{display:block;color:var(--text);font-size:19px}.cta span{color:var(--sub);font-size:14px}
+.cards-heading{margin:26px 0 10px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
 """
 
 
-def _map(active: str, *, compact: bool = False) -> str:
+# Every interactive region of the surface map, and the page it opens. Regions
+# that carry no distinct demo stay inert on purpose. Linking the four remaining
+# source families would point four boxes at the one ingress page that the
+# Ingress boundary already opens, which adds clicks without adding information,
+# and a lane, an arrow, or a sink is a relationship rather than a mechanism.
+MAP_DESTINATIONS: dict[str, tuple[str, str]] = {
+    "ingress": ("guardllm_pipeline_demo.html", "ingress demo"),
+    "egress": ("guardllm_canary_demos.html", "DLP and canary demo"),
+    "authorization": ("guardllm_policy_matrix_demo.html", "policy demo"),
+    "integrity": ("guardllm_request_binding_demo.html", "request binding demo"),
+    "model": ("guardllm_demos.html", "primary narrative"),
+    "RAG": ("guardllm_rag_demos.html", "RAG provenance demo"),
+    "policy": ("guardllm_policy_matrix_demo.html", "policy demo"),
+    "remembered canary": ("guardllm_canary_demos.html", "DLP and canary demo"),
+    "provenance": ("guardllm_rag_demos.html", "RAG provenance demo"),
+    "DLP history": ("guardllm_canary_demos.html", "DLP and canary demo"),
+    "contamination": ("guardllm_tool_feedback_demo.html", "tool feedback demo"),
+    "escalation": ("guardllm_demos.html", "primary narrative"),
+    "rate counters": ("guardllm_rate_limit_demo.html", "rate limiting demo"),
+}
+
+# Labels that must never render as links, asserted by the generator tests.
+INERT_MAP_LABELS: tuple[str, ...] = (
+    "Email",
+    "Web",
+    "Documents",
+    "MCP",
+    "Outbound content",
+    "Tool proposal",
+    "Users and data sinks",
+    "Tools and action sinks",
+)
+
+SKIP_MAP_TARGET = "after-system-map"
+
+
+def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
     active_parts = {part.strip().lower() for part in active.split("+") if part.strip()}
 
     def active_class(name: str) -> str:
@@ -1457,12 +1501,95 @@ def _map(active: str, *, compact: bool = False) -> str:
             return ""
         return '<span class="path-marker">On this path</span>'
 
+    def region(key: str, *, classes: str, inner: str) -> str:
+        href, destination = MAP_DESTINATIONS[key]
+        if href == current_page:
+            return (
+                f'<div class="{classes} map-region is-current" aria-current="page">'
+                f'{inner}<span class="go">You are viewing this</span></div>'
+            )
+        return (
+            f'<a class="{classes} map-region" href="{href}">'
+            f'{inner}<span class="go">Open {html.escape(destination)} &rarr;</span></a>'
+        )
+
+    def pill(term: str) -> str:
+        href, destination = MAP_DESTINATIONS[term]
+        label = html.escape(term)
+        if href == current_page:
+            return f'<span class="rail-pill is-current" aria-current="page">{label}</span>'
+        return (
+            f'<a class="rail-pill" href="{href}" '
+            f'aria-label="{label}, open {html.escape(destination)}">{label}'
+            '<span aria-hidden="true"> &rarr;</span></a>'
+        )
+
+    def inert_pill(label: str) -> str:
+        return f'<span class="rail-pill is-inert">{html.escape(label)}</span>'
+
+    def inert(label: str) -> str:
+        return f'<span class="inert">{html.escape(label)}</span>'
+
+    ingress_html = region(
+        "ingress",
+        classes="boundary region-ingress" + active_class("ingress"),
+        inner="<small>Boundary 1</small>Ingress" + marker("ingress"),
+    )
+    model_html = region(
+        "model",
+        classes="node region-model" + active_class("model"),
+        inner="Application + model" + marker("model"),
+    )
+    egress_html = region(
+        "egress",
+        classes="boundary region-egress" + active_class("egress"),
+        inner="<small>Boundary 2</small>Egress" + marker("egress"),
+    )
+    authorization_html = region(
+        "authorization",
+        classes="boundary region-authorization" + active_class("authorization"),
+        inner="<small>Boundary 3</small>Authorization" + marker("authorization"),
+    )
+    integrity_html = region(
+        "integrity",
+        classes="boundary region-integrity" + active_class("integrity"),
+        inner="<small>Boundary 4</small>Integrity" + marker("integrity"),
+    )
+    sources_html = "".join(
+        [inert("Email"), inert("Web"), inert("Documents"), pill("RAG"), inert("MCP")]
+    )
+    outbound_html = inert("Outbound content")
+    users_sink_html = inert("Users and data sinks")
+    proposal_html = inert("Tool proposal")
+    tools_sink_html = inert("Tools and action sinks")
+    # Both rails render the same pill shape so the interactive terms are told
+    # apart by treatment rather than by guessing which word is a link.
+    flow_terms = "".join(
+        [
+            inert_pill("source trust"),
+            inert_pill("principal trust"),
+            inert_pill("sensitivity"),
+            inert_pill("content type"),
+            pill("policy"),
+        ]
+    )
+    session_terms = "".join(
+        pill(term)
+        for term in (
+            "remembered canary",
+            "provenance",
+            "DLP history",
+            "contamination",
+            "escalation",
+            "rate counters",
+        )
+    )
     compact_class = " compact-map" if compact else ""
-    return f"""<div class="system-map{compact_class}" aria-label="GuardLLM surface map">
-<div class="sources"><span>Email</span><span>Web</span><span>Documents</span><span>RAG</span><span>MCP</span></div>
-<div class="flow"><div class="boundary{active_class("ingress")}"><small>Boundary 1</small>Ingress{marker("ingress")}</div><div class="node{active_class("model")}">Application + model{marker("model")}</div><div class="branches"><div class="lane"><span>Outbound content</span><span class="arrow">↓</span><div class="boundary{active_class("egress")}"><small>Boundary 2</small>Egress{marker("egress")}</div><span>Users and data sinks</span></div><div class="lane"><span>Tool proposal</span><span class="arrow">↓</span><div class="boundary{active_class("authorization")}"><small>Boundary 3</small>Authorization{marker("authorization")}</div><div class="boundary{active_class("integrity")}"><small>Boundary 4</small>Integrity{marker("integrity")}</div><span>Tools and action sinks</span></div></div></div>
+    return f"""<nav class="system-map-nav" aria-label="Architecture navigation"><a class="skip-map" href="#{SKIP_MAP_TARGET}">Skip architecture links</a><div class="system-map{compact_class}" aria-label="GuardLLM surface map">
+<div class="sources">{sources_html}</div>
+<div class="flow">{ingress_html}{model_html}<div class="branches"><div class="lane">{outbound_html}<span class="arrow" aria-hidden="true">↓</span>{egress_html}{users_sink_html}</div><div class="lane">{proposal_html}<span class="arrow" aria-hidden="true">↓</span>{authorization_html}{integrity_html}{tools_sink_html}</div></div></div>
 <p class="lane-note"><strong>The lanes can overlap:</strong> a tool call can require authorization and integrity checks while its outbound arguments require separate egress inspection.</p>
-<div class="rails"><div class="rail"><strong>Per-flow context</strong>source trust · principal trust · sensitivity · content type · policy</div><div class="rail"><strong>Per-session state</strong>remembered canary · provenance · DLP history · contamination · escalation · rate counters</div></div></div>"""
+<div class="rails"><div class="rail"><strong>Per-flow context</strong>{flow_terms}</div><div class="rail"><strong>Per-session state</strong>{session_terms}</div></div></div></nav><span id="{SKIP_MAP_TARGET}" tabindex="-1"></span>"""
 
 
 def _path_strip(active: str) -> str:
@@ -1562,7 +1689,7 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="wrap {html.escape(extra_class)}"><nav><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
+<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
 """
 
 
@@ -1614,7 +1741,8 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                 HtmlFragment(
                     '<p class="step-body">The email path is one route through the four boundaries. '
                     "The complete reference adds web, documents, RAG, MCP, both outbound lanes, "
-                    f"and the two state rails.</p>{_map('')}"
+                    f"and the two state rails.</p>"
+                    f"{_map('', current_page='guardllm_demos.html')}"
                 ),
                 "View the full system map to locate every direct-entry card.",
             ),
@@ -1876,7 +2004,6 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     cards = [
-        ("Primary narrative", "guardllm_demos.html", "Cross-stage escalation"),
         ("Ingress", "guardllm_pipeline_demo.html", "Actual processing order"),
         ("RAG provenance", "guardllm_rag_demos.html", "Lexical no-copy boundary"),
         ("Tool feedback", "guardllm_tool_feedback_demo.html", "Host closes the loop"),
@@ -1895,7 +2022,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
     pages[
         DEMO_DIR / "guardllm_surface_map.html"
-    ] = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GuardLLM system map</title><style>{STYLE}</style></head><body><main class="wrap"><nav><a href="guardllm_demos.html">Primary narrative</a></nav><h1>GuardLLM system map</h1><p class="lead">Five source families feed four trust boundaries and two outbound lanes. Per-flow context and per-session state remain separate because they answer different questions and change on different lifecycles.</p>{_map("")}<div class="cards">{card_html}</div></main></body></html>
+    ] = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GuardLLM system map</title><style>{STYLE}</style></head><body><main class="wrap"><h1>GuardLLM system map</h1><p class="lead">Five source families feed four trust boundaries and two outbound lanes. Per-flow context and per-session state remain separate because they answer different questions and change on different lifecycles.</p><a class="cta" href="guardllm_demos.html"><strong>Start here: see one blocked leak change the next decision</strong><span>Primary narrative &middot; cross-stage escalation across all four boundaries</span></a>{_map("", current_page="guardllm_surface_map.html")}<p class="cards-heading">Explore one mechanism</p><div class="cards">{card_html}</div></main></body></html>
 """
     return pages
 

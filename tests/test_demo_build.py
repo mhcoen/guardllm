@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import shutil
@@ -151,3 +152,120 @@ assert.equal(fakeSteps[0].focusCount, 1);
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _load_generator():
+    """Import the generator so the destination table can be asserted directly."""
+    name = "guardllm_build_demos"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "build_demos.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+MAP_PAGES = ("guardllm_surface_map.html", "guardllm_demos.html")
+
+
+def _map_nav(page: str) -> str:
+    """The architecture navigation landmark, which is the whole interactive map."""
+    match = re.search(r'<nav class="system-map-nav".*?</nav>', page, re.S)
+    assert match, "the surface map should render inside a navigation landmark"
+    return match.group(0)
+
+
+def test_map_regions_link_to_real_destinations():
+    generator = _load_generator()
+    destinations = generator.MAP_DESTINATIONS
+
+    # The reduced link set: every mechanism-bearing region, and nothing else.
+    # Adding a link here is a deliberate design change, not an accident.
+    assert len(destinations) == 13
+    for key, (href, label) in destinations.items():
+        assert (DEMO / href).exists(), f"{key} points at a missing page: {href}"
+        assert label, f"{key} has no destination label"
+
+    nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    hrefs = [h for h in re.findall(r'<a [^>]*href="([^"]+)"', nav) if not h.startswith("#")]
+    assert len(hrefs) == 13
+    assert set(hrefs) == {href for href, _ in destinations.values()}
+    for href in hrefs:
+        assert (DEMO / href).exists()
+
+
+def test_every_map_link_names_its_destination():
+    """A link that does not say where it goes recreates the guessing problem."""
+    generator = _load_generator()
+    labels = dict(generator.MAP_DESTINATIONS.values())
+    nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    anchors = re.findall(r"<a class=\"[^\"]*(?:map-region|rail-pill)[^\"]*\".*?</a>", nav, re.S)
+    assert len(anchors) == 13
+    for anchor in anchors:
+        href = re.search(r'href="([^"]+)"', anchor).group(1)
+        expected = labels[href]
+        assert expected in anchor, f"link to {href} does not name {expected!r}"
+        assert re.search(r"[Oo]pen ", anchor), f"link to {href} has no open affordance"
+
+
+def test_inert_map_regions_are_not_links():
+    """Connectors, lanes, endpoints and repeated source labels stay inert."""
+    generator = _load_generator()
+    for name in MAP_PAGES:
+        nav = _map_nav((DEMO / name).read_text())
+        for label in generator.INERT_MAP_LABELS:
+            linked = re.search(r"<a\b[^>]*>(?:(?!</a>).)*" + re.escape(label), nav, re.S)
+            assert not linked, f"{label} should not be a link on {name}"
+
+
+def test_map_skip_link_has_a_real_target():
+    """Landmarks do not shorten the Tab sequence, so a skip link must exist."""
+    generator = _load_generator()
+    target = generator.SKIP_MAP_TARGET
+    for name in MAP_PAGES:
+        page = (DEMO / name).read_text()
+        nav = _map_nav(page)
+        assert f'<a class="skip-map" href="#{target}">' in nav
+        assert "Skip architecture links" in nav
+        # The target sits after the landmark so skipping clears every map link.
+        assert f'<span id="{target}" tabindex="-1"></span>' in page
+        assert page.index(f'id="{target}"') > page.index('class="system-map-nav"')
+
+
+def test_current_page_regions_are_marked_not_linked():
+    """The map renders on two pages, so it must never link to the page it is on."""
+    page = (DEMO / "guardllm_demos.html").read_text()
+    nav = _map_nav(page)
+    assert 'href="guardllm_demos.html"' not in nav
+    assert nav.count('aria-current="page"') == 2
+    assert "You are viewing this" in nav
+
+    # The surface map is not itself a demo destination, so nothing is current.
+    surface = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    assert 'aria-current="page"' not in surface
+    assert 'href="guardllm_surface_map.html"' not in surface
+
+
+def test_map_focus_and_outcome_colors_are_preserved():
+    page = (DEMO / "guardllm_surface_map.html").read_text()
+    # One consistent focus ring, never themed per region.
+    assert ":focus-visible{outline:2px solid var(--focus)" in page
+    assert page.count("--focus:") == 1
+    # Red, green and amber stay reserved for deny, allow and warn.
+    for tint in re.findall(r"\.region-[a-z]+\{background:(#[0-9a-f]{6})\}", page):
+        r, g, b = (int(tint[i : i + 2], 16) for i in (1, 3, 5))
+        assert b >= r and b >= g, f"region tint {tint} is not a desaturated cool tone"
+    assert ".allow{color:var(--green)}" in page
+    assert ".deny{color:var(--red)}" in page
+    assert ".warn{color:var(--amber)}" in page
+
+
+def test_surface_map_promotes_the_primary_narrative():
+    page = (DEMO / "guardllm_surface_map.html").read_text()
+    assert '<a class="cta" href="guardllm_demos.html">' in page
+    assert "Start here" in page
+    # Promoted out of the equal-weight card grid rather than duplicated into it.
+    cards = page.split('<div class="cards">', 1)[1]
+    assert 'href="guardllm_demos.html"' not in cards
+    assert page.index('class="cta"') < page.index('<div class="cards">')

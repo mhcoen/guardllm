@@ -1776,6 +1776,7 @@ STYLE = """
 .steps.layout-pipeline{gap:0}.layout-pipeline .step{position:relative;margin-left:14px;padding-left:26px;border-radius:0;border-top-width:0}.layout-pipeline .step:first-child{border-top-width:1px;border-radius:12px 12px 0 0}.layout-pipeline .step:last-child{border-radius:0 0 12px 12px}.layout-pipeline .step::before{content:"";position:absolute;left:9px;top:22px;width:9px;height:9px;border-radius:50%;background:var(--blue)}.layout-pipeline .step::after{content:"";position:absolute;left:13px;top:31px;bottom:-2px;width:1px;background:var(--line)}.layout-pipeline .step:last-child::after{display:none}
 .step-group{border:1px solid var(--line);border-radius:12px;background:#101319;padding:14px}.group-head{margin:0 0 11px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.step-group .step{margin-bottom:10px}.step-group .step:last-child{margin-bottom:0}.step-group .step h3{margin:0 0 7px;font-size:16px}
 .layout-timeline .step-group .step{position:relative;padding-left:28px}.layout-timeline .step-group .step::before{content:"";position:absolute;left:9px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.layout-timeline .step-group .step::after{content:"";position:absolute;left:13px;top:32px;bottom:-11px;width:1px;background:var(--line)}.layout-timeline .step-group .step:last-child::after{display:none}
+.supporting h1{font-size:clamp(23px,3.2vw,31px);margin:.15em 0 .1em}.supporting .lead{font-size:16px;max-width:70ch}.caveats{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}.caveats p{margin:0 0 7px;color:var(--sub);font-size:13px}.caveats p:last-child{margin-bottom:0}.caveats strong{color:var(--text)}
 .rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
 .inert{color:var(--muted)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -1969,6 +1970,7 @@ def _page(
     layout: str = "stack",
     groups: list[tuple[str, list]] | None = None,
     lead_step: bool = False,
+    caveats: tuple[str, ...] = (),
 ) -> str:
     fixture_json = json.dumps(fixture, sort_keys=True, ensure_ascii=False).replace("<", "\\u003c")
     displayed = sum(len(entries) for _, entries in groups) if groups else len(steps)
@@ -2047,6 +2049,22 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         f'<span class="chip">Test: <code>{html.escape(test_node.split("::", 1)[0])}</code></span></div>'
     )
     command = f".venv/bin/python -m pytest {test_node} -q"
+    # The narrative is the entry point and keeps its full heading. Every other
+    # page is a reference card reached from it, so it sits a step quieter.
+    wrap_class = " ".join(
+        part
+        for part in ("wrap", "" if layout == "stepper" else "supporting", html.escape(extra_class))
+        if part
+    )
+    # Instrumentation notes and scope limits belong with the evidence, not above
+    # the demonstration. They are what a reader checks after seeing the result.
+    caveat_html = (
+        '<div class="caveats"><p><strong>Scope and instrumentation</strong></p>'
+        + "".join(f"<p>{html.escape(item)}</p>" for item in caveats)
+        + "</div>"
+        if caveats
+        else ""
+    )
     if orientation == "path":
         orientation_html = _path_strip(active)
     elif orientation == "full":
@@ -2057,7 +2075,7 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="wrap {html.escape(extra_class)}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}{evidence}<details><summary>Reproduce the evidence</summary><p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
+<body><main class="{wrap_class}"><nav aria-label="Demo navigation"><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}<details><summary>Evidence, scope, and reproduction</summary>{caveat_html}{evidence}<p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script></body></html>
 """
 
 
@@ -2162,7 +2180,11 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
 
     pages[DEMO_DIR / "guardllm_pipeline_demo.html"] = _page(
         title="The observed ingress call order",
-        lead="The generator instruments seven security-relevant call sites on one canary-enabled SecurityPipeline.process_inbound call and records those instrumented operations in observed order. Each fixture step reports the state captured immediately around its own call, and the enclosing frame can still change state between two instrumented sites. Newly added operations require explicit instrumentation before this page can claim to show them.",
+        lead="Seven instrumented call sites inside one canary-enabled SecurityPipeline.process_inbound call, in the order they were observed.",
+        caveats=(
+            "Each fixture step reports the state captured immediately around its own call, and the enclosing frame can still change state between two instrumented sites.",
+            "Newly added operations require explicit instrumentation before this page can claim to show them.",
+        ),
         active="Ingress",
         fixture=ingress,
         interactive=False,
@@ -2173,7 +2195,11 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     rag = s["rag"]
     pages[DEMO_DIR / "guardllm_rag_demos.html"] = _page(
         title="RAG provenance is lexical, not semantic",
-        lead="One pipeline registers the retrieved span once, then evaluates every outbound comparison against that persistent provenance. A retrieved phishing steer needs no hidden instruction, and semantic similarity remains outside this lexical defense.",
+        lead="Provenance matches text, not meaning.",
+        caveats=(
+            "One pipeline registers the retrieved span once, then evaluates every outbound comparison against that persistent provenance.",
+            "A retrieved phishing steer needs no hidden instruction, and semantic similarity remains outside this lexical defense.",
+        ),
         active="ingress+egress",
         fixture=rag,
         interactive=False,
@@ -2255,7 +2281,10 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     dlp = s["dlp_canary"]
     pages[DEMO_DIR / "guardllm_canary_demos.html"] = _page(
         title="Five egress signals, with the strongest attribution first",
-        lead="Each signal below runs on its own fresh, named pipeline. These are independent comparisons, not one five-step session. A remembered canary receives specific attribution because GuardLLM already knows its value.",
+        lead="A remembered canary receives specific attribution because GuardLLM already knows its value. The other four signals do not.",
+        caveats=(
+            "Each signal below runs on its own fresh, named pipeline. These are independent comparisons, not one five-step session.",
+        ),
         active="Egress",
         fixture=dlp,
         interactive=False,
@@ -2313,7 +2342,10 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
     pages[DEMO_DIR / "guardllm_policy_matrix_demo.html"] = _page(
         title="A scoped view of client tool policy",
-        lead="These lanes cover allowlist and destructive-tool enablement followed by authorization. They assume principal trust, denylist, capability scopes, contamination and escalation policy, message binding, action and bidirectional scope checks, TTL, rate policy, and request binding have not already denied the call.",
+        lead="Five client-mode decisions, covering allowlist and destructive-tool enablement, then authorization.",
+        caveats=(
+            "These lanes assume principal trust, denylist, capability scopes, contamination and escalation policy, message binding, action and bidirectional scope checks, TTL, rate policy, and request binding have not already denied the call.",
+        ),
         active="authorization",
         fixture=policy,
         interactive=False,
@@ -2376,7 +2408,11 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     ]
     pages[DEMO_DIR / "guardllm_rate_limit_demo.html"] = _page(
         title="Rate limiting: signals versus blocks",
-        lead="Recipient novelty and burst patterns are non-blocking anomalies. The hard hourly cap denies. The burst count includes the proposal being checked, so a threshold of three flags the third send inside the window rather than the one after it. Counting only completed actions would leave a burst of exactly three silent.",
+        lead="Recipient novelty and burst patterns are non-blocking anomalies. The hard hourly cap denies.",
+        caveats=(
+            "The burst count includes the proposal being checked, so a threshold of three flags the third send inside the window rather than the one after it.",
+            "Counting only completed actions would leave a burst of exactly three silent.",
+        ),
         active="egress+authorization",
         fixture=rate,
         interactive=False,
@@ -2438,7 +2474,10 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     sc_trusted = sc["trusted_inbound"]["content"].split("\n", 1)[0]
     pages[DEMO_DIR / "guardllm_security_context_demo.html"] = _page(
         title="What GuardLLM knows outside the model",
-        lead="Per-flow context is supplied by the host on every call. It is never inferred from content, and it is not retained between flows. This page runs one text through two sessions that differ in a single declared field, so the effect of the declaration can be read off the results rather than argued for.",
+        lead="Per-flow context is supplied by the host on every call. It is never inferred from content, and it is not retained between flows.",
+        caveats=(
+            "This page runs one text through two sessions that differ in a single declared field, so the effect of the declaration can be read off the results rather than argued for.",
+        ),
         active="Ingress+Authorization",
         fixture=sc,
         interactive=False,

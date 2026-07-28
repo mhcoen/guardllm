@@ -418,3 +418,37 @@ def test_new_layouts_reject_shapes_their_fixtures_do_not_support():
     # A lead step is a setup plus the compared cases, not one of them.
     with pytest.raises(ValueError, match="lead step needs"):
         check("comparison", scenarios["rag"], (), lead_step=True, displayed=3)
+
+
+def test_page_chrome_stays_out_of_the_way():
+    """Furniture sits below the demonstration, not above it."""
+    for name in LAYOUTS:
+        page = (DEMO / name).read_text()
+        lead = re.search(r'<p class="lead">(.*?)</p>', page, re.S).group(1)
+        assert len(lead) <= 200, (name, len(lead))
+        assert lead.count(". ") <= 1, f"{name} lead runs past two sentences"
+
+        # The evidence chips and any scope notes live inside the drawer.
+        head, drawer = page.split("<details>", 1)
+        assert 'class="evidence-strip"' not in head, name
+        assert 'class="evidence-strip"' in drawer, name
+        assert 'class="caveats"' not in head, name
+
+        # The narrative is the entry point; reference cards sit a step quieter.
+        supporting = 'class="wrap supporting"' in page
+        assert supporting == (name != "guardllm_demos.html"), name
+
+
+def test_relocated_scope_notes_survive_in_the_drawer():
+    """Shortening a lead must move its caveats, not delete them."""
+    expected = {
+        "guardllm_canary_demos.html": "independent comparisons, not one five-step session",
+        "guardllm_rag_demos.html": "One pipeline registers the retrieved span once",
+        "guardllm_rate_limit_demo.html": "leave a burst of exactly three silent",
+        "guardllm_pipeline_demo.html": "require explicit instrumentation",
+        "guardllm_policy_matrix_demo.html": "have not already denied the call",
+    }
+    for name, sentence in expected.items():
+        page = (DEMO / name).read_text()
+        drawer = page.split("<details>", 1)[1]
+        assert sentence in drawer, name

@@ -131,7 +131,9 @@ This release completes the session-risk feedback mechanism designed in the "meta
 - Tutorials and examples covering MCP client/server hardening, web/email/document/calendar untrusted input, action gating, audit logging, validation, and a full end-to-end flow.
 - Benchmark methodology and canonical results comparing against OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Llama Guard 4, and ProtectAI DeBERTa.
 
-[Unreleased]: https://github.com/mhcoen/guardllm/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/mhcoen/guardllm/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/mhcoen/guardllm/compare/v1.2.0...v2.0.0
+[1.2.0]: https://github.com/mhcoen/guardllm/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mhcoen/guardllm/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/mhcoen/guardllm/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/mhcoen/guardllm/compare/v1.0.1...v1.0.2

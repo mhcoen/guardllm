@@ -47,20 +47,30 @@ What this does:
 Use validation, authorization, and binding before any sensitive tool execution.
 
 ```python
-from guardllm import Guard
+from guardllm import Guard, PolicyConfig
 
 guard = Guard()
 tool = "gmail_send_email"
 args = {"to": "alice@example.com", "subject": "Update", "body": "Hello"}
 msg = "send an update email to alice@example.com"
 
+# Sending mail is destructive, so it is disabled by default. Enable it
+# deliberately, per flow, on the context you pass to the check.
+context = Guard.context_mcp_server(
+    "mail-tools",
+    policy=PolicyConfig(enable_destructive=True),
+)
+
 validation = guard.validate_tool_args(tool, args)
 if not validation.valid:
     raise ValueError(validation.errors)
 
+# The scope must cover every argument actually dispatched. Authorizing only
+# "to" while sending "subject" and "body" is refused: those fields are outside
+# what was approved.
 auth = Guard.authorize(
     action=tool,
-    scope={"to": "alice@example.com"},
+    scope=dict(args),
     user_message=msg,
 )
 binding = Guard.bind_request(
@@ -73,7 +83,7 @@ binding = Guard.bind_request(
 result = guard.check_tool_call(
     tool=tool,
     args=args,
-    context=Guard.context_mcp_client(client_id="app-client"),
+    context=context,
     authorization=auth,
     binding=binding,
     user_message=msg,
@@ -81,6 +91,7 @@ result = guard.check_tool_call(
 
 if not result.allowed:
     raise PermissionError(result.reason)
+# result.allowed is True here, with reason "Authorization verified".
 ```
 
 ## 4) Check Outbound Content

@@ -11,7 +11,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-- Python 3.10 or later (tested on 3.10, 3.11, 3.12, 3.14)
+- Python 3.10 or later (CI covers 3.10, 3.11, 3.12, 3.13)
 - Reference platform: Mac M3 Max with 128 GB unified memory (all timings in Tiers 1-5 are from this machine unless noted otherwise)
 - GPU platform: Linux with NVIDIA A100 80 GB (Tier 6 GPU competitor timings are from this machine)
 - Core dependency: `beautifulsoup4>=4.12` (installed automatically)
@@ -50,7 +50,7 @@ If `jsonschema` is not installed, the `schema_jsonschema` strategy cannot run ac
 pytest -q
 ```
 
-Expected: 514 tests pass (excluding the parametrized eval suite; 6,443 total with eval suite).
+Expected: 514 tests pass (excluding the parametrized eval suite). The full suite total is asserted by `tests/test_documentation_claims.py`, which fails if this figure drifts, rather than being restated here as a number that ages.
 
 ### Run benchmark regression with checkpoint validation
 
@@ -75,7 +75,7 @@ This parametrizes each non-`inbound_sanitize` benchmark case as an individual py
 
 Benchmark cases come from two sources, both committed in the repository:
 
-1. **Native fixtures** in `benchmarks/cases/*.jsonl` (729 cases across 12 files): hand-authored threat patterns covering prompt injection, tool abuse, secrets exfiltration, unicode evasion, cross-boundary exfiltration, error sanitization, and more.
+1. **Native fixtures** in `benchmarks/cases/*.jsonl` (751 cases across 14 files): hand-authored threat patterns covering prompt injection, tool abuse, secrets exfiltration, unicode evasion, cross-boundary exfiltration, error sanitization, and more.
 
 2. **Upstream-derived snapshots** in `benchmarks/upstream/<suite>/<version>/mapped_cases.jsonl` (up to 10,064 cases across 9 suites): imported from pinned commits of external benchmark repositories (PINT, BIPIA, AgentDojo, JailbreakBench, HarmBench, InjecAgent, MCPBench, mcp-bench, WAInjectBench).
 
@@ -513,7 +513,7 @@ Run Tier 3. The methodology uses deterministic stratified dev/test split (seed=1
 ## Dataset Provenance
 
 The canonical dataset (`canonical-v1`) is built from:
-- 12 native fixture files in `benchmarks/cases/` (729 cases)
+- 14 native fixture files in `benchmarks/cases/` (751 cases)
 - 9 upstream-derived snapshots in `benchmarks/upstream/` (up to 10,064 cases)
 
 All upstream sources are pinned by commit SHA in `benchmarks/upstream/manifest.json`. Two suites (`mcp_bench`, `wainjectbench`) have unclear upstream licensing and must be fetched directly from their source repositories.

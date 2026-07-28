@@ -449,3 +449,38 @@ def test_unreproducible_vendor_table_is_labelled_as_such():
         readme = (ROOT / "README.md").read_text()
         assert "not\ncurrently reproducible from a tracked artifact" in readme
         assert "benchmarks/runs/" in readme
+
+
+def test_homepage_architecture_model_matches_the_implementation():
+    """The homepage described a context that follows content end to end.
+
+    It does not. Each operation receives a current per-flow SecurityContext,
+    what persists is derived session state, and two of the operations the page
+    named take no context at all.
+    """
+    import inspect
+
+    from guardllm import Guard
+
+    # The claim these sentences used to rest on, checked against the signatures.
+    assert "ctx" not in inspect.signature(Guard.bind_request).parameters
+    assert "context" not in inspect.signature(Guard.bind_request).parameters
+    assert "ctx" not in inspect.signature(Guard.sanitize_exception).parameters
+    assert "context" not in inspect.signature(Guard.sanitize_exception).parameters
+    # Operations that do take one take it per call, not from a stored context.
+    for method in (Guard.check_tool_call, Guard.check_outbound, Guard.process_inbound):
+        names = inspect.signature(method).parameters
+        assert "ctx" in names or "context" in names, method.__name__
+
+    readme = (ROOT / "README.md").read_text()
+    for retired in (
+        "security context that follows content",
+        "all reference the labels established at ingress",
+        "error sanitization use the same trust labels",
+        "continuously track the same security labels established at ingress",
+    ):
+        assert retired not in readme, f"retired architecture claim is back: {retired}"
+
+    assert "per-flow `SecurityContext` the host supplies on every call" in readme
+    assert "Request binding reads neither" in readme
+    assert "Error sanitization is unconditional and takes no context at all" in readme

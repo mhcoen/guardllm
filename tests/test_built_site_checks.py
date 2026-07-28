@@ -105,3 +105,60 @@ def test_ci_builds_and_checks_the_site():
     assert "scripts/check_built_site.py _site" in workflow
     # Pinned, like every other tool in this workflow.
     assert "gem install github-pages -v" in workflow
+
+
+def test_anchor_check_covers_prose_links_not_only_contents(tmp_path):
+    """The contents check only covered the defect that had already happened."""
+    checker = _checker()
+    site = _site(
+        tmp_path,
+        {"docs/page.html": '<p>see <a href="#renamed">this</a></p><h2 id="original">x</h2>'},
+    )
+    problems = checker.check_all_anchors(site)
+    assert any("#renamed has no target" in p for p in problems)
+
+
+def test_duplicate_id_check_flags_an_unreachable_heading(tmp_path):
+    checker = _checker()
+    site = _site(tmp_path, {"a.html": '<h2 id="dup">one</h2><h2 id="dup">two</h2>'})
+    assert any("appears more than once" in p for p in checker.check_duplicate_ids(site))
+
+
+def test_asset_check_flags_a_missing_image(tmp_path):
+    checker = _checker()
+    site = _site(tmp_path, {"a.html": '<img src="img/missing.png">'})
+    assert any("missing asset" in p for p in checker.check_assets_resolve(site))
+
+
+def test_markdown_url_check_flags_a_link_to_raw_source(tmp_path):
+    """Direct .md URLs serve raw Markdown rather than a rendered page."""
+    checker = _checker()
+    site = _site(tmp_path, {"a.html": '<a href="docs/security.md">security</a>'})
+    assert any("serves raw Markdown" in p for p in checker.check_no_markdown_urls(site))
+
+
+def test_new_checks_pass_on_sound_input(tmp_path):
+    """None of the added checks may be vacuous."""
+    checker = _checker()
+    site = _site(
+        tmp_path,
+        {
+            "a.html": '<a href="#ok">x</a><h2 id="ok">ok</h2><img src="img/p.png">',
+            "img/p.png": "",
+        },
+    )
+    assert checker.check_all_anchors(site) == []
+    assert checker.check_duplicate_ids(site) == []
+    assert checker.check_assets_resolve(site) == []
+    assert checker.check_no_markdown_urls(site) == []
+
+
+def test_ci_measures_mobile_layout_in_a_browser():
+    """A substring in the stylesheet says nothing about a phone."""
+    workflow = (ROOT / ".github" / "workflows" / "lint.yml").read_text()
+    assert "playwright install" in workflow
+    assert "scripts/check_mobile_layout.py _site" in workflow
+    script = (ROOT / "scripts" / "check_mobile_layout.py").read_text()
+    assert '"width": 390' in script
+    # It must measure, not assert on source text.
+    assert "scrollWidth" in script and "getComputedStyle" in script

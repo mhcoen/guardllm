@@ -70,6 +70,60 @@ def check_internal_links(site: Path) -> list[str]:
     return problems
 
 
+def check_all_anchors(site: Path) -> list[str]:
+    """Every in-page anchor, not only the ones in a table of contents.
+
+    The contents check covered the defect that had already happened. A prose
+    link to a renamed section fails the same way and was invisible.
+    """
+    problems: list[str] = []
+    for page in _pages(site):
+        html = page.read_text(errors="ignore")
+        ids = set(re.findall(r'id="([^"]+)"', html)) | set(re.findall(r'name="([^"]+)"', html))
+        for anchor in re.findall(r'href="#([^"]+)"', html):
+            if unquote(anchor) not in ids:
+                problems.append(f"{page.relative_to(site)} -> #{anchor} has no target")
+    return problems
+
+
+def check_duplicate_ids(site: Path) -> list[str]:
+    """Two headings sharing an id make one of them unreachable by anchor."""
+    problems: list[str] = []
+    for page in _pages(site):
+        found = re.findall(r'id="([^"]+)"', page.read_text(errors="ignore"))
+        for value in {v for v in found if found.count(v) > 1}:
+            problems.append(f"{page.relative_to(site)}: id {value!r} appears more than once")
+    return problems
+
+
+def check_assets_resolve(site: Path) -> list[str]:
+    """A published page referencing a missing image or stylesheet is broken."""
+    problems: list[str] = []
+    for page in _pages(site):
+        for attr in re.findall(r'(?:src|srcset)="([^"]+)"', page.read_text(errors="ignore")):
+            ref = attr.split()[0].split(",")[0]
+            parsed = urlparse(ref)
+            if parsed.scheme or parsed.netloc or not parsed.path:
+                continue
+            if parsed.path in THEME_ASSETS:
+                continue
+            base = site if parsed.path.startswith("/") else page.parent
+            if not (base / unquote(parsed.path).lstrip("/")).resolve().exists():
+                problems.append(f"{page.relative_to(site)} -> {ref} (missing asset)")
+    return problems
+
+
+def check_no_markdown_urls(site: Path) -> list[str]:
+    """Direct .md URLs serve raw source, so a published page must not link one."""
+    problems: list[str] = []
+    for page in _pages(site):
+        for href in re.findall(r'href="([^"]+\.md)"', page.read_text(errors="ignore")):
+            if urlparse(href).scheme:
+                continue
+            problems.append(f"{page.relative_to(site)} -> {href} (serves raw Markdown)")
+    return problems
+
+
 def check_toc_anchors(site: Path) -> list[str]:
     """A table of contents must contain real anchors, not literal Markdown."""
     problems: list[str] = []
@@ -122,6 +176,10 @@ def main() -> int:
         ("required pages", check_required),
         ("internal links", check_internal_links),
         ("tables of contents", check_toc_anchors),
+        ("in-page anchors", check_all_anchors),
+        ("duplicate ids", check_duplicate_ids),
+        ("assets", check_assets_resolve),
+        ("markdown urls", check_no_markdown_urls),
         ("table overflow", check_table_overflow),
     ):
         found = check(args.site)

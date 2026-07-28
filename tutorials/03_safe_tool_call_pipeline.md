@@ -1,5 +1,9 @@
 # Tutorial 03: Safe Tool Call Pipeline
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 Script:
 - `tutorials/03_safe_tool_call_pipeline.py`
 

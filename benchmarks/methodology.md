@@ -1,5 +1,9 @@
 # Benchmark Methodology
 
+<!-- nav:start -->
+[Home](../README.md) / [Benchmarks](README.md)
+<!-- nav:end -->
+
 This file is the protocol contract for benchmark metrics and figures.
 
 ## Dataset And Unit Of Evaluation

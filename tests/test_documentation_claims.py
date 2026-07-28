@@ -606,14 +606,28 @@ def test_documentation_navigation_is_current():
 
 
 def test_every_documentation_page_offers_a_way_back():
-    """A reader arriving from search had no route to any index."""
-    pages = [p for p in (DOCS).glob("*.md") if p.name != "README.md"]
+    """A reader arriving from search had no route to any index.
+
+    Coverage is every page under docs/, tutorials/, and benchmarks/. Root
+    documents are excluded deliberately: README.md is itself an index, and a
+    breadcrumb on the changelog would be noise. benchmarks/published/ is
+    excluded because the evidence generator owns those files.
+    """
+    pages = [p for p in DOCS.glob("*.md") if p.name != "README.md"]
     pages += [p for p in (DOCS / "integrations").glob("*.md") if p.name != "README.md"]
-    assert len(pages) >= 12
+    pages += [p for p in (ROOT / "tutorials").glob("*.md") if p.name != "README.md"]
+    pages += [p for p in (ROOT / "benchmarks").glob("*.md") if p.name != "README.md"]
+    # The tutorials were the pages most likely to be reached directly, and they
+    # were the ones orphaned in the first place.
+    assert len([p for p in pages if p.parent.name == "tutorials"]) == 6
+    assert len(pages) >= 24
     for path in pages:
         text = path.read_text()
         assert "<!-- nav:start -->" in text, path.name
-        assert "Docs index" in text, path.name
+        trail = text.split("<!-- nav:start -->", 1)[1].split("<!-- nav:end -->", 1)[0]
+        # The trail must contain at least one link back to an index, whichever
+        # index that page belongs under.
+        assert re.search(r"\]\([^)]*README\.md\)", trail), path.name
         # The breadcrumb sits under the title, not buried mid-page.
         assert text.index("<!-- nav:start -->") < 200, path.name
 
@@ -685,3 +699,29 @@ def test_generated_tables_of_contents_are_processed_as_markdown():
     for path in (DOCS / "api_spec.md", ROOT / "REPRODUCE.md"):
         block = path.read_text().split("<!-- toc:start -->", 1)[1]
         assert '<details markdown="1">' in block, path.name
+
+
+def test_generators_do_not_write_the_same_file():
+    """Two generators owning one file means the second wins and the first fails.
+
+    The nav generator briefly reached into benchmarks/published/, which the
+    evidence generator writes, and the evidence --check went red immediately.
+    """
+    published = ROOT / "benchmarks" / "published"
+    for path in published.glob("*.md"):
+        assert "nav:start" not in path.read_text(), f"{path.name} is generator-owned"
+
+    for script, flag in (
+        ("build_doc_nav.py", "--check"),
+        ("publish_benchmark_evidence.py", "--check"),
+    ):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / script), flag],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, f"{script}: {result.stdout}{result.stderr}"

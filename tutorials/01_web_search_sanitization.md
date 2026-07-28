@@ -1,5 +1,9 @@
 # Tutorial 01: Sanitize Web Search Content
 
+<!-- nav:start -->
+[Home](../README.md) / [Tutorials](README.md)
+<!-- nav:end -->
+
 Use this when your LLM application ingests search results from unknown websites.
 
 Script:

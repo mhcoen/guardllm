@@ -1,5 +1,9 @@
 # Verification Checklist
 
+<!-- nav:start -->
+[Home](../README.md) / [Benchmarks](README.md)
+<!-- nav:end -->
+
 Note on prior discrepancy:
 
 - The previous packet omitted some untracked/new files from the diff export path, so dataset/doc additions were incomplete in the shared patch.

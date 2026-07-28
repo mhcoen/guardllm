@@ -4,26 +4,49 @@
 
 @import "{{ site.theme }}";
 
+/* Nothing may make the page itself wider than the viewport.
+ *
+ * The 390px check found every page scrolling sideways by 193 to 667 pixels
+ * while wide tables were correctly scrolling inside their own boxes. The
+ * tables were not the cause: `width: max-content` lets a table state an
+ * intrinsic width, and an unconstrained ancestor grows to satisfy it, so the
+ * page widened and the table then fit inside it. Constrain the ancestors and
+ * drop the intrinsic width.
+ */
+html,
+body {
+  max-width: 100%;
+}
+
+.container-lg {
+  max-width: 100%;
+}
+
 /* Wide tables scroll within their own box instead of clipping.
  *
- * The security, policy, and benchmark tables have five or more columns and
- * were cut off on narrow screens with no way to reach the missing ones. This
- * is the same treatment GitHub applies to tables in rendered Markdown.
+ * This is the treatment GitHub applies to tables in rendered Markdown, minus
+ * the max-content width, which is what pushed the page wide.
  */
 .markdown-body table {
   display: block;
-  width: max-content;
   max-width: 100%;
   overflow-x: auto;
 }
 
-/* Long code blocks scroll rather than forcing the page to. */
-.markdown-body pre {
+/* Code blocks, images, and long unbroken tokens are the other three ways a
+ * page grows past the viewport.
+ */
+.markdown-body pre,
+.markdown-body code {
   max-width: 100%;
   overflow-x: auto;
 }
 
-/* Keep the page itself from scrolling sideways on a phone. */
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+
 .markdown-body {
   overflow-wrap: break-word;
 }

@@ -48,7 +48,22 @@ def main() -> int:
                 "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
             )
             if overflow > 1:  # allow a rounding pixel
+                widest = page.evaluate(
+                    """() => [...document.querySelectorAll('body *')]
+                        .map(e => ({
+                            tag: e.tagName.toLowerCase(),
+                            cls: (e.className || '').toString().slice(0, 40),
+                            right: Math.round(e.getBoundingClientRect().right),
+                        }))
+                        .filter(e => e.right > window.innerWidth + 1)
+                        .sort((a, b) => b.right - a.right)
+                        .slice(0, 5)"""
+                )
                 problems.append(f"{name}: page scrolls sideways by {overflow}px")
+                for element in widest:
+                    problems.append(
+                        f"    {element['tag']}.{element['cls']} reaches {element['right']}px"
+                    )
 
             # A table wider than the viewport must scroll within its own box.
             bad = page.evaluate(

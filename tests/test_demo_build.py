@@ -452,3 +452,69 @@ def test_relocated_scope_notes_survive_in_the_drawer():
         page = (DEMO / name).read_text()
         drawer = page.split("<details>", 1)[1]
         assert sentence in drawer, name
+
+
+def test_outcome_badges_match_the_fixture_outcomes():
+    """Badge counts are derived from the fixture, not restated from the page.
+
+    Badges are authored per displayed row, so nothing stops one from claiming
+    ALLOWED over a denial. For the pages whose rows correspond one-to-one with
+    fixture results, the expected counts come from the results themselves.
+    """
+    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+
+    dlp = scenarios["dlp_canary"]
+    dlp_results = [
+        dlp["canary_result"],
+        dlp["known_pattern"],
+        dlp["entropy"]["result"],
+        dlp["split_entropy"]["result"],
+        dlp["hex_entropy"]["result"],
+    ]
+    page = (DEMO / "guardllm_canary_demos.html").read_text()
+    assert page.count("BLOCKED") == sum(1 for r in dlp_results if not r["allowed"])
+    assert page.count("ALLOWED") == sum(1 for r in dlp_results if r["allowed"])
+
+    policy = scenarios["policy"]
+    policy_results = [
+        policy[key]
+        for key in (
+            "safe_no_auth",
+            "empty_allowlist",
+            "destructive_disabled",
+            "destructive_no_auth",
+            "destructive_verified",
+        )
+    ]
+    page = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
+    steps = page.split('<div class="steps', 1)[1].split("</div></div>", 1)[0]
+    assert steps.count("BLOCKED") == sum(1 for r in policy_results if not r["allowed"])
+    assert steps.count("&gt; ALLOWED") + steps.count("✓</span> ALLOWED") == sum(
+        1 for r in policy_results if r["allowed"]
+    )
+
+    rate = scenarios["rate_limit"]
+    page = (DEMO / "guardllm_rate_limit_demo.html").read_text()
+    expected_anomalies = sum(1 for e in rate["burst_sequence"] if e["result"]["anomalies"])
+    assert page.count("ANOMALY") == expected_anomalies
+    assert page.count("BLOCKED") == (0 if rate["hard_cap"]["allowed"] else 1)
+
+
+BADGE_RE = re.compile(
+    r'<span class="badge badge-(\w+)"><span aria-hidden="true">([^<]*)</span> ([A-Z ]+)</span>'
+)
+
+
+def test_badges_do_not_rely_on_color_alone():
+    """Every badge carries its glyph and its word, so meaning survives without color."""
+    generator = _load_generator()
+    seen = 0
+    for name in LAYOUTS:
+        page = (DEMO / name).read_text()
+        # The count of parsed badges must equal the count of badge elements, or
+        # the parse is silently skipping some and proving nothing.
+        assert len(BADGE_RE.findall(page)) == page.count('<span class="badge badge-'), name
+        for outcome, glyph, label in BADGE_RE.findall(page):
+            assert (glyph, label) == generator.OUTCOME_BADGES[outcome], (name, outcome)
+            seen += 1
+    assert seen == 31, seen

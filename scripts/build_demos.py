@@ -169,6 +169,16 @@ def validate_scenario_steps(
     return validated
 
 
+# Outcomes are named, not left to the reader to infer from a uniform stripe.
+# Each badge carries a glyph and a word, so the distinction survives without
+# color: blue stays reserved for interaction and focus.
+OUTCOME_BADGES: dict[str, tuple[str, str]] = {
+    "allowed": ("✓", "ALLOWED"),
+    "blocked": ("⛔", "BLOCKED"),
+    "anomaly": ("⚠", "ANOMALY"),
+    "state": ("◆", "STATE RECORDED"),
+}
+
 PAGE_LAYOUTS = frozenset(
     {"stack", "comparison", "branch", "timeline", "stepper", "pipeline", "taxonomy", "contrast"}
 )
@@ -1766,16 +1776,18 @@ def build_fixtures() -> dict:
 
 STYLE = """
 :root{color-scheme:dark;--bg:#0d0f12;--panel:#171a1f;--panel2:#20242b;--line:#343a44;--text:#f1f4f7;--sub:#b5bdc8;--muted:#87909c;--blue:#79b8ff;--green:#9be47c;--red:#ff9292;--amber:#f2c75c;--focus:#79b8ff}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#151922 0,var(--bg) 300px);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:1040px;margin:auto;padding:32px 20px 64px}nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}a{color:var(--blue)}h1{font-size:clamp(28px,5vw,44px);line-height:1.08;margin:.2em 0}.lead{max-width:800px;color:var(--sub);font-size:18px}.system-map{display:grid;gap:10px;margin:26px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:#101319}.sources,.sinks{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;color:var(--sub);font-size:13px}.flow{display:grid;grid-template-columns:1.1fr .8fr 1.2fr;gap:10px;align-items:stretch}.node,.boundary,.lane,.rail{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:12px;text-align:center}.node{display:grid;align-content:center}.boundary{border-style:dashed;display:grid;align-content:center;font-weight:700}.boundary small{display:block;color:var(--muted);font-size:10px;letter-spacing:.09em}.branches{display:grid;grid-template-columns:1fr 1fr;gap:10px}.lane{display:grid;gap:8px}.arrow{color:var(--muted)}.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}.path-marker{display:block;margin-top:4px;color:var(--blue);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.lane-note{margin:0;color:var(--sub);font-size:13px}.rails{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rail{text-align:left;background:#111d29;font-size:13px}.rail strong{display:block;color:var(--text)}.compact-map .sources>*:not(:first-child){display:none}.steps{display:grid;gap:12px;margin-top:24px}.step{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px}.step:focus{outline:2px solid var(--blue);outline-offset:3px}.step[hidden]{display:none}.step h2{font-size:18px;margin:0 0 7px}.step-body{color:var(--text)}.messages{display:grid;gap:8px}.message{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}.message strong{display:block;color:var(--blue);font-size:12px;letter-spacing:.06em;text-transform:uppercase}.result{margin-top:12px;border-left:3px solid var(--blue);background:var(--panel2);padding:10px 12px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.controls{display:flex;align-items:center;gap:10px;margin:16px 0;flex-wrap:wrap}.controls button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer;transition:border-color .12s ease}.controls button:hover:not(:disabled){border-color:var(--focus)}.controls button:disabled{opacity:.45;cursor:default}.status{color:var(--sub)}.evidence-strip{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.chip{border:1px solid var(--line);border-radius:999px;padding:5px 9px;color:var(--sub);font-size:13px}.chip code{color:var(--text)}details{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sub);font-size:12px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{display:block;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}.card:hover{border-color:var(--focus);background:var(--panel2)}.card strong{color:var(--text);display:block}.card span{color:var(--sub);font-size:14px}.outcome{font-weight:700}.allow{color:var(--green)}.deny{color:var(--red)}.warn{color:var(--amber)}@media(max-width:760px){.flow{grid-template-columns:1fr}.branches,.rails{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#151922 0,var(--bg) 300px);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:1040px;margin:auto;padding:32px 20px 64px}nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}a{color:var(--blue)}h1{font-size:clamp(28px,5vw,44px);line-height:1.08;margin:.2em 0}.lead{max-width:800px;color:var(--sub);font-size:18px}.system-map{display:grid;gap:10px;margin:26px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:#101319}.sources,.sinks{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;color:var(--sub);font-size:13px}.flow{display:grid;grid-template-columns:1.1fr .8fr 1.2fr;gap:10px;align-items:stretch}.node,.boundary,.lane,.rail{border:1px solid var(--line);border-radius:9px;background:var(--panel);padding:12px;text-align:center}.node{display:grid;align-content:center}.boundary{border-style:dashed;display:grid;align-content:center;font-weight:700}.boundary small{display:block;color:var(--muted);font-size:10px;letter-spacing:.09em}.branches{display:grid;grid-template-columns:1fr 1fr;gap:10px}.lane{display:grid;gap:8px}.arrow{color:var(--muted)}.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}.path-marker{display:block;margin-top:4px;color:var(--blue);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.lane-note{margin:0;color:var(--sub);font-size:13px}.rails{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rail{text-align:left;background:#111d29;font-size:13px}.rail strong{display:block;color:var(--text)}.compact-map .sources>*:not(:first-child){display:none}.steps{display:grid;gap:12px;margin-top:24px}.step{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px}.step:focus{outline:2px solid var(--blue);outline-offset:3px}.step[hidden]{display:none}.step h2{font-size:18px;margin:0 0 7px}.step-body{color:var(--text)}.messages{display:grid;gap:8px}.message{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}.message strong{display:block;color:var(--blue);font-size:12px;letter-spacing:.06em;text-transform:uppercase}.result{margin-top:12px;border-left:3px solid var(--blue);background:var(--panel2);padding:10px 12px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.controls{display:flex;align-items:center;gap:10px;margin:16px 0;flex-wrap:wrap}.controls button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer;transition:border-color .12s ease}.controls button:hover:not(:disabled){border-color:var(--focus)}.controls button:disabled{opacity:.45;cursor:default}.status{color:var(--sub)}.evidence-strip{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.chip{border:1px solid var(--line);border-radius:999px;padding:5px 9px;color:var(--sub);font-size:13px}.chip code{color:var(--text)}details{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sub);font-size:12px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{display:block;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:16px;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}.card:hover{border-color:var(--focus);background:var(--panel2)}.card strong{color:var(--text);display:block}.card span{color:var(--sub);font-size:14px}.outcome{font-weight:700}.allow{color:var(--green)}.deny{color:var(--red)}.warn{color:var(--amber)}@media(max-width:760px){.flow{grid-template-columns:1fr}.branches,.rails{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 .policy-reference .steps{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}.policy-reference .step{padding:14px}.policy-matrix{margin-top:24px;overflow-x:auto}.policy-matrix table{width:100%;border-collapse:collapse;background:var(--panel)}.policy-matrix th,.policy-matrix td{border:1px solid var(--line);padding:9px;text-align:left;vertical-align:top}.policy-matrix thead th{background:var(--panel2)}.policy-matrix code{color:var(--sub);font-size:12px}@media(max-width:900px){.policy-reference .steps{grid-template-columns:1fr 1fr}}@media(max-width:600px){.policy-reference .steps{grid-template-columns:1fr}}
 .path-strip{display:flex;align-items:center;gap:14px;margin:22px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#111d29;flex-wrap:wrap}.path-strip>strong{color:var(--blue);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.path-route{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.path-route span:not(.path-arrow){border:1px solid var(--line);border-radius:999px;padding:3px 8px;color:var(--sub);font-size:13px}.path-arrow{color:var(--muted)}
 .system-map-nav{position:relative;display:block}.skip-map{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip-map:focus{width:auto;height:auto;clip:auto;left:10px;top:10px;z-index:3;padding:7px 11px;border:1px solid var(--focus);border-radius:8px;background:var(--panel2);color:var(--text);text-decoration:none}
 .map-region{color:inherit;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}a.map-region{cursor:pointer}a.map-region:hover{border-color:var(--focus)}.map-region .go{display:block;margin-top:6px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}a.map-region:hover .go,a.map-region:focus-visible .go{color:var(--focus)}.map-region.is-current{cursor:default;border-style:solid;border-color:var(--sub)}.map-region.is-current .go{color:var(--sub)}
 .region-ingress{background:#101f2b}.region-model{background:#161a24}.region-egress{background:#1d1a2c}.region-authorization{background:#141d2e}.region-integrity{background:#182430}
-.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.steps.layout-comparison,.steps.layout-taxonomy{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));align-items:start}.steps.layout-comparison.has-lead>.step:first-child{grid-column:1/-1}.steps.layout-branch,.steps.layout-timeline,.steps.layout-contrast{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.steps.layout-comparison,.steps.layout-taxonomy{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));align-items:start}.steps.layout-comparison.has-lead{grid-template-columns:repeat(2,minmax(0,1fr))}.steps.layout-comparison.has-lead>.step:first-child,.steps.layout-taxonomy>.step:first-child{grid-column:1/-1}@media(max-width:640px){.steps.layout-comparison.has-lead{grid-template-columns:1fr}}.steps.layout-branch,.steps.layout-timeline,.steps.layout-contrast{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
 .steps.layout-pipeline{gap:0}.layout-pipeline .step{position:relative;margin-left:14px;padding-left:26px;border-radius:0;border-top-width:0}.layout-pipeline .step:first-child{border-top-width:1px;border-radius:12px 12px 0 0}.layout-pipeline .step:last-child{border-radius:0 0 12px 12px}.layout-pipeline .step::before{content:"";position:absolute;left:9px;top:22px;width:9px;height:9px;border-radius:50%;background:var(--blue)}.layout-pipeline .step::after{content:"";position:absolute;left:13px;top:31px;bottom:-2px;width:1px;background:var(--line)}.layout-pipeline .step:last-child::after{display:none}
 .step-group{border:1px solid var(--line);border-radius:12px;background:#101319;padding:14px}.group-head{margin:0 0 11px;color:var(--sub);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.step-group .step{margin-bottom:10px}.step-group .step:last-child{margin-bottom:0}.step-group .step h3{margin:0 0 7px;font-size:16px}
+.layout-timeline .step-group .step{position:relative;padding:11px 12px 11px 28px}.layout-timeline .step-group .step h3{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--sub);margin:0 0 5px}.layout-timeline .step-group .step .badge{margin:0 0 5px}.layout-timeline .step-group .step .step-body{font-size:13px}
 .layout-timeline .step-group .step{position:relative;padding-left:28px}.layout-timeline .step-group .step::before{content:"";position:absolute;left:9px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--sub)}.layout-timeline .step-group .step::after{content:"";position:absolute;left:13px;top:32px;bottom:-11px;width:1px;background:var(--line)}.layout-timeline .step-group .step:last-child::after{display:none}
+.badge{display:inline-flex;align-items:center;gap:5px;margin:0 0 9px;padding:2px 9px;border:1px solid;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.07em}.badge-allowed{color:var(--green);border-color:#3f6b34;background:#16241355}.badge-blocked{color:var(--red);border-color:#7a3a3a;background:#2a141455}.badge-anomaly{color:var(--amber);border-color:#7a6430;background:#25200f55}.badge-state{color:var(--sub);border-color:var(--line);background:var(--panel2)}
 .supporting h1{font-size:clamp(23px,3.2vw,31px);margin:.15em 0 .1em}.supporting .lead{font-size:16px;max-width:70ch}.caveats{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}.caveats p{margin:0 0 7px;color:var(--sub);font-size:13px}.caveats p:last-child{margin-bottom:0}.caveats strong{color:var(--text)}
 .rail-head{display:block;color:inherit;text-decoration:none}a.rail-head:hover strong,a.rail-head:focus-visible strong{color:var(--focus)}.rail-head .go{margin-top:3px}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
 .inert{color:var(--muted)}
@@ -1984,7 +1996,17 @@ def _page(
     lead_class = " has-lead" if lead_step else ""
 
     def render_step(index: int, entry: tuple, *, heading_tag: str, number: int) -> str:
-        heading, body, result = entry
+        heading, body, result, *rest = entry
+        outcome = rest[0] if rest else None
+        if outcome is not None and outcome not in OUTCOME_BADGES:
+            raise ValueError(f"Unknown outcome {outcome!r} on step {heading!r}")
+        badge = ""
+        if outcome:
+            glyph, label = OUTCOME_BADGES[outcome]
+            badge = (
+                f'<span class="badge badge-{outcome}">'
+                f'<span aria-hidden="true">{glyph}</span> {label}</span>'
+            )
         tabindex = ' tabindex="-1"' if interactive else ""
         if isinstance(body, HtmlFragment):
             body_html = body.content
@@ -2003,7 +2025,7 @@ def _page(
         return (
             f'<section class="step" data-step="{index}"{tabindex}>'
             f"<{heading_tag}>{number}. {html.escape(heading)}</{heading_tag}>"
-            f"{body_html}{result_html}</section>"
+            f"{badge}{body_html}{result_html}</section>"
         )
 
     step_html = []
@@ -2251,11 +2273,13 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "The host appends the tool result directly",
                         "The document goes straight into model context. process_inbound is never called, so no provenance span is registered.",
                         f"registered spans = {feedback['loop_open']['registered_spans']}",
+                        "state",
                     ),
                     (
                         "Egress has nothing to match against",
                         "The same guard runs on the same content.",
                         feedback["loop_open"]["result"]["reason"],
+                        "allowed",
                     ),
                 ],
             ),
@@ -2266,11 +2290,13 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "The host cycles the result through process_inbound",
                         "The identical document is ingested first, which registers its origin.",
                         f"registered spans = {feedback['loop_closed']['registered_spans']}",
+                        "state",
                     ),
                     (
                         "Egress can now attribute the span",
                         "The same guard runs on the same content.",
                         feedback["loop_closed"]["result"]["reason"],
+                        "blocked",
                     ),
                 ],
             ),
@@ -2290,30 +2316,38 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         interactive=False,
         layout="taxonomy",
         steps=[
+            # The title claims the strongest attribution comes first, so it does.
+            # The canary is the only signal GuardLLM can name rather than infer,
+            # and it spans the row it leads.
+            (
+                "Remembered canary",
+                f"GuardLLM provisioned this token itself, so a match is identification rather than inference. Host-provisioned token: {dlp['canary_display']}",
+                f"{dlp['canary_result']['reason']}; canary_detected={dlp['canary_result']['canary_detected']}; session_escalated={dlp['state_after_canary']['session_escalated']}",
+                "blocked",
+            ),
             (
                 "Known credential format",
                 "A complete synthetic credential matches a known pattern.",
                 dlp["known_pattern"]["reason"],
+                "blocked",
             ),
             (
                 "Opaque random-looking token",
                 dlp["entropy"]["token"],
                 dlp["entropy"]["result"]["reason"],
+                "blocked",
             ),
             (
                 "Whitespace splitting",
                 dlp["split_entropy"]["token"],
                 dlp["split_entropy"]["result"]["reason"],
+                "blocked",
             ),
             (
                 "Hex decode then byte entropy",
                 dlp["hex_entropy"]["token"],
                 dlp["hex_entropy"]["result"]["reason"],
-            ),
-            (
-                "Remembered canary",
-                f"Host-provisioned token: {dlp['canary_display']}",
-                f"{dlp['canary_result']['reason']}; canary_detected={dlp['canary_result']['canary_detected']}; session_escalated={dlp['state_after_canary']['session_escalated']}",
+                "blocked",
             ),
         ],
     )
@@ -2356,26 +2390,31 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                 "Read-only, no authorization",
                 "No stricter gate applies.",
                 policy["safe_no_auth"]["reason"],
+                "allowed",
             ),
             (
                 "Empty allowlist",
                 "An explicitly configured empty allowlist denies every tool before authorization.",
                 policy["empty_allowlist"]["reason"],
+                "blocked",
             ),
             (
                 "Destructive tool disabled",
                 "Authorization is not consulted because enablement closes first.",
                 policy["destructive_disabled"]["reason"],
+                "blocked",
             ),
             (
                 "Destructive tool enabled, no authorization",
                 "Enablement passes, then the authorization gate closes.",
                 policy["destructive_no_auth"]["reason"],
+                "blocked",
             ),
             (
                 "Destructive tool with matching authorization",
                 "Action, message, scope, reverse scope, and TTL checks all pass.",
                 policy["destructive_verified"]["reason"],
+                "allowed",
             ),
         ],
     )
@@ -2384,27 +2423,39 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     preseed = rate["recipient_history"][0]
     rate_steps = [
         (
-            "Make the recipient history explicit",
-            "The fixture records team@acme.com two hours before the displayed burst timeline. The old action ages out of the hourly and burst windows, but the recipient remains known.",
-            f"recipient={preseed['recipient']}; recorded_at={preseed['time_seconds']:.0f}s",
+            f"{preseed['time_seconds']:.0f}s",
+            f"Recipient history seeded: {preseed['recipient']}. The action ages out of both windows, but the recipient stays known.",
+            "",
+            "state",
         )
     ]
-    for index, event in enumerate(rate["burst_sequence"]):
+    # One compact row per attempt. The repeated explanation of how the count
+    # works moved into the caveats, so the lane reads as a sequence of moments
+    # rather than the same paragraph five times.
+    for event in rate["burst_sequence"]:
         result = event["result"]
+        anomalies = result["anomalies"]
         rate_steps.append(
             (
-                f"Attempt {index + 1} at {event['time_seconds']:.0f}s",
-                "The limiter counts this proposal alongside the completed actions still inside the window, then records it only if every check permits it.",
-                f"allowed={result['allowed']}; anomalies={result['anomalies'] or ['none']}",
+                f"{event['time_seconds']:.0f}s",
+                "; ".join(anomalies) if anomalies else "Within the burst threshold.",
+                "",
+                "anomaly" if anomalies else "allowed",
             )
         )
     hard_cap_steps = [
         (
-            "Seed the hourly window",
-            "Ten completed sends are already recorded against this recipient inside the hour.",
-            "Recorded before the checked proposal, on its own limiter.",
+            "Ten sends recorded",
+            "Already inside the hour, on this lane's own limiter.",
+            "",
+            "state",
         ),
-        ("Hard hourly cap", "The eleventh send is proposed.", rate["hard_cap"]["reason"]),
+        (
+            "The eleventh",
+            rate["hard_cap"]["reason"],
+            "",
+            "blocked",
+        ),
     ]
     pages[DEMO_DIR / "guardllm_rate_limit_demo.html"] = _page(
         title="Rate limiting: signals versus blocks",
@@ -2441,12 +2492,14 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "Record the proposal",
                         json.dumps(binding["proposed_args"], sort_keys=True),
                         "Canonical argument hash stored in the binding.",
+                        "state",
                     ),
                     (
                         "Verify immediately before execution",
                         "The execution payload carries an unapproved extra field, so the recomputed canonical hash no longer matches: "
                         + json.dumps(binding["executed_args"], sort_keys=True),
                         binding["result"]["reason"],
+                        "blocked",
                     ),
                 ],
             ),
@@ -2457,11 +2510,13 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "Record a second proposal",
                         "A second binding preserves the approved arguments and carries a one-second TTL.",
                         "Canonical argument hash stored in the binding.",
+                        "state",
                     ),
                     (
                         "Verify after the TTL",
                         "The arguments are unchanged this time. Only the clock moved.",
                         binding["expired_result"]["reason"],
+                        "blocked",
                     ),
                 ],
             ),
@@ -2491,16 +2546,19 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "Ingest",
                         "The isolation wrapper records what the host said this source was.",
                         sc_untrusted,
+                        "state",
                     ),
                     (
                         "Session state after ingest",
                         "Contamination tracks the declared origin, not the text.",
                         f"context_contaminated = {sc['steps'][0]['state_after']['context_contaminated']}",
+                        "state",
                     ),
                     (
                         "The proposal",
                         "The contamination gate runs before the policy engine and returns there, so this call never reaches policy evaluation.",
                         sc["untrusted_tool"]["reason"],
+                        "blocked",
                     ),
                 ],
             ),
@@ -2511,16 +2569,19 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                         "Ingest",
                         "Identical content, identical call, one declared field changed.",
                         sc_trusted,
+                        "state",
                     ),
                     (
                         "Session state after ingest",
                         "The same text does not contaminate this session.",
                         f"context_contaminated = {sc['steps'][1]['state_after']['context_contaminated']}",
+                        "state",
                     ),
                     (
                         "The proposal",
                         "The identical non-destructive tool call, evaluated through policy and recorded at the rate limiter.",
                         sc["trusted_tool"]["reason"],
+                        "allowed",
                     ),
                 ],
             ),

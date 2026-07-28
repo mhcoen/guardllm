@@ -34,6 +34,9 @@ REQUIRED = (
 # Pages that must carry a working table of contents.
 TOC_PAGES = ("docs/api_spec.html", "REPRODUCE.html")
 
+# Emitted by the theme on every page; not a link this project publishes.
+THEME_ASSETS = {"/favicon.ico"}
+
 
 def _pages(site: Path) -> list[Path]:
     return sorted(site.rglob("*.html"))
@@ -50,6 +53,11 @@ def check_internal_links(site: Path) -> list[str]:
         for href in re.findall(r'href="([^"]+)"', page.read_text(errors="ignore")):
             parsed = urlparse(href)
             if parsed.scheme or parsed.netloc or not parsed.path:
+                continue
+            # Theme-injected assets are not documentation links. Primer emits a
+            # favicon reference on every page; that is one missing file, not 34
+            # broken links, and it is the theme's to supply.
+            if parsed.path in THEME_ASSETS:
                 continue
             target = unquote(parsed.path)
             base = site if target.startswith("/") else page.parent

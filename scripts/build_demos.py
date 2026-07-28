@@ -1446,7 +1446,7 @@ STYLE = """
 .system-map-nav{position:relative;display:block}.skip-map{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.skip-map:focus{width:auto;height:auto;clip:auto;left:10px;top:10px;z-index:3;padding:7px 11px;border:1px solid var(--focus);border-radius:8px;background:var(--panel2);color:var(--text);text-decoration:none}
 .map-region{color:inherit;text-decoration:none;transition:border-color .12s ease,background-color .12s ease}a.map-region{cursor:pointer}a.map-region:hover{border-color:var(--focus)}.map-region .go{display:block;margin-top:6px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}a.map-region:hover .go,a.map-region:focus-visible .go{color:var(--focus)}.map-region.is-current{cursor:default;border-style:solid;border-color:var(--sub)}.map-region.is-current .go{color:var(--sub)}
 .region-ingress{background:#101f2b}.region-model{background:#161a24}.region-egress{background:#1d1a2c}.region-authorization{background:#141d2e}.region-integrity{background:#182430}
-.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.rail-pill.is-inert{color:var(--muted);background:transparent}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
+.rail-pill{display:inline-block;margin:4px 4px 0 0;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--sub);font-size:12px;text-decoration:none;transition:border-color .12s ease,color .12s ease}a.rail-pill{cursor:pointer}a.rail-pill:hover{border-color:var(--focus);color:var(--text)}.rail-note{display:block;margin:1px 0 5px;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}.rail-terms{display:block;color:var(--sub)}.rail-pill.is-current{border-style:dashed;color:var(--sub)}
 .inert{color:var(--muted)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .cta{display:block;margin:22px 0 6px;padding:18px 20px;border:1px solid var(--focus);border-radius:12px;background:#111d29;text-decoration:none;color:inherit;transition:background-color .12s ease}.cta:hover{background:#152438}.cta strong{display:block;color:var(--text);font-size:19px}.cta span{color:var(--sub);font-size:14px}
@@ -1523,9 +1523,6 @@ def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
             '<span aria-hidden="true"> &rarr;</span></a>'
         )
 
-    def inert_pill(label: str) -> str:
-        return f'<span class="rail-pill is-inert">{html.escape(label)}</span>'
-
     def inert(label: str) -> str:
         return f'<span class="inert">{html.escape(label)}</span>'
 
@@ -1561,23 +1558,17 @@ def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
     users_sink_html = inert("Users and data sinks")
     proposal_html = inert("Tool proposal")
     tools_sink_html = inert("Tools and action sinks")
-    # Both rails render the same pill shape so the interactive terms are told
-    # apart by treatment rather than by guessing which word is a link. The rails
-    # divide cleanly: every per-session state term owns a demo, and no per-flow
-    # context field does. Policy is a per-flow field and it has a demo, but the
-    # Authorization boundary and the policy card already open it, so linking it
-    # a third time here would only add a duplicate and break the rule the two
-    # rails otherwise state.
-    flow_terms = "".join(
-        [
-            inert_pill("source trust"),
-            inert_pill("principal trust"),
-            inert_pill("sensitivity"),
-            inert_pill("content type"),
-            inert_pill("policy"),
-        ]
+    # The rails divide cleanly: every per-session state term owns a demo, and no
+    # per-flow context field does. Rather than hide that asymmetry, each rail
+    # says what it is, so the difference in treatment teaches the distinction
+    # the architecture rests on. Per-flow terms are plain prose, not pills:
+    # given a pill border they read as disabled controls rather than as labels.
+    flow_terms = (
+        '<span class="rail-note">Provided by the host on each flow</span>'
+        '<span class="rail-terms">source trust &middot; principal trust &middot; '
+        "sensitivity &middot; content type &middot; policy</span>"
     )
-    session_terms = "".join(
+    session_terms = '<span class="rail-note">Retained by GuardLLM across calls</span>' + "".join(
         pill(term)
         for term in (
             "remembered canary",

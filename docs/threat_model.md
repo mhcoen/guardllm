@@ -20,7 +20,12 @@ A GuardLLM-using application is, abstractly:
                             +------------------------+
 ```
 
-GuardLLM sits on the data path between untrusted external sources and trusted decision points (the model, tool invocation, outbound destinations). It carries a single security context (`SecurityContext`) end-to-end so that decisions downstream of ingress can refer back to source trust, provenance, and detection results.
+GuardLLM sits on the data path between untrusted external sources and trusted decision points (the model, tool invocation, outbound destinations). Decisions downstream of ingress can refer back to source trust, provenance, and detection results, but these come from two separate places rather than from one object travelling end to end:
+
+- **Per-flow context** is a `SecurityContext` the host supplies on *every* call: mode, source type and id, source trust, principal trust, sensitivity, content type, and policy. It describes one flow. It is never inferred from content and is not retained between flows, because a single session commonly mixes flows: an operator instruction and a retrieved web page must not inherit each other's trust.
+- **Per-session state** is what the pipeline derives and retains itself: contamination, egress escalation, provenance spans, DLP history, the remembered canary, and rate counters.
+
+A downstream decision reads both. The [security context demo](../demo/guardllm_security_context_demo.html) runs one text through two sessions differing in a single declared field to show which of the two is doing the work.
 
 ## Trust Boundaries
 
@@ -60,6 +65,21 @@ Intercepts traffic between the application and external services.
 **Goals**: replay stale tool-call payloads, swap parameters on in-flight calls.
 
 **Capabilities**: read and rewrite traffic in flight, but cannot break TLS.
+
+**What request binding does and does not cover here.** Binding is an
+*intra-process consistency check*. A `Binding` is created and verified inside
+the application process, which T-OUT2 already declares trusted, and
+verification recomputes the canonical argument hash, matches the message hash,
+and enforces the TTL. That catches arguments mutated between proposal and
+dispatch, and a stale proposal replayed after its TTL, **before GuardLLM hands
+the call to the transport**.
+
+It does not cover what A3 does after that point. Once the checked call leaves
+the process, an attacker who can rewrite traffic in flight can alter or replay
+it, and no binding verification runs again on the way out. Transport integrity
+is the host's obligation, which is what "cannot break TLS" is carrying. Do not
+read binding as protection against replay performed downstream of the
+pre-dispatch check.
 
 The application itself, the policy configuration, and the principal identity are **trusted**. GuardLLM does not defend against an attacker who can edit `PolicyConfig`, mint principal sessions, or run code in the application process.
 

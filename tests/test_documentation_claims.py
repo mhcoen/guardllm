@@ -319,3 +319,40 @@ def test_tutorials_are_links_not_bare_filenames():
     assert len(pages) == 6
     for name in pages:
         assert f"]({name})" in index, f"{name} is not linked from the tutorials index"
+
+
+def test_every_released_version_has_a_changelog_link_definition():
+    """1.2.0 and 2.0.0 shipped without one, and Unreleased still compared to 1.1.0."""
+    text = (ROOT / "CHANGELOG.md").read_text()
+    released = re.findall(r"^## \[(\d+\.\d+\.\d+)\]", text, re.M)
+    defined = set(re.findall(r"^\[(\d+\.\d+\.\d+)\]: ", text, re.M))
+    missing = [v for v in released if v not in defined]
+    assert not missing, f"changelog versions without a link definition: {missing}"
+
+    unreleased = re.search(r"^\[Unreleased\]: .*/compare/v([\d.]+)\.\.\.HEAD", text, re.M)
+    assert unreleased, "Unreleased has no comparison link"
+    assert unreleased.group(1) == released[0], (
+        f"Unreleased compares from v{unreleased.group(1)}, latest release is {released[0]}"
+    )
+
+
+def test_threat_model_describes_context_and_binding_accurately():
+    """Two claims the newer architecture contradicts."""
+    text = (ROOT / "docs" / "threat_model.md").read_text()
+
+    # One SecurityContext does not travel end to end: per-flow context is
+    # supplied on every call, and session state is what the pipeline retains.
+    assert "carries a single security context" not in text
+    assert "**Per-flow context**" in text and "**Per-session state**" in text
+    assert "not retained between flows" in text
+
+    # Binding is intra-process, so it cannot cover replay after dispatch.
+    assert "intra-process consistency check" in text
+    assert "downstream of the" in text and "pre-dispatch check" in text
+
+
+def test_readme_scopes_the_composition_claim_to_what_was_measured():
+    text = (ROOT / "README.md").read_text()
+    assert "no composition of them carries state" not in text
+    assert "not a proof that no composition could be built" in text
+    assert "surface_stack" in text

@@ -772,3 +772,34 @@ def test_readme_surfaces_the_demos_above_the_fold():
     # shows source rather than the demo. Above the fold it must be absolute.
     promo = readme[:first_heading]
     assert "https://mhcoen.github.io/guardllm/demo/" in promo
+
+
+def test_readme_links_every_tutorial_by_what_it_teaches():
+    """They were three bare filenames out of six, under "Run a tutorial".
+
+    Unlinked, incomplete, and describing an action rather than a payoff, so a
+    reader had no reason to click and nothing to click on.
+    """
+    readme = (ROOT / "README.md").read_text()
+    pages = sorted(p.name for p in (ROOT / "tutorials").glob("*.md") if p.name != "README.md")
+    assert len(pages) == 6
+    for name in pages:
+        assert f"tutorials/{name})" in readme, f"{name} is not linked from the README"
+    # Bare script invocations were what made them invisible.
+    assert "`python tutorials/" not in readme
+
+
+def test_readme_entry_point_does_not_quote_counts():
+    """Two adjacent counts invited a comparison between unrelated things.
+
+    "All nine demos" beside "six tutorials" reads as though the sets
+    correspond. They do not: one is generated pages, the other runnable
+    scripts. Neither number tells a reader anything.
+    """
+    first_heading = (ROOT / "README.md").read_text().index("\n## ")
+    promo = (ROOT / "README.md").read_text()[:first_heading]
+    for count in ("nine", "Nine", "six demos", "six tutorials"):
+        assert count not in promo, f"entry point quotes a count: {count}"
+    # The rejected first draft led with build process rather than effect.
+    assert "drift-checked" not in promo
+    assert "self-contained pages" not in promo

@@ -7,7 +7,8 @@
 
 LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
-**[See it run →](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html)** Nine self-contained pages generated from the shipped library. Every displayed result names the exact test that reproduces it, and the whole set is [rebuilt and drift-checked in CI](https://github.com/mhcoen/guardllm/blob/main/scripts/build_demos.py). Start with [one blocked leak changing the next decision](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html).
+**[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
+[See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
 ## How GuardLLM Works
 
@@ -65,10 +66,13 @@ pip install guardllm
 ```
 
 1. Follow the quick-start guide: [docs/quick_start.md](docs/quick_start.md)
-2. Run a tutorial:
-   - `python tutorials/01_web_search_sanitization.py`
-   - `python tutorials/02_email_calendar_sanitization.py`
-   - `python tutorials/03_safe_tool_call_pipeline.py`
+2. Work through a [tutorial](tutorials/README.md). Each is a page to read and a script to run:
+   - [Sanitize web search results](tutorials/01_web_search_sanitization.md) before they reach the model
+   - [Handle untrusted email and calendar data](tutorials/02_email_calendar_sanitization.md)
+   - [Authorize, bind, and confirm a destructive tool call](tutorials/03_safe_tool_call_pipeline.md), then watch an egress block tighten the next one
+   - [Harden an MCP server](tutorials/04_mcp_server_tutorial.md) against untrusted client requests
+   - [Harden an MCP client](tutorials/05_mcp_client_tutorial.md) calling external tools
+   - [Put it together end to end](tutorials/gsuite_mcp_client_tutorial.md) in a GSuite-style integration
 3. (Optional) Run the local LLM demo to see the full attack-and-defense cycle:
    ```bash
    pip install transformers torch accelerate

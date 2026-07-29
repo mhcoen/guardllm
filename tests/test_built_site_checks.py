@@ -7,6 +7,7 @@ synthetic sites reproducing each defect that reached production.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -211,3 +212,23 @@ def test_theme_asset_skip_survives_a_baseurl(tmp_path, monkeypatch):
     monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
     site = _site(tmp_path, {"a.html": '<a href="/guardllm/favicon.ico">icon</a>'})
     assert checker.check_internal_links(site) == []
+
+
+def test_layout_check_measures_both_widths_and_in_page_overflow():
+    """A page total can look fine while an element inside it overflows.
+
+    A 64 character token in a grid card ran past its border and every check
+    passed: the page did not scroll, the tables were fine, and the wrap rule
+    was present in the stylesheet. Grid items default to min-width auto, so the
+    card refused to shrink below the token and no wrap rule could apply.
+    """
+    script = (ROOT / "scripts" / "check_mobile_layout.py").read_text()
+    assert '{"width": 390' in script and '{"width": 1280' in script
+    assert "scrollWidth > e.clientWidth" in script, "must detect elements overflowing their box"
+    assert "content overflows" in script
+
+    # The generated pages must let grid items shrink, or no wrap rule applies.
+    page = (ROOT / "demo" / "guardllm_canary_demos.html").read_text()
+    assert ".steps>*{min-width:0}" in page
+    step_rule = re.search(r"\.step\{[^}]*\}", page).group(0)
+    assert "min-width:0" in step_rule

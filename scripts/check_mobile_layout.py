@@ -11,7 +11,12 @@ that scrolls on its own.
 from __future__ import annotations
 
 import argparse
+import functools
+import http.server
+import re
+import socketserver
 import sys
+import threading
 from pathlib import Path
 
 VIEWPORT = {"width": 390, "height": 844}
@@ -25,6 +30,31 @@ PAGES = (
 )
 
 
+def _baseurl() -> str:
+    config = (Path(__file__).resolve().parents[1] / "_config.yml").read_text()
+    match = re.search(r"^baseurl:\s*(\S+)", config, re.M)
+    return match.group(1).strip().strip('"').strip("/") if match else ""
+
+
+def _serve(site: Path, base: str) -> tuple[str, socketserver.TCPServer]:
+    """Serve the built site over HTTP under its real base path.
+
+    file:// cannot resolve the absolute asset URLs the theme emits, so loading
+    pages that way silently rendered them unstyled and every measurement was
+    taken against a site with no CSS.
+    """
+    root = site.parent / "_serve_root"
+    target = root / base if base else root
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.symlink_to(site.resolve(), target_is_directory=True)
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
+    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    prefix = f"/{base}" if base else ""
+    return f"http://127.0.0.1:{httpd.server_address[1]}{prefix}", httpd
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("site", type=Path)
@@ -32,16 +62,26 @@ def main() -> int:
 
     from playwright.sync_api import sync_playwright
 
+    base = _baseurl()
+    origin, httpd = _serve(args.site, base)
     problems: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport=VIEWPORT)
         for name in PAGES:
-            target = (args.site / name).resolve()
-            if not target.exists():
+            if not (args.site / name).exists():
                 problems.append(f"missing page: {name}")
                 continue
-            page.goto(target.as_uri())
+            page.goto(f"{origin}/{name}")
+
+            # A measurement taken against an unstyled page is worthless, so
+            # prove the stylesheet actually loaded before trusting anything.
+            styled = page.evaluate(
+                """() => [...document.styleSheets]
+                    .some(s => (s.href || '').includes('/assets/css/'))"""
+            )
+            if not styled:
+                problems.append(f"{name}: site stylesheet did not load")
 
             # The page itself must never scroll sideways.
             overflow = page.evaluate(
@@ -77,6 +117,7 @@ def main() -> int:
                 problems.append(f"{name}: {bad} wide table(s) without their own scroll")
             print(f"{name}: overflow={overflow}px, unscrollable wide tables={bad}")
         browser.close()
+    httpd.shutdown()
 
     if problems:
         print("\n" + "\n".join(problems))

@@ -151,6 +151,39 @@ def check_toc_anchors(site: Path) -> list[str]:
     return problems
 
 
+def _baseurl() -> str:
+    config = (Path(__file__).resolve().parents[1] / "_config.yml").read_text()
+    match = re.search(r"^baseurl:\s*(\S+)", config, re.M)
+    return match.group(1).strip().strip('"') if match else ""
+
+
+def check_stylesheet_is_linked(site: Path) -> list[str]:
+    """A compiled stylesheet nobody links is the same as no stylesheet.
+
+    The previous check found the file in _site and passed while every page
+    pointed at a URL that 404'd, so the site rendered unstyled and three
+    separate checks reported success.
+    """
+    problems: list[str] = []
+    base = _baseurl().rstrip("/")
+    for page in _pages(site):
+        hrefs = re.findall(
+            r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', page.read_text(errors="ignore")
+        )
+        own = [h for h in hrefs if "/assets/" in h and not urlparse(h).scheme]
+        if not own:
+            problems.append(f"{page.relative_to(site)}: links no site stylesheet")
+            continue
+        for href in own:
+            path = urlparse(href).path
+            if base and path.startswith(base + "/"):
+                path = path[len(base) :]
+            resolved = (site / unquote(path).lstrip("/")).resolve()
+            if not resolved.exists():
+                problems.append(f"{page.relative_to(site)} -> {href} (stylesheet 404)")
+    return problems
+
+
 def check_table_overflow(site: Path) -> list[str]:
     """Wide tables must get a scroll container in the stylesheet the site serves."""
     sheets = list((site / "assets").rglob("*.css")) if (site / "assets").exists() else []
@@ -180,6 +213,7 @@ def main() -> int:
         ("duplicate ids", check_duplicate_ids),
         ("assets", check_assets_resolve),
         ("markdown urls", check_no_markdown_urls),
+        ("stylesheet linked", check_stylesheet_is_linked),
         ("table overflow", check_table_overflow),
     ):
         found = check(args.site)

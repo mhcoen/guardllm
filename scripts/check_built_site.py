@@ -42,6 +42,21 @@ def _pages(site: Path) -> list[Path]:
     return sorted(site.rglob("*.html"))
 
 
+def _resolve(site: Path, page: Path, ref: str) -> Path:
+    """Resolve a site-relative reference, allowing for the configured baseurl.
+
+    Absolute URLs on a project site carry the baseurl prefix, which is not part
+    of the path inside _site.
+    """
+    path = unquote(ref)
+    if path.startswith("/"):
+        base = _baseurl().rstrip("/")
+        if base and path.startswith(base + "/"):
+            path = path[len(base) :]
+        return (site / path.lstrip("/")).resolve()
+    return (page.parent / path).resolve()
+
+
 def check_required(site: Path) -> list[str]:
     return [f"missing built page: {name}" for name in REQUIRED if not (site / name).exists()]
 
@@ -59,9 +74,7 @@ def check_internal_links(site: Path) -> list[str]:
             # broken links, and it is the theme's to supply.
             if parsed.path in THEME_ASSETS:
                 continue
-            target = unquote(parsed.path)
-            base = site if target.startswith("/") else page.parent
-            resolved = (base / target.lstrip("/")).resolve()
+            resolved = _resolve(site, page, parsed.path)
             if resolved.is_dir():
                 resolved = resolved / "index.html"
             if not resolved.exists():
@@ -107,8 +120,7 @@ def check_assets_resolve(site: Path) -> list[str]:
                 continue
             if parsed.path in THEME_ASSETS:
                 continue
-            base = site if parsed.path.startswith("/") else page.parent
-            if not (base / unquote(parsed.path).lstrip("/")).resolve().exists():
+            if not _resolve(site, page, parsed.path).exists():
                 problems.append(f"{page.relative_to(site)} -> {ref} (missing asset)")
     return problems
 
@@ -167,9 +179,13 @@ def check_stylesheet_is_linked(site: Path) -> list[str]:
     problems: list[str] = []
     base = _baseurl().rstrip("/")
     for page in _pages(site):
-        hrefs = re.findall(
-            r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', page.read_text(errors="ignore")
-        )
+        html = page.read_text(errors="ignore")
+        # The generated demos are self-contained by design: they embed their
+        # styles and must keep working from a file:// path with no site around
+        # them. Requiring a site stylesheet of them would be wrong.
+        if "<style>" in html:
+            continue
+        hrefs = re.findall(r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', html)
         own = [h for h in hrefs if "/assets/" in h and not urlparse(h).scheme]
         if not own:
             problems.append(f"{page.relative_to(site)}: links no site stylesheet")

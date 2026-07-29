@@ -162,3 +162,44 @@ def test_ci_measures_mobile_layout_in_a_browser():
     assert '"width": 390' in script
     # It must measure, not assert on source text.
     assert "scrollWidth" in script and "getComputedStyle" in script
+
+
+def test_link_check_strips_the_baseurl(tmp_path, monkeypatch):
+    """Absolute URLs on a project site carry a prefix that is not in _site."""
+    checker = _checker()
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
+    site = _site(
+        tmp_path,
+        {
+            "index.html": '<a href="/guardllm/docs/index.html">docs</a>',
+            "docs/index.html": "<h1>d</h1>",
+        },
+    )
+    assert checker.check_internal_links(site) == []
+    # A genuinely missing target must still be reported.
+    bad = _site(tmp_path / "b", {"index.html": '<a href="/guardllm/nope.html">x</a>'})
+    assert checker.check_internal_links(bad)
+
+
+def test_stylesheet_check_skips_self_contained_pages(tmp_path):
+    """The generated demos embed their styles and must work from file://."""
+    checker = _checker()
+    site = _site(tmp_path, {"demo/d.html": "<style>body{color:red}</style><h1>demo</h1>"})
+    assert checker.check_stylesheet_is_linked(site) == []
+
+
+def test_stylesheet_check_flags_a_page_linking_nothing(tmp_path):
+    checker = _checker()
+    site = _site(tmp_path, {"docs/index.html": "<h1>no stylesheet</h1>"})
+    assert any("links no site stylesheet" in p for p in checker.check_stylesheet_is_linked(site))
+
+
+def test_stylesheet_check_flags_a_link_that_404s(tmp_path, monkeypatch):
+    """This is the production bug: the link existed and the target did not."""
+    checker = _checker()
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
+    site = _site(
+        tmp_path,
+        {"docs/index.html": '<link rel="stylesheet" href="/assets/css/style.css">'},
+    )
+    assert any("stylesheet 404" in p for p in checker.check_stylesheet_is_linked(site))

@@ -74,3 +74,7 @@ paper/
 
 # Local scratch screenshots
 screenshot_*.png
+
+# Jekyll build output and the temporary root the mobile check serves from.
+_site/
+_serve_root/

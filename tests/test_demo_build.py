@@ -522,3 +522,20 @@ def test_badges_do_not_rely_on_color_alone():
             assert (glyph, label) == generator.OUTCOME_BADGES[outcome], (name, outcome)
             seen += 1
     assert seen == 35, seen
+
+
+def test_demo_content_containers_wrap_long_tokens():
+    """A 64 character hash has no break opportunity and overflows its box.
+
+    The egress display showed a SHA-256 digest running past the card. Only
+    .result carried a wrap rule; .step-body and .message, which hold the same
+    kind of generated value, did not.
+    """
+    page = (DEMO / "guardllm_canary_demos.html").read_text()
+    for selector in (".step-body{", ".message{", ".result{"):
+        rule = re.search(re.escape(selector) + r"[^}]*}", page)
+        assert rule, selector
+        assert "overflow-wrap" in rule.group(0), selector
+
+    # The digest that exposed it must still be displayed, not shortened away.
+    assert "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" in page

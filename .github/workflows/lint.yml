@@ -78,3 +78,11 @@ jobs:
         # Source-level assertions cannot see excluded pages, unrendered
         # tables of contents, or missing stylesheet rules. This checks _site.
         run: python scripts/check_built_site.py _site
+      - name: Install a browser
+        run: |
+          python -m pip install playwright==1.49.1
+          python -m playwright install --with-deps chromium
+      - name: Check mobile layout at 390px
+        # Measured in a real browser. A substring in the stylesheet says
+        # nothing about whether a table actually scrolls on a phone.
+        run: python scripts/check_mobile_layout.py _site

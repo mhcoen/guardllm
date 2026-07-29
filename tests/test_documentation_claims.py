@@ -661,6 +661,10 @@ def test_site_stylesheet_keeps_wide_tables_reachable():
     table_rule = style.split("table {", 1)[1].split("}", 1)[0]
     assert "overflow-x: auto" in table_rule
     assert "max-width: 100%" in table_rule
+    # Scoping these to .markdown-body made every rule inert, because this
+    # theme's layout does not use that class. Only the browser check caught it,
+    # so keep the source-level assertion from re-encoding the assumption.
+    assert ".markdown-body" not in style
 
 
 def test_published_links_do_not_target_jekyll_excluded_paths():
@@ -702,23 +706,49 @@ def test_generated_tables_of_contents_are_processed_as_markdown():
 
 
 def test_generators_do_not_write_the_same_file():
-    """Two generators owning one file means the second wins and the first fails.
+    """Ask each generator what it owns and assert the sets are disjoint.
 
-    The nav generator briefly reached into benchmarks/published/, which the
-    evidence generator writes, and the evidence --check went red immediately.
+    The previous version checked the one overlap that had already happened: the
+    nav generator reaching into benchmarks/published/. That would not have
+    caught a third generator claiming a file, and there are three now. This
+    derives each owner set instead of naming a case.
     """
-    published = ROOT / "benchmarks" / "published"
-    for path in published.glob("*.md"):
-        assert "nav:start" not in path.read_text(), f"{path.name} is generator-owned"
+    import importlib.util
+    import subprocess
 
-    for script, flag in (
-        ("build_doc_nav.py", "--check"),
-        ("publish_benchmark_evidence.py", "--check"),
-    ):
-        import subprocess
+    def _load(name: str):
+        key = f"guardllm_gen_{name}"
+        if key in sys.modules:
+            return sys.modules[key]
+        spec = importlib.util.spec_from_file_location(key, ROOT / "scripts" / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[key] = module
+        spec.loader.exec_module(module)
+        return module
 
+    nav = _load("build_doc_nav")
+    evidence = _load("publish_benchmark_evidence")
+
+    owned: dict[str, set] = {
+        "build_doc_nav": {path.resolve() for path, _ in nav._pages()},
+        "publish_benchmark_evidence": {
+            evidence.SURFACE_JSON.resolve(),
+            evidence.SURFACE_MD.resolve(),
+        },
+        "build_demos": {p.resolve() for p in (ROOT / "demo").glob("*.html")}
+        | {(ROOT / "demo" / "guardllm_demo_fixtures.json").resolve()},
+    }
+    names = sorted(owned)
+    for i, first in enumerate(names):
+        for second in names[i + 1 :]:
+            shared = owned[first] & owned[second]
+            assert not shared, f"{first} and {second} both write {sorted(shared)}"
+
+    # Every generator must still agree its output is current, which is what
+    # actually fails when two of them fight over one file.
+    for script in names:
         result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / script), flag],
+            [sys.executable, str(ROOT / "scripts" / f"{script}.py"), "--check"],
             cwd=ROOT,
             capture_output=True,
             text=True,

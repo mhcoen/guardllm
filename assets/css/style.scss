@@ -4,26 +4,50 @@
 
 @import "{{ site.theme }}";
 
-/* Wide tables scroll within their own box instead of clipping.
+/* Target bare elements.
  *
- * The security, policy, and benchmark tables have five or more columns and
- * were cut off on narrow screens with no way to reach the missing ones. This
- * is the same treatment GitHub applies to tables in rendered Markdown.
+ * Every rule here was previously scoped to a wrapper class this theme's layout
+ * does not emit, so none of them applied. The table fix appeared to work only
+ * because the page grew wide enough that no table overflowed its own box. The
+ * 390px diagnostic reported the offending elements with empty class names,
+ * which is what gave it away.
  */
-.markdown-body table {
+html,
+body,
+.container-lg {
+  max-width: 100%;
+}
+
+/* Wide tables scroll within their own box instead of widening the page. */
+table {
   display: block;
-  width: max-content;
   max-width: 100%;
   overflow-x: auto;
 }
 
-/* Long code blocks scroll rather than forcing the page to. */
-.markdown-body pre {
+/* Code blocks scroll; the code inside them must not wrap, or the scroll box
+ * has nothing to scroll and long lines break mid-token instead.
+ */
+pre {
   max-width: 100%;
   overflow-x: auto;
 }
 
-/* Keep the page itself from scrolling sideways on a phone. */
-.markdown-body {
+pre code {
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+/* Inline code and long unbroken tokens in prose break rather than push. */
+code {
+  overflow-wrap: anywhere;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+body {
   overflow-wrap: break-word;
 }

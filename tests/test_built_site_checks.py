@@ -203,3 +203,11 @@ def test_stylesheet_check_flags_a_link_that_404s(tmp_path, monkeypatch):
         {"docs/index.html": '<link rel="stylesheet" href="/assets/css/style.css">'},
     )
     assert any("stylesheet 404" in p for p in checker.check_stylesheet_is_linked(site))
+
+
+def test_theme_asset_skip_survives_a_baseurl(tmp_path, monkeypatch):
+    """The favicon skip matched an exact path and missed the prefixed form."""
+    checker = _checker()
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
+    site = _site(tmp_path, {"a.html": '<a href="/guardllm/favicon.ico">icon</a>'})
+    assert checker.check_internal_links(site) == []

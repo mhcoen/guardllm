@@ -42,6 +42,14 @@ def _pages(site: Path) -> list[Path]:
     return sorted(site.rglob("*.html"))
 
 
+def _strip_base(path: str) -> str:
+    """Drop the baseurl prefix so a path can be compared against site paths."""
+    base = _baseurl().rstrip("/")
+    if base and path.startswith(base + "/"):
+        return path[len(base) :]
+    return path
+
+
 def _resolve(site: Path, page: Path, ref: str) -> Path:
     """Resolve a site-relative reference, allowing for the configured baseurl.
 
@@ -72,7 +80,7 @@ def check_internal_links(site: Path) -> list[str]:
             # Theme-injected assets are not documentation links. Primer emits a
             # favicon reference on every page; that is one missing file, not 34
             # broken links, and it is the theme's to supply.
-            if parsed.path in THEME_ASSETS:
+            if _strip_base(parsed.path) in THEME_ASSETS:
                 continue
             resolved = _resolve(site, page, parsed.path)
             if resolved.is_dir():
@@ -118,7 +126,7 @@ def check_assets_resolve(site: Path) -> list[str]:
             parsed = urlparse(ref)
             if parsed.scheme or parsed.netloc or not parsed.path:
                 continue
-            if parsed.path in THEME_ASSETS:
+            if _strip_base(parsed.path) in THEME_ASSETS:
                 continue
             if not _resolve(site, page, parsed.path).exists():
                 problems.append(f"{page.relative_to(site)} -> {ref} (missing asset)")

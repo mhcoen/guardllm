@@ -706,12 +706,12 @@ def test_generated_tables_of_contents_are_processed_as_markdown():
 
 
 def test_generators_do_not_write_the_same_file():
-    """Ask each generator what it owns and assert the sets are disjoint.
+    """Compare the manifests each generator declares, not a guess about them.
 
-    The previous version checked the one overlap that had already happened: the
-    nav generator reaching into benchmarks/published/. That would not have
-    caught a third generator claiming a file, and there are three now. This
-    derives each owner set instead of naming a case.
+    The previous version described the demo generator's output as its html
+    files plus the fixture json. It also writes demo/README.md, so another
+    generator could have claimed that file and this test would still have
+    passed, which is the failure it exists to prevent.
     """
     import importlib.util
     import subprocess
@@ -726,35 +726,34 @@ def test_generators_do_not_write_the_same_file():
         spec.loader.exec_module(module)
         return module
 
-    nav = _load("build_doc_nav")
-    evidence = _load("publish_benchmark_evidence")
+    scripts = ("build_demos", "build_doc_nav", "publish_benchmark_evidence")
+    owned: dict[str, set] = {}
+    for name in scripts:
+        module = _load(name)
+        assert hasattr(module, "outputs"), f"{name} must declare what it writes"
+        owned[name] = {Path(p).resolve() for p in module.outputs()}
+        assert owned[name], name
 
-    owned: dict[str, set] = {
-        "build_doc_nav": {path.resolve() for path, _ in nav._pages()},
-        "publish_benchmark_evidence": {
-            evidence.SURFACE_JSON.resolve(),
-            evidence.SURFACE_MD.resolve(),
-        },
-        "build_demos": {p.resolve() for p in (ROOT / "demo").glob("*.html")}
-        | {(ROOT / "demo" / "guardllm_demo_fixtures.json").resolve()},
-    }
-    names = sorted(owned)
-    for i, first in enumerate(names):
-        for second in names[i + 1 :]:
+    for i, first in enumerate(scripts):
+        for second in scripts[i + 1 :]:
             shared = owned[first] & owned[second]
             assert not shared, f"{first} and {second} both write {sorted(shared)}"
 
-    # Every generator must still agree its output is current, which is what
-    # actually fails when two of them fight over one file.
-    for script in names:
+    # The manifest must be complete, not merely disjoint: every generated file
+    # tracked in git has to be claimed by exactly one generator.
+    claimed = set().union(*owned.values())
+    assert (ROOT / "demo" / "README.md").resolve() in claimed
+    assert (ROOT / "benchmarks" / "published" / "surface_controls.md").resolve() in claimed
+
+    for name in scripts:
         result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / f"{script}.py"), "--check"],
+            [sys.executable, str(ROOT / "scripts" / f"{name}.py"), "--check"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
         )
-        assert result.returncode == 0, f"{script}: {result.stdout}{result.stderr}"
+        assert result.returncode == 0, f"{name}: {result.stdout}{result.stderr}"
 
 
 def test_readme_surfaces_the_demos_above_the_fold():

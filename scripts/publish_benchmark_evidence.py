@@ -38,6 +38,11 @@ PUBLISHED_STRATEGIES = (
 )
 
 
+def outputs() -> set[Path]:
+    """Every file this generator writes."""
+    return {SURFACE_JSON.resolve(), SURFACE_MD.resolve()}
+
+
 def build() -> dict:
     source = json.loads(SOURCE.read_text())
     surface = source["surface_only"]

@@ -2809,6 +2809,17 @@ Verify checked-in fixtures and pages without modifying them:
 """
 
 
+def outputs() -> set[Path]:
+    """Every file this generator writes.
+
+    Declared rather than inferred so the ownership test reads what is actually
+    written. Guessing it as "the html files plus the fixture" missed
+    demo/README.md, which left that file unowned by any check.
+    """
+    fixtures = build_fixtures()
+    return {FIXTURE_PATH, DEMO_DIR / "README.md", *build_pages(fixtures)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")

@@ -62,6 +62,11 @@ def _pages() -> list[tuple[Path, str]]:
     return pages
 
 
+def outputs() -> set[Path]:
+    """Every file this generator writes."""
+    return {path.resolve() for path, _ in _pages()}
+
+
 def _slug(heading: str, seen: dict[str, int] | None = None) -> str:
     """Match Kramdown, which is what builds the anchors these entries target.
 

@@ -12,9 +12,12 @@
  * 390px diagnostic reported the offending elements with empty class names,
  * which is what gave it away.
  */
+/* The theme caps content width for readability; do not override it. Capping
+ * html and body is enough to stop a page growing past the viewport, and
+ * including the content container made desktop lines span the whole screen.
+ */
 html,
-body,
-.container-lg {
+body {
   max-width: 100%;
 }
 

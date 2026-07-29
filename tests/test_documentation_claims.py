@@ -661,6 +661,10 @@ def test_site_stylesheet_keeps_wide_tables_reachable():
     table_rule = style.split("table {", 1)[1].split("}", 1)[0]
     assert "overflow-x: auto" in table_rule
     assert "max-width: 100%" in table_rule
+    # Scoping these to .markdown-body made every rule inert, because this
+    # theme's layout does not use that class. Only the browser check caught it,
+    # so keep the source-level assertion from re-encoding the assumption.
+    assert ".markdown-body" not in style
 
 
 def test_published_links_do_not_target_jekyll_excluded_paths():

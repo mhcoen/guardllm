@@ -4,49 +4,50 @@
 
 @import "{{ site.theme }}";
 
-/* Nothing may make the page itself wider than the viewport.
+/* Target bare elements.
  *
- * The 390px check found every page scrolling sideways by 193 to 667 pixels
- * while wide tables were correctly scrolling inside their own boxes. The
- * tables were not the cause: `width: max-content` lets a table state an
- * intrinsic width, and an unconstrained ancestor grows to satisfy it, so the
- * page widened and the table then fit inside it. Constrain the ancestors and
- * drop the intrinsic width.
+ * Every rule here was previously scoped to a wrapper class this theme's layout
+ * does not emit, so none of them applied. The table fix appeared to work only
+ * because the page grew wide enough that no table overflowed its own box. The
+ * 390px diagnostic reported the offending elements with empty class names,
+ * which is what gave it away.
  */
 html,
-body {
-  max-width: 100%;
-}
-
+body,
 .container-lg {
   max-width: 100%;
 }
 
-/* Wide tables scroll within their own box instead of clipping.
- *
- * This is the treatment GitHub applies to tables in rendered Markdown, minus
- * the max-content width, which is what pushed the page wide.
- */
-.markdown-body table {
+/* Wide tables scroll within their own box instead of widening the page. */
+table {
   display: block;
   max-width: 100%;
   overflow-x: auto;
 }
 
-/* Code blocks, images, and long unbroken tokens are the other three ways a
- * page grows past the viewport.
+/* Code blocks scroll; the code inside them must not wrap, or the scroll box
+ * has nothing to scroll and long lines break mid-token instead.
  */
-.markdown-body pre,
-.markdown-body code {
+pre {
   max-width: 100%;
   overflow-x: auto;
 }
 
-.markdown-body img {
+pre code {
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+/* Inline code and long unbroken tokens in prose break rather than push. */
+code {
+  overflow-wrap: anywhere;
+}
+
+img {
   max-width: 100%;
   height: auto;
 }
 
-.markdown-body {
+body {
   overflow-wrap: break-word;
 }

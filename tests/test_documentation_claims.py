@@ -755,3 +755,21 @@ def test_generators_do_not_write_the_same_file():
             check=False,
         )
         assert result.returncode == 0, f"{script}: {result.stdout}{result.stderr}"
+
+
+def test_readme_surfaces_the_demos_above_the_fold():
+    """The demos are the best-maintained part of the project.
+
+    The link previously sat two thirds down the page under a Documentation
+    heading, after the pitch, features, install, an example, the API surface,
+    and the benchmark tables. A reader landing on the repository saw none of it.
+    """
+    readme = (ROOT / "README.md").read_text()
+    demo_link = readme.index("guardllm_surface_map.html")
+    first_heading = readme.index("\n## ")
+    assert demo_link < first_heading, "the demo link must precede the first section"
+
+    # GitHub renders the repository landing page, where a relative .html link
+    # shows source rather than the demo. Above the fold it must be absolute.
+    promo = readme[:first_heading]
+    assert "https://mhcoen.github.io/guardllm/demo/" in promo

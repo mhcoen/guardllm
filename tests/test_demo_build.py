@@ -539,3 +539,25 @@ def test_demo_content_containers_wrap_long_tokens():
 
     # The digest that exposed it must still be displayed, not shortened away.
     assert "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" in page
+
+
+def test_every_demo_page_links_back_to_the_project():
+    """A reader arriving at a demo from a link had no route anywhere else.
+
+    The demo nav pointed only at other demos, and the surface map lost its nav
+    entirely when the entry-point CTA replaced it, so the index had none.
+    """
+    pages = sorted(DEMO.glob("*.html"))
+    assert len(pages) == 10
+    for path in pages:
+        page = path.read_text()
+        assert 'href="https://github.com/mhcoen/guardllm"' in page, path.name
+        nav = re.search(r"<nav[^>]*>.*?</nav>", page, re.S)
+        assert nav, path.name
+        # It comes first in the trail, before the other demo links.
+        assert "github.com/mhcoen/guardllm" in nav.group(0), path.name
+
+    # The link is absolute on purpose: these pages must keep working opened
+    # directly from disk, where a relative path to the project has no target.
+    for path in pages:
+        assert "fetch(" not in path.read_text()

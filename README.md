@@ -12,6 +12,10 @@ LLM applications routinely process untrusted content (web results, emails, docum
 
 ## How GuardLLM Works
 
+![GuardLLM trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
+
+Data changes hands at three party crossings: ingress, the model, and egress. Authorization and integrity are gates inside the trusted region, so they admit or refuse a flow and never move data across a boundary. The four edges on the retained session state are the loop. Ingress writes labels, the authorization gates and egress checks read them, and a high-confidence egress block writes escalation back, so a block now tightens a later call in the same session. Content passes through the model. Labels travel around it, which is why a decision at egress can still read what ingress recorded. The model crossing is the one no control inspects ([T-IN13](docs/threat_model.md)).
+
 GuardLLM is a lifecycle-aware security pipeline, not a collection of independent checks:
 
 1. **Evaluate and label at ingress**: sanitize untrusted content, detect prompt injection, assign source trust and provenance labels.

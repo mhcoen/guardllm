@@ -361,6 +361,12 @@ class Guard:
         vault = self._pipeline.vault
         if vault is None:
             raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
+        # Ingest the PLAINTEXT into the sensitive DLP buffer before
+        # substituting. A host calling this has already told us the content is
+        # sensitive, and without the ingest the contaminated-context control
+        # has nothing to compare against: the value would leave uninspected on
+        # any path the vault does not cover.
+        self._pipeline.ingest_sensitive(content)
         result = vault.deidentify(content, deny_action="fail")
         self._audit(
             AuditEvent(

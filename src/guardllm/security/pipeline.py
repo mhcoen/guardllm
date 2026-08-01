@@ -190,6 +190,7 @@ class SecurityPipeline:
         # reappearing at egress, and a tokenized copy holds nothing worth
         # remembering.
         pii_findings: list = []
+        blocked = False
         if self._vault_applies(ctx):
             deid = self._vault.deidentify(cleaned, deny_action="marker")
             if deid.allowed:
@@ -198,15 +199,31 @@ class SecurityPipeline:
                 warnings.extend(deid.warnings)
                 san_result = replace(san_result, cleaned_text=cleaned)
             else:
-                warnings.append(f"De-identification skipped: {deid.reason}")
+                # Fail CLOSED. Continuing with the original text would hand the
+                # host prompt-ready plaintext with only a warning to notice,
+                # and a normal host forwards ProcessedContent.content. A
+                # capacity limit or an ambiguous overlap must not become a
+                # disclosure.
+                blocked = True
+                cleaned = "[de-identification failed: content withheld]"
+                san_result = replace(san_result, cleaned_text=cleaned)
+                warnings.append(f"De-identification failed: {deid.reason}")
 
         # L1: Isolate untrusted content
         isolated = False
+        # The wrapper is model-visible, so it receives an opaque handle rather
+        # than the caller's source_id, which source_gate documents as possibly
+        # an email sender. The real identifier stays in provenance, the DLP
+        # buffers, and audit below.
+        wrapper_source_id = ctx.source_id
+        if self._vault is not None:
+            wrapper_source_id = self._vault.source_handle(ctx.source_type, ctx.source_id)
+
         if ctx.source_trust == TrustLevel.UNTRUSTED:
             cleaned = wrap_untrusted(
                 cleaned,
                 source_type=ctx.source_type,
-                source_id=ctx.source_id,
+                source_id=wrapper_source_id,
                 trust=ctx.source_trust.value,
             )
             isolated = True
@@ -216,7 +233,7 @@ class SecurityPipeline:
             cleaned = wrap_untrusted(
                 cleaned,
                 source_type=ctx.source_type,
-                source_id=ctx.source_id,
+                source_id=wrapper_source_id,
                 trust=ctx.source_trust.value,
             )
             isolated = True
@@ -262,7 +279,17 @@ class SecurityPipeline:
             source_id=ctx.source_id,
             warnings=warnings,
             pii_findings=pii_findings,
+            blocked=blocked,
         )
+
+    def ingest_sensitive(self, content: str) -> None:
+        """Record plaintext in the L3 sensitive buffer.
+
+        Used by direct de-identification, which does not pass through
+        ``process_inbound`` and would otherwise leave the contaminated-context
+        egress check with nothing to compare against.
+        """
+        self._dlp.ingest_sensitive(normalize_confusables(content))
 
     def check_outbound_content(
         self,

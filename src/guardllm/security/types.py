@@ -273,6 +273,9 @@ class ProcessedContent:
     warnings: list[str] = field(default_factory=list)
     #: L13 findings. Carries classes, offsets, and tokens, never values.
     pii_findings: list = field(default_factory=list)
+    #: True when de-identification failed and ``content`` was withheld rather
+    #: than returned as plaintext. Hosts must not forward blocked content.
+    blocked: bool = False
 
 
 @dataclass
@@ -399,6 +402,10 @@ class PIIClass(Enum):
     PERSON = "person"
     ADDRESS = "address"
     URL = "url"
+    #: API keys, tokens, and private keys. Always DENY: a model has no
+    #: legitimate use for a credential, and tokenizing one implies it can come
+    #: back, which is the wrong affordance entirely.
+    CREDENTIAL = "credential"
 
 
 class ClassPolicy(Enum):
@@ -429,7 +436,7 @@ REDACT = "REDACT"
 #: has no legitimate use for an API key. Driven by the same patterns L3 already
 #: scans for at egress (outbound_dlp._SECRET_PATTERNS) rather than a second
 #: list that drifts from it.
-DEFAULT_DENY_CLASSES: frozenset[PIIClass] = frozenset()
+DEFAULT_DENY_CLASSES: frozenset[PIIClass] = frozenset({PIIClass.CREDENTIAL})
 
 DEFAULT_TOKENIZE_CLASSES: frozenset[PIIClass] = frozenset(
     {
@@ -561,6 +568,17 @@ class PrivacyConfig:
     deidentify_sensitive_ingest: bool = True
     #: Optional recognizer plugin with ``find(text) -> list[PIIFinding]``.
     recognizer: object | None = None
+
+    def scanned_classes(self) -> frozenset[PIIClass]:
+        """Every class detection must look for.
+
+        The union of ``classes`` and any class named in ``class_policy``.
+        Detecting only ``classes`` would make an override such as
+        ``class_policy={PIIClass.IPV4: ClassPolicy.TOKENIZE}`` a no-op: the
+        policy is consulted, but nothing is ever found to consult it about.
+        """
+        extra = {c for c, p in self.class_policy.items() if p is not ClassPolicy.ALLOW}
+        return frozenset(self.classes | extra | DEFAULT_DENY_CLASSES)
 
     def policy_for(self, pii_class: PIIClass) -> ClassPolicy:
         """Resolve the model-boundary policy for one class."""

@@ -31,6 +31,7 @@ radius, resolve at all.
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass, replace
 
 from guardllm.security import token_codec as codec
@@ -175,6 +176,20 @@ def resolve_field(
     return FieldDecision("fail", f"malformed restoration rule for field '{path}'")
 
 
+def _iter_strings(node: object):
+    """Yield every string leaf of an argument tree."""
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for k, v in node.items():
+            if isinstance(k, str):
+                yield k
+            yield from _iter_strings(v)
+    elif isinstance(node, (list, tuple, set)):
+        for v in node:
+            yield from _iter_strings(v)
+
+
 # ---------------------------------------------------------------------------
 # Vault
 # ---------------------------------------------------------------------------
@@ -209,14 +224,22 @@ class PrivacyVault:
         self._config = config
         self._by_value: dict[tuple[PIIClass, str], _Entry] = {}
         self._by_payload: dict[str, _Entry] = {}
+        # Issuance is a compound of lookup, capacity check, collision
+        # exclusion, and two map writes. Unlocked, two threads can both pass a
+        # capacity check of one and both write, which breaks the N/2^b forgery
+        # bound, and can mint two tokens for the same value, which breaks
+        # session co-reference. RateLimiter in this package already takes a
+        # lock for the same reason.
+        self._lock = threading.RLock()
         self.seeded = SeededValues()
 
     # -- lifecycle ------------------------------------------------------
 
     def clear(self) -> None:
         """Drop every entry. Invalidates every token in the host's transcript."""
-        self._by_value.clear()
-        self._by_payload.clear()
+        with self._lock:
+            self._by_value.clear()
+            self._by_payload.clear()
 
     def __len__(self) -> int:
         return len(self._by_payload)
@@ -244,6 +267,10 @@ class PrivacyVault:
     def token_for(self, pii_class: PIIClass, value: str) -> str:
         """Return the session-stable token for a value, issuing one if needed."""
         key = (pii_class, self._normalize(pii_class, value))
+        with self._lock:
+            return self._issue_locked(key, pii_class, value)
+
+    def _issue_locked(self, key, pii_class: PIIClass, value: str) -> str:
         existing = self._by_value.get(key)
         if existing is not None:
             return existing.token
@@ -264,6 +291,30 @@ class PrivacyVault:
         self._by_value[key] = entry
         self._by_payload[payload] = entry
         return entry.token
+
+    def source_handle(self, source_type: str, source_id: str) -> str:
+        """Stable opaque label for a source, safe to put in a prompt.
+
+        ``wrap_untrusted`` interpolates the caller's ``source_id`` into the
+        isolation tag, which is model-visible, and ``source_gate`` documents
+        that field as "e.g., client_id, email sender". So the library's own
+        suggested usage puts an address in front of the provider. L13 runs
+        before L1 precisely so the detectors do not scan wrapper attributes,
+        which is what leaves this value untouched.
+
+        The real identifier stays in provenance, the DLP buffers, and audit.
+        The handle is derived, not detected: deciding whether a source_id
+        "looks sensitive" would be inferring a label from content, and would
+        fail on exactly the identifiers no detector covers.
+        """
+        with self._lock:
+            key = (PIIClass.URL, f"__source__{source_type}:{source_id}")
+            existing = self._by_value.get(key)
+            if existing is not None:
+                return existing.token
+            handle = f"src-{len(self._by_value) + 1:04d}"
+            self._by_value[key] = _Entry(value=source_id, pii_class=PIIClass.URL, token=handle)
+            return handle
 
     def lookup(self, payload: str) -> _Entry | None:
         return self._by_payload.get(payload)
@@ -326,9 +377,13 @@ class PrivacyVault:
         a prompt the host built is a bug in the host and should be loud.
         """
         cfg = self._config
+        # Scan every class the host configured, not just `classes`. A
+        # class_policy override naming a class absent from `classes` would
+        # otherwise never be detected, so a host that explicitly enabled a
+        # protection would get silence instead of it.
         found = detect(
             text,
-            classes=cfg.classes,
+            classes=cfg.scanned_classes(),
             seeded=self.seeded,
             recognizer=cfg.recognizer,
             masked_spans=self._masked_spans(text),
@@ -415,8 +470,16 @@ class PrivacyVault:
         """
         out = s
         for entry in self._by_payload.values():
-            if entry.value and entry.value in out:
-                out = out.replace(entry.value, entry.token)
+            if not entry.value or entry.value not in out:
+                continue
+            # Bounded replacement. A global str.replace of a short vaulted
+            # value corrupts unrelated words that merely contain it, which
+            # damages a genuine L0 diagnostic instead of protecting anything.
+            out = re.sub(
+                rf"(?<![A-Za-z0-9]){re.escape(entry.value)}(?![A-Za-z0-9])",
+                entry.token,
+                out,
+            )
         return out
 
     def scrub_diagnostics(
@@ -597,6 +660,18 @@ class PrivacyVault:
             return _TOKEN_RE.sub(_sub, value)
 
         new_args = _walk(args, [])
+
+        # A token whose closing framing the model damaged is not matched by
+        # _TOKEN_RE, so substitution leaves it in place and the argument
+        # dispatches literally: "[[GL:EMAIL:8BDBYD8BQE4VW4F]" as a recipient.
+        # Free-text restoration counts stray openers against a budget; for a
+        # tool argument that is not enough, because one surviving opener is a
+        # corrupted dispatch. Unconditional.
+        if failure is None:
+            for leaf in _iter_strings(new_args):
+                if _TOKEN_OPENER_RE.search(leaf):
+                    failure = "Damaged privacy token framing in tool arguments"
+                    break
 
         if failure is not None:
             return PreparedCall(allowed=False, tool=tool, reason=failure, warnings=warnings)

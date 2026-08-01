@@ -25,6 +25,7 @@ whole text.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections import deque
 from dataclasses import dataclass
@@ -107,6 +108,20 @@ def ipv4_valid(value: str) -> bool:
         return False
 
 
+def ipv6_valid(value: str) -> bool:
+    """Delegate to ipaddress so compressed forms ("2001:db8::1") are accepted.
+
+    The previous pattern required all eight groups written out, so every
+    compressed address, which is the form people actually write, went
+    undetected and crossed the boundary in plaintext.
+    """
+    try:
+        ipaddress.IPv6Address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def dob_valid(value: str) -> bool:
     """Accept only dates whose year is plausible for a date of birth."""
     years = re.findall(r"\d{4}", value)
@@ -139,7 +154,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.IBAN,
         "iban",
-        r"\b[A-Z]{2}\d{2}(?:[ -]?[A-Z0-9]{4}){2,7}[ -]?[A-Z0-9]{1,4}\b",
+        r"(?i:\b[A-Z]{2}\d{2}(?:[ -]?[A-Z0-9]{4}){2,7}[ -]?[A-Z0-9]{1,4})\b",
         iban_valid,
     ),
     DetectorSpec(
@@ -151,19 +166,20 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.SSN,
         "ssn",
-        r"\b\d{3}-\d{2}-\d{4}\b",
+        r"(?:(?i:\bssn\b\s*:?\s*)(?P<ssn_v>\d{9})\b|\b\d{3}[-\s]\d{2}[-\s]\d{4}\b)",
         ssn_valid,
     ),
     DetectorSpec(
         PIIClass.ROUTING_NUMBER,
         "routing_number",
-        r"(?i:\brouting(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<routing_number_v>\d{9})\b",
+        r"(?i:\b(?:routing|aba|rtn)(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<routing_number_v>\d{9})\b",
         routing_valid,
     ),
     DetectorSpec(
         PIIClass.IPV6,
         "ipv6",
-        r"\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b",
+        r"(?<![:.\w])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![:.\w])",
+        ipv6_valid,
     ),
     DetectorSpec(
         PIIClass.IPV4,
@@ -179,20 +195,22 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PHONE,
         "phone",
-        r"(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)|\b\d{3})[ .\-]\d{3}[ .\-]\d{4}\b",
+        r"(?:\+\d{1,3}[ .\-]?(?:\(?\d{2,5}\)?[ .\-]?){1,3}\d{3,4}\b"
+        r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)|\b\d{3})[ .\-]\d{3}[ .\-]\d{4}\b"
+        r"|\+\d{7,15}\b)",
     ),
     DetectorSpec(
         PIIClass.DATE_OF_BIRTH,
         "date_of_birth",
         r"(?i:\b(?:dob|date\s+of\s+birth|born)\b\s*:?\s*)"
-        r"(?P<date_of_birth_v>\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}|"
+        r"(?P<date_of_birth_v>\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}|"
         r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})",
         dob_valid,
     ),
     DetectorSpec(
         PIIClass.MEDICAL_RECORD,
         "medical_record",
-        r"(?i:\b(?:mrn|medical\s+record(?:\s+(?:number|no\.?|#))?)\s*:?\s*)(?P<medical_record_v>[A-Z0-9][A-Z0-9\-]{3,19})",
+        r"(?i:\b(?:mrn|medical\s+record(?:\s+(?:number|no\.?|#))?)\s*:?\s*)(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-]{3,19})",
     ),
     # No checksum exists for these, so they are matched only with a labelling
     # context. An unanchored pattern would be mostly false positives, and a
@@ -201,19 +219,19 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PASSPORT,
         "passport",
-        r"(?i:\bpassport(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<passport_v>[A-Z0-9]{6,9})\b",
+        r"(?i:\bpassport(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<passport_v>[A-Za-z0-9]{6,9})\b",
     ),
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
         "drivers_license",
         r"(?i:\b(?:driver'?s?\s+licen[cs]e|dl)(?:\s+(?:number|no\.?|#))?\s*:?\s*)"
-        r"(?P<drivers_license_v>[A-Z0-9][A-Z0-9\-]{4,19})\b",
+        r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
     ),
     DetectorSpec(
         PIIClass.NATIONAL_ID,
         "national_id",
         r"(?i:\bnational\s+id(?:entity)?(?:\s+(?:number|no\.?|#))?\s*:?\s*)"
-        r"(?P<national_id_v>[A-Z0-9][A-Z0-9\-]{4,19})\b",
+        r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
     ),
     DetectorSpec(
         PIIClass.URL,
@@ -329,6 +347,26 @@ class _AhoCorasick:
 _SEEDED_AUTOMATON_THRESHOLD = 100
 
 
+def _fold_with_offsets(text: str) -> tuple[str, list[int]]:
+    """Case-fold per character, recording each output char's original index."""
+    out: list[str] = []
+    offsets: list[int] = []
+    for i, ch in enumerate(text):
+        folded = ch.casefold()
+        out.append(folded)
+        offsets.extend([i] * len(folded))
+    return "".join(out), offsets
+
+
+def _standalone(text: str, start: int, end: int) -> bool:
+    """True when the span is not embedded inside a longer alphanumeric run."""
+    if start > 0 and (text[start - 1].isalnum() or text[start - 1] == "_"):
+        return False
+    if end < len(text) and (text[end].isalnum() or text[end] == "_"):
+        return False
+    return True
+
+
 class SeededValues:
     """Host-declared private values, matched exactly after normalization."""
 
@@ -353,20 +391,41 @@ class SeededValues:
         self._dirty = False
 
     def find(self, text: str) -> list[tuple[int, int, PIIClass]]:
+        """Locate seeded values, returning offsets into the ORIGINAL text.
+
+        Case folding is not length preserving: ``"\u00df".casefold()`` is
+        ``"ss"``, so every match after one in the text would be reported at a
+        shifted offset and the substitution would cut the wrong characters.
+        A per-character fold with an index map avoids that.
+
+        Matches must also stand alone. Unrestricted substring matching means
+        seeding a real short surname such as "Li" tokenizes the middle of
+        "Alice", corrupting content the model needed and leaving the actual
+        name in place.
+        """
         if not self._values:
             return []
-        haystack = text.casefold()
+        folded, offsets = _fold_with_offsets(text)
         if len(self._values) > _SEEDED_AUTOMATON_THRESHOLD:
             if self._automaton is None or self._dirty:
                 self._automaton = _AhoCorasick(self._values)
                 self._dirty = False
-            return self._automaton.find(haystack)
+            raw = self._automaton.find(folded)
+        else:
+            raw = []
+            for needle, cls in self._values.items():
+                start = folded.find(needle)
+                while start != -1:
+                    raw.append((start, start + len(needle), cls))
+                    start = folded.find(needle, start + 1)
+
         hits: list[tuple[int, int, PIIClass]] = []
-        for needle, cls in self._values.items():
-            start = haystack.find(needle)
-            while start != -1:
-                hits.append((start, start + len(needle), cls))
-                start = haystack.find(needle, start + 1)
+        for fs, fe, cls in raw:
+            if fs >= len(offsets) or fe - 1 >= len(offsets):
+                continue
+            if not _standalone(folded, fs, fe):
+                continue
+            hits.append((offsets[fs], offsets[fe - 1] + 1, cls))
         return hits
 
 
@@ -434,6 +493,22 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
     return DetectionResult(kept, ambiguous)
 
 
+def _credential_spans(text: str) -> list[tuple[int, int]]:
+    """Locate credentials using the table L3 already scans for at egress.
+
+    Imported rather than copied. A second list would drift from the one
+    outbound DLP enforces, and the two would disagree about what a credential
+    is, which is the worst possible outcome for a DENY class.
+    """
+    from guardllm.security.outbound_dlp import _SECRET_PATTERNS
+
+    spans: list[tuple[int, int]] = []
+    for pattern, _label in _SECRET_PATTERNS:
+        for m in pattern.finditer(text):
+            spans.append((m.start(), m.end()))
+    return spans
+
+
 def detect(
     text: str,
     *,
@@ -464,10 +539,13 @@ def detect(
         # Context-anchored detectors capture the identifier in a named value
         # group so the label ("MRN:", "Passport No.") is not swallowed into the
         # span and replaced along with the value.
-        if value_group is not None:
-            start, end, value = m.start(value_group), m.end(value_group), m.group(value_group)
-            if value is None:
-                continue
+        # A detector may offer a value group on only one branch of its
+        # alternation (labelled compact SSN vs. separated SSN). When that
+        # branch did not participate, fall back to the whole match instead of
+        # dropping the hit, which would silently disable the other form.
+        value = m.group(value_group) if value_group is not None else None
+        if value is not None:
+            start, end = m.start(value_group), m.end(value_group)
         else:
             start, end, value = m.start(), m.end(), m.group()
         if masked and _is_masked(start, end):
@@ -475,6 +553,13 @@ def detect(
         if spec.validator is not None and not spec.validator(value):
             continue
         matches.append(RawMatch(spec.pii_class, start, end, value))
+
+    if PIIClass.CREDENTIAL in classes:
+        for start, end in _credential_spans(text):
+            if not _is_masked(start, end):
+                matches.append(
+                    RawMatch(PIIClass.CREDENTIAL, start, end, text[start:end])
+                )
 
     if seeded is not None:
         for start, end, cls in seeded.find(text):

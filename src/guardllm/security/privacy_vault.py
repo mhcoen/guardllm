@@ -457,11 +457,27 @@ class PrivacyVault:
             text,
             classes=cfg.scanned_classes(),
             seeded=self.seeded,
-            recognizer=cfg.recognizer,
+            detectors=cfg.detectors,
             masked_spans=self._masked_spans(text),
         )
 
         warnings: list[str] = []
+        warnings.extend(found.detector_warnings)
+        if found.detection_incomplete and deny_action == "fail":
+            # `"fail"` marks the host-assembled path (`Guard.deidentify`), as
+            # against `"marker"` for untrusted ingest. The host asked for
+            # de-identification on content it declared sensitive and a detector
+            # it registered did not run, so we do not know what is in the text.
+            # That is not the same as knowing it is clean, and the difference is
+            # the whole reason this fails rather than warning.
+            return DeidentifyResult(
+                content=text,
+                allowed=False,
+                reason=(
+                    "De-identification incomplete: "
+                    + "; ".join(found.detector_warnings)
+                ),
+            )
         if found.unlocatable_credentials:
             # Present only in an obfuscated form, so there is no faithful span
             # to substitute. Refuse rather than emit content still carrying it.
@@ -548,6 +564,8 @@ class PrivacyVault:
             findings=findings,
             warnings=warnings,
             denied=denied,
+            detection_incomplete=found.detection_incomplete,
+            inference_used=bool(cfg.detectors),
         )
 
     # -- diagnostics scrubbing -----------------------------------------

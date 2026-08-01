@@ -26,6 +26,7 @@ from guardllm.security.privacy_vault import PrivacyVault, marker_for
 from guardllm.security.types import (
     DEFAULT_TOKENIZE_CLASSES,
     REDACT,
+    DetectedSpan,
     ContentType,
     Destination,
     PIIClass,
@@ -603,3 +604,146 @@ class TestReviewRegressions:
             t.join()
         assert len(v) <= 1
         assert len(set(results)) <= 1
+
+
+# ---------------------------------------------------------------------------
+# Tier 3: the detector interface
+# ---------------------------------------------------------------------------
+
+
+class _Detector:
+    """Minimal conforming detector, parameterized by what it returns."""
+
+    def __init__(self, spans, *, id="test", classes=frozenset({PIIClass.PERSON})):
+        self.id = id
+        self.classes = classes
+        self._spans = spans
+
+    def find(self, text):
+        return list(self._spans(text)) if callable(self._spans) else list(self._spans)
+
+
+def _person(start, end):
+    return DetectedSpan(start, end, PIIClass.PERSON)
+
+
+class TestDetectorInterface:
+    def test_a_conforming_detector_produces_inferred_findings(self):
+        text = "Ask Dana about the invoice."
+        d = _Detector([_person(4, 8)])
+        v = _vault(classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(d,))
+        r = v.deidentify(text)
+        assert r.allowed
+        assert "Dana" not in r.content
+        assert [f.inferred for f in r.findings] == [True]
+        assert r.inference_used is True
+
+    def test_no_detector_means_no_inference_claim(self):
+        r = _vault().deidentify("Ask Dana about the invoice.")
+        assert r.inference_used is False
+        assert r.detection_incomplete is False
+
+    def test_an_inferred_span_never_evicts_a_validated_one(self):
+        """The leak this rule exists for: a generous PERSON span swallowing a
+        validated SSN would vault the digits under class PERSON, and a
+        destination entitled to names would then be handed an SSN."""
+        text = f"Dana, SSN {SSN}, called."
+        greedy = _Detector([_person(0, len(text) - 8)])  # swallows the SSN
+        v = _vault(
+            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,)
+        )
+        r = v.deidentify(text)
+        assert r.allowed
+        classes = {f.pii_class for f in r.findings}
+        assert PIIClass.SSN in classes
+        assert PIIClass.PERSON not in classes
+        assert SSN not in r.content
+
+    def test_out_of_range_offsets_are_dropped_not_clamped(self):
+        text = "Ask Dana."
+        bad = _Detector(
+            [
+                DetectedSpan(4, 999, PIIClass.PERSON),  # past the end
+                DetectedSpan(-3, 4, PIIClass.PERSON),  # negative
+                DetectedSpan(6, 4, PIIClass.PERSON),  # reversed
+                DetectedSpan(4, 4, PIIClass.PERSON),  # empty
+            ]
+        )
+        v = _vault(classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(bad,))
+        r = v.deidentify(text)
+        assert r.allowed
+        assert r.findings == []
+        assert r.content == text  # nothing substituted over a guessed span
+
+    def test_a_detector_may_not_widen_its_declared_classes(self):
+        d = _Detector(
+            [DetectedSpan(0, 5, PIIClass.SSN)], classes=frozenset({PIIClass.PERSON})
+        )
+        v = _vault(detectors=(d,))
+        r = v.deidentify("12345 Main Street")
+        assert [f.pii_class for f in r.findings] == []
+
+    def test_a_detector_without_find_is_rejected_loudly(self):
+        """The duck-typed predecessor skipped this object silently, so a
+        misconfigured detector produced zero coverage and zero warnings."""
+
+        class Broken:
+            id = "broken"
+            classes = frozenset({PIIClass.PERSON})
+
+        v = _vault(detectors=(Broken(),))
+        r = v.deidentify("Ask Dana.", deny_action="fail")
+        assert r.allowed is False
+        assert "broken" in r.reason
+        assert "no callable" in r.reason
+
+    def test_a_raising_detector_fails_the_host_assembled_path(self):
+        class Boom:
+            id = "boom"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                raise RuntimeError("model not loaded")
+
+        r = _vault(detectors=(Boom(),)).deidentify("Ask Dana.", deny_action="fail")
+        assert r.allowed is False
+        assert "boom" in r.reason and "RuntimeError" in r.reason
+
+    def test_untrusted_ingest_warns_and_continues_when_a_detector_fails(self):
+        """Refusing here would let any web page that trips a detector bug take
+        out the host's pipeline, so ingest degrades instead of blocking."""
+
+        class Boom:
+            id = "boom"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                raise RuntimeError("model not loaded")
+
+        v = _vault(detectors=(Boom(),))
+        r = v.deidentify(f"Reach me at {EMAIL}", deny_action="marker")
+        assert r.allowed is True
+        assert r.detection_incomplete is True
+        assert any("boom" in w for w in r.warnings)
+        assert EMAIL not in r.content  # the tiers that did run still ran
+
+    def test_detector_warnings_carry_no_plaintext(self):
+        class Boom:
+            id = "boom"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                raise RuntimeError(text)  # a careless detector leaks the text
+
+        v = _vault(detectors=(Boom(),))
+        r = v.deidentify(f"Reach me at {EMAIL}", deny_action="marker")
+        assert all(EMAIL not in w for w in r.warnings)
+
+    def test_registration_order_does_not_change_the_outcome(self):
+        text = "Ask Dana about it."
+        a = _Detector([_person(4, 8)], id="a")
+        b = _Detector([_person(4, 8)], id="b")
+        cls = DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}
+        first = _vault(classes=cls, detectors=(a, b)).deidentify(text)
+        second = _vault(classes=cls, detectors=(b, a)).deidentify(text)
+        assert len(first.findings) == len(second.findings) == 1

@@ -10,7 +10,7 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -380,7 +380,7 @@ class PIIClass(Enum):
     """Classes of direct identifier the vault recognizes.
 
     PERSON and ADDRESS are reachable only through host-seeded values or a
-    recognizer plugin: the structural detectors do not attempt them, because
+    registered tier-3 ``Detector``: the built-in tiers do not attempt them, because
     finding a name in free text means inferring a label from content, which
     this library does not do (see the two-input model in docs/threat_model.md).
     """
@@ -472,7 +472,58 @@ class PIIFinding:
     start: int
     end: int
     token: str
-    inferred: bool = False  # True when a recognizer plugin produced it
+    inferred: bool = False  # True when a registered detector produced it
+
+
+@dataclass(frozen=True)
+class DetectedSpan:
+    """What a tier-3 detector returns: a located class, before substitution.
+
+    Distinct from ``PIIFinding``, which is what the library returns to the host
+    *after* substitution and therefore carries a ``token``. A detector runs
+    before any token exists, so the two cannot be the same type.
+
+    Carries no plaintext, for the same reason ``PIIFinding`` does not: a
+    detector's output reaches warnings and audit, and a span that quoted its own
+    value would reintroduce the disclosure substitution is about to prevent.
+    """
+
+    start: int
+    end: int
+    pii_class: PIIClass
+    #: Advisory only. Nothing gates on it; see the vault design, §7.2.3.
+    confidence: float | None = None
+
+
+@runtime_checkable
+class Detector(Protocol):
+    """Tier 3: host-supplied inference over free text.
+
+    The library ships tiers 1 and 2 (structural and host-seeded) and declines
+    to build a free-text name model. Any deployment needing person or address
+    coverage in free text registers a detector here.
+
+    Two conditions of registration, neither of which the library can enforce:
+
+    1. **A detector must not be a network client.** It receives raw plaintext,
+       before substitution, at every insertion point, which defeats every
+       provider-safe surface the vault otherwise maintains.
+    2. **A detector must not hang.** Detection sits on the path of every prompt,
+       so a detector that blocks forever is an availability failure in the
+       security layer. There is no enforced wall clock in v1: enforcing one on
+       synchronous in-process code requires a thread per call, and shipping an
+       unenforced budget described as enforced would be worse than shipping
+       none.
+
+    ``id`` appears in warnings and audit so an operator can see what was loaded.
+    ``classes`` is declared up front; a span naming a class outside it is
+    dropped, so a detector cannot widen its own remit at runtime.
+    """
+
+    id: str
+    classes: frozenset[PIIClass]
+
+    def find(self, text: str) -> Sequence[DetectedSpan]: ...
 
 
 # Resolution outcomes. Observable properties of a returned token, never claims
@@ -501,6 +552,15 @@ class DeidentifyResult:
     denied: list[PIIClass] = field(default_factory=list)
     allowed: bool = True
     reason: str = "clean"
+    #: A registered tier-3 detector did not run, so coverage is unknown rather
+    #: than clean. Set on the untrusted-ingest path, which warns and continues;
+    #: the host-assembled path fails the call instead. A host that wants the
+    #: stricter posture on ingest escalates on this flag.
+    detection_incomplete: bool = False
+    #: True when any tier-3 detector ran. The documented sub-millisecond,
+    #: no-ML, no-network characteristics describe the built-in tiers only, and
+    #: do not hold for a deployment that registered a detector.
+    inference_used: bool = False
 
 
 @dataclass
@@ -566,8 +626,10 @@ class PrivacyConfig:
     vault_max_entries: int = 10_000
     #: De-identify inbound content the host labelled SENSITIVE.
     deidentify_sensitive_ingest: bool = True
-    #: Optional recognizer plugin with ``find(text) -> list[PIIFinding]``.
-    recognizer: object | None = None
+    #: Tier-3 detectors (§7.2). Registration order does not affect the outcome:
+    #: findings are unioned and then resolved structurally, so adding a detector
+    #: can never remove a finding another one produced.
+    detectors: tuple[Detector, ...] = ()
 
     def scanned_classes(self) -> frozenset[PIIClass]:
         """Every class detection must look for.

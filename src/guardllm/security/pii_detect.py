@@ -16,7 +16,9 @@ they came out of a database row or a session record. This is the mechanism
 for person names and street addresses. The library does not attempt to find a
 name in free text on its own: doing so means inferring a label from content,
 which is the thing this project declines to do everywhere else. An
-application that needs free-text name coverage supplies a recognizer.
+application that needs free-text name coverage registers a tier-3 detector
+(``types.Detector``), whose spans are validated here, marked ``inferred``, and
+resolved against validated spans by the stricter rule in ``_resolve_overlaps``.
 
 Everything runs in one pass over the input. The combined alternation is
 compiled once; validators execute only on candidate matches, never on the
@@ -29,8 +31,9 @@ import ipaddress
 import re
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Sequence
 
-from guardllm.security.types import PIIClass
+from guardllm.security.types import DetectedSpan, Detector, PIIClass
 
 # ---------------------------------------------------------------------------
 # Validators
@@ -541,6 +544,14 @@ class DetectionResult:
     #: Credentials detectable only in a deobfuscated form, so they have no
     #: faithful span to substitute. The caller must refuse the content.
     unlocatable_credentials: list[str] = field(default_factory=list)
+    #: Per-detector rejection and failure reasons, for warnings and audit.
+    #: Never carries a span or a value, only a detector id and a cause.
+    detector_warnings: list[str] = field(default_factory=list)
+    #: True when at least one registered detector could not be run. Distinct
+    #: from finding nothing: the caller decides what that means for its entry
+    #: point, because refusing untrusted inbound content on a flaky detector
+    #: would let any web page take out the host's pipeline.
+    detection_incomplete: bool = False
 
 
 def _spans_overlap(a: RawMatch, b: RawMatch) -> bool:
@@ -558,8 +569,18 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
     inside a longer identifier, an email that swallows a bare domain. Partial
     overlap without containment is genuinely ambiguous and is surfaced instead
     of being decided by a made-up class-priority table.
+
+    Inferred spans resolve by a stricter rule: an inferred span overlapping a
+    validated one loses outright, contained, containing, or partial. A checksum
+    beats a model. Without this, a tier-3 detector returning a generous PERSON
+    span across "Dana, SSN 123-45-6789" would evict the validated SSN and get
+    the digits vaulted as PERSON, and restoration reads the class recorded at
+    issuance, so a destination entitled to names would receive an SSN. Two
+    inferred spans that overlap remain ambiguous, exactly as two validated ones.
     """
-    ordered = sorted(matches, key=lambda m: (m.start, -(m.end - m.start)))
+    # Validated spans are placed first so an inferred span can never be the
+    # incumbent that a validated one has to displace.
+    ordered = sorted(matches, key=lambda m: (m.inferred, m.start, -(m.end - m.start)))
     kept: list[RawMatch] = []
     ambiguous: list[tuple[RawMatch, RawMatch]] = []
     for cand in ordered:
@@ -568,6 +589,12 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
         for i, existing in enumerate(kept):
             if not _spans_overlap(cand, existing):
                 continue
+            if cand.inferred and not existing.inferred:
+                # The sort puts every validated span in `kept` first, so this is
+                # the only mixed case reachable. Not reported as ambiguous:
+                # nothing about it is ambiguous.
+                drop = True
+                break
             if _contains(existing, cand):
                 drop = True
                 break
@@ -582,6 +609,73 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
             kept.append(cand)
     kept.sort(key=lambda m: m.start)
     return DetectionResult(kept, ambiguous)
+
+
+def _run_detector(
+    detector: Detector, text: str
+) -> tuple[list[DetectedSpan], str | None]:
+    """Run one tier-3 detector and validate every span it returns.
+
+    Returns ``(spans, None)`` on success, or ``([], reason)`` when the detector
+    could not be used at all. A detector that raises is a failure, not an empty
+    result: "we do not know what is in this text" is a different state from "the
+    text is clean", and conflating them is how a misconfigured detector turns
+    into silent non-coverage.
+
+    Individual malformed spans are dropped, not repaired. The two available
+    repairs, widening and narrowing, leak in opposite directions, and a wrong
+    ``end`` offset raises nothing on its own: it substitutes a token over the
+    wrong span, leaving the tail of a real identifier in text bound for the
+    provider. Dropping is the only choice that fails in a direction we can name.
+    """
+    detector_id = getattr(detector, "id", None)
+    if not isinstance(detector_id, str) or not detector_id:
+        return [], "detector rejected: missing a string `id`"
+
+    declared = getattr(detector, "classes", None)
+    if not isinstance(declared, (frozenset, set)) or not declared:
+        return [], f"detector {detector_id!r} rejected: no declared `classes`"
+
+    find = getattr(detector, "find", None)
+    if not callable(find):
+        # The previous duck-typed check silently skipped an object with no
+        # `find`, so a misconfigured detector produced zero coverage and zero
+        # warnings. Registration is an assertion that detection will happen.
+        return [], f"detector {detector_id!r} rejected: no callable `find`"
+
+    try:
+        raw = find(text)
+    except Exception as exc:  # noqa: BLE001 - host code, any failure is ours to report
+        return [], f"detector {detector_id!r} raised {type(exc).__name__}"
+
+    if raw is None:
+        return [], f"detector {detector_id!r} returned None"
+
+    limit = len(text)
+    kept: list[DetectedSpan] = []
+    seen: set[tuple[int, int, PIIClass]] = set()
+    for span in raw:
+        start = getattr(span, "start", None)
+        end = getattr(span, "end", None)
+        cls = getattr(span, "pii_class", None)
+        # bool is an int subclass; a True offset is a bug, not a position.
+        if not isinstance(start, int) or isinstance(start, bool):
+            continue
+        if not isinstance(end, int) or isinstance(end, bool):
+            continue
+        if not isinstance(cls, PIIClass):
+            continue
+        if not (0 <= start < end <= limit):
+            continue
+        if cls not in declared:
+            # A detector may not widen its own remit at runtime.
+            continue
+        key = (start, end, cls)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(DetectedSpan(start, end, cls, getattr(span, "confidence", None)))
+    return kept, None
 
 
 def credential_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
@@ -602,7 +696,7 @@ def detect(
     *,
     classes: frozenset[PIIClass],
     seeded: SeededValues | None = None,
-    recognizer: object | None = None,
+    detectors: Sequence[Detector] = (),
     masked_spans: list[tuple[int, int]] | None = None,
 ) -> DetectionResult:
     """Find identifiers in ``text``.
@@ -656,15 +750,28 @@ def detect(
             if cls in classes and not _is_masked(start, end):
                 matches.append(RawMatch(cls, start, end, text[start:end]))
 
-    if recognizer is not None and hasattr(recognizer, "find"):
-        for finding in recognizer.find(text):
-            cls = getattr(finding, "pii_class", None)
-            start = getattr(finding, "start", None)
-            end = getattr(finding, "end", None)
-            if cls in classes and start is not None and end is not None:
-                if not _is_masked(start, end):
-                    matches.append(RawMatch(cls, start, end, text[start:end], inferred=True))
+    detector_warnings: list[str] = []
+    detection_failed = False
+    for detector in detectors:
+        spans, failure = _run_detector(detector, text)
+        if failure is not None:
+            detection_failed = True
+            detector_warnings.append(failure)
+            continue
+        for span in spans:
+            if span.pii_class in classes and not _is_masked(span.start, span.end):
+                matches.append(
+                    RawMatch(
+                        span.pii_class,
+                        span.start,
+                        span.end,
+                        text[span.start : span.end],
+                        inferred=True,
+                    )
+                )
 
     resolved = _resolve_overlaps(matches)
     resolved.unlocatable_credentials = unlocatable_credentials
+    resolved.detector_warnings = detector_warnings
+    resolved.detection_incomplete = detection_failed
     return resolved

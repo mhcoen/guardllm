@@ -31,6 +31,7 @@ radius, resolve at all.
 from __future__ import annotations
 
 import re
+import secrets
 import threading
 from dataclasses import dataclass, replace
 
@@ -231,6 +232,7 @@ class PrivacyVault:
         # session co-reference. RateLimiter in this package already takes a
         # lock for the same reason.
         self._lock = threading.RLock()
+        self._sources: dict[tuple[str, str], str] = {}
         self.seeded = SeededValues()
 
     # -- lifecycle ------------------------------------------------------
@@ -240,6 +242,7 @@ class PrivacyVault:
         with self._lock:
             self._by_value.clear()
             self._by_payload.clear()
+            self._sources.clear()
 
     def __len__(self) -> int:
         return len(self._by_payload)
@@ -292,6 +295,12 @@ class PrivacyVault:
         self._by_payload[payload] = entry
         return entry.token
 
+    #: Source handles live outside the value vault. Deriving them from
+    #: len(_by_value) leaked how many protected values a session had seen
+    #: before each new source, and storing them in _by_value let a crawler or
+    #: mailbox session grow unbounded despite the advertised hard capacity.
+    _SOURCE_HANDLE_MAX = 4096
+
     def source_handle(self, source_type: str, source_id: str) -> str:
         """Stable opaque label for a source, safe to put in a prompt.
 
@@ -307,17 +316,80 @@ class PrivacyVault:
         "looks sensitive" would be inferring a label from content, and would
         fail on exactly the identifiers no detector covers.
         """
+        key = (source_type, source_id)
         with self._lock:
-            key = (PIIClass.URL, f"__source__{source_type}:{source_id}")
-            existing = self._by_value.get(key)
+            existing = self._sources.get(key)
             if existing is not None:
-                return existing.token
-            handle = f"src-{len(self._by_value) + 1:04d}"
-            self._by_value[key] = _Entry(value=source_id, pii_class=PIIClass.URL, token=handle)
+                return existing
+            if len(self._sources) >= self._SOURCE_HANDLE_MAX:
+                # Deterministic and non-identifying. Better than growing without
+                # bound or than reusing a handle that would alias two sources.
+                return "src-overflow"
+            handle = f"src-{secrets.token_hex(4)}"
+            self._sources[key] = handle
             return handle
+
+    def issue_batch(self, wanted: list[tuple[PIIClass, str]]) -> dict[tuple[PIIClass, str], str]:
+        """Issue tokens for a whole document, or none of them.
+
+        Issuing inside the substitution loop made a capacity failure
+        destructive rather than recoverable: entries from the first half of a
+        document stayed stored while no tokenized document was returned, so
+        retrying the same document failed permanently and only a reset, which
+        invalidates every token in the transcript, could recover the session.
+
+        Capacity is checked once against the count of genuinely new keys, then
+        every entry is committed under the same lock.
+        """
+        with self._lock:
+            issued: dict[tuple[PIIClass, str], str] = {}
+            new_keys: list[tuple[PIIClass, str, str]] = []
+            for pii_class, value in wanted:
+                key = (pii_class, self._normalize(pii_class, value))
+                if key in issued:
+                    continue
+                existing = self._by_value.get(key)
+                if existing is not None:
+                    issued[key] = existing.token
+                    continue
+                if not any(k[:2] == key for k in new_keys):
+                    new_keys.append((key[0], key[1], value))
+
+            if len(self._by_payload) + len(new_keys) > self._config.vault_max_entries:
+                raise VaultCapacityError(
+                    f"privacy vault is full ({self._config.vault_max_entries} entries)"
+                )
+            for pii_class, norm, value in new_keys:
+                issued[(pii_class, norm)] = self._issue_locked(
+                    (pii_class, norm), pii_class, value
+                )
+            return issued
+
+    def token_key(self, pii_class: PIIClass, value: str) -> tuple[PIIClass, str]:
+        return (pii_class, self._normalize(pii_class, value))
 
     def lookup(self, payload: str) -> _Entry | None:
         return self._by_payload.get(payload)
+
+    #: Any run of Crockford symbols the right length to be a codeword body.
+    #: Framing-independent on purpose: checking for a surviving "[[" only
+    #: catches damage to the closing bracket, so "[GL:EMAIL:...]]" and every
+    #: other opening-prefix corruption dispatched literally.
+    _BODY_RE = re.compile(r"(?<![0-9A-Za-z])[0-9A-TV-Za-tv-z]{15}(?![0-9A-Za-z])")
+
+    def _has_stray_issued_payload(self, text: str) -> bool:
+        """True when a live issued payload survives outside a valid token.
+
+        Substitution consumes properly framed tokens, so anything reaching
+        here with a payload that resolves to a live entry is a token whose
+        framing the model damaged. Membership is exact, so a false positive
+        would require a 60-bit collision.
+        """
+        for m in self._BODY_RE.finditer(text):
+            result = codec.decode_text(m.group())
+            if result.ok and codec.payload_key(result.payload) in self._by_payload:
+                return True
+        return False
 
     def contains_issued_token(self, text: str) -> bool:
         """Exact membership test, not a pattern match.
@@ -390,6 +462,18 @@ class PrivacyVault:
         )
 
         warnings: list[str] = []
+        if found.unlocatable_credentials:
+            # Present only in an obfuscated form, so there is no faithful span
+            # to substitute. Refuse rather than emit content still carrying it.
+            return DeidentifyResult(
+                content=text,
+                allowed=False,
+                reason=(
+                    "Obfuscated credential detected with no substitutable span: "
+                    + ", ".join(found.unlocatable_credentials)
+                ),
+                denied=[PIIClass.CREDENTIAL],
+            )
         if found.ambiguous:
             # Partial overlap without containment is genuinely ambiguous.
             # Inventing a precedence rule to break it is how a detector quietly
@@ -403,6 +487,18 @@ class PrivacyVault:
                     f"({first[0].pii_class.value} vs {first[1].pii_class.value})"
                 ),
             )
+
+        # Reserve capacity for the entire document before substituting, so a
+        # capacity failure leaves the vault exactly as it was.
+        wanted = [
+            (m.pii_class, m.value)
+            for m in found.matches
+            if cfg.policy_for(m.pii_class) is ClassPolicy.TOKENIZE
+        ]
+        try:
+            issued = self.issue_batch(wanted)
+        except VaultCapacityError as exc:
+            return DeidentifyResult(content=text, allowed=False, reason=str(exc))
 
         findings: list[PIIFinding] = []
         denied: list[PIIClass] = []
@@ -433,10 +529,7 @@ class PrivacyVault:
                 pieces.append(marker_for(match.pii_class))
                 cursor = match.end
                 continue
-            try:
-                token = self.token_for(match.pii_class, match.value)
-            except VaultCapacityError as exc:
-                return DeidentifyResult(content=text, allowed=False, reason=str(exc))
+            token = issued[self.token_key(match.pii_class, match.value)]
             pieces.append(token)
             findings.append(
                 PIIFinding(
@@ -669,7 +762,7 @@ class PrivacyVault:
         # corrupted dispatch. Unconditional.
         if failure is None:
             for leaf in _iter_strings(new_args):
-                if _TOKEN_OPENER_RE.search(leaf):
+                if self._has_stray_issued_payload(leaf):
                     failure = "Damaged privacy token framing in tool arguments"
                     break
 

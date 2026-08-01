@@ -458,7 +458,7 @@ class TestReviewRegressions:
         assert not guard.check_outbound(f"patient record for {EMAIL} with ssn {SSN}", ctx).allowed
 
     @pytest.mark.parametrize("text,cls", [
-        ("078 05 1120", PIIClass.SSN),
+        ("SSN: 078 05 1120", PIIClass.SSN),
         ("SSN: 078051120", PIIClass.SSN),
         ("+442071838750", PIIClass.PHONE),
         ("gb82 west 12345698765432", PIIClass.IBAN),
@@ -471,6 +471,82 @@ class TestReviewRegressions:
         """A false negative here is plaintext at the provider with no signal."""
         r = detect(text, classes=DEFAULT_TOKENIZE_CLASSES)
         assert cls in {m.pii_class for m in r.matches}
+
+    @pytest.mark.parametrize("text", [
+        "Decimal('1.2345E+12345680')",
+        "Decimal('+35236450.6')",
+        "'+3.140000; -3.140000'",
+        "DELTA = +123456789",
+        "build 1.2.3 +20240101",
+        "id: 123 45 6789",
+        "seq +9987654321",
+        "COLOR_SCALE = 9468822170900693",
+    ])
+    def test_ambiguous_numbers_are_not_treated_as_identifiers(self, text):
+        """Broadening recall in round two tokenized counters, deltas, and
+        version strings, corrupting code and structured data the model was
+        asked to process. Compact numbers now need a numbering plan or a
+        label, and cards need a real issuer prefix on top of Luhn."""
+        assert not detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
+
+    def test_unlabelled_space_separated_ssn_is_deliberately_not_detected(self):
+        """Three-two-four digit groups are indistinguishable from part numbers
+        and dates. The hyphenated form is distinctive and still stands alone."""
+        assert not detect("id: 123 45 6789", classes=DEFAULT_TOKENIZE_CLASSES).matches
+        assert detect("078-05-1120", classes=DEFAULT_TOKENIZE_CLASSES).matches
+
+    def test_credential_detection_matches_l3_exactly(self):
+        """The boundary denier and the egress blocker must not disagree about
+        what a credential is. Reusing only the regex table let high-entropy
+        secrets cross inbound while L3 blocked them outbound."""
+        from guardllm.security.outbound_dlp import _scan_secrets
+        from guardllm.security.pii_detect import credential_spans
+
+        for probe in [
+            "x9Qv2Lm8Np4Rs7Tw3Yz6Bc1Df5Gh9Jk2",
+            "sk-abcdefghij klmnopqrstuvwx",
+            "sk-abcdefghijklmnopqrstuvwx",
+            "AKIAIOSFODNN7EXAMPLE",
+            "the quick brown fox jumps over the lazy dog",
+            "https://example.com/a/very/long/path/segment/here",
+        ]:
+            text = f"token {probe}"
+            spans, unlocatable = credential_spans(text)
+            assert bool(spans or unlocatable) == bool(_scan_secrets(text)), probe
+
+    def test_damaged_opening_framing_fails_a_tool_call(self):
+        """_TOKEN_OPENER_RE requires both brackets, so opening-prefix damage
+        was not caught and dispatched literally as a recipient."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        for damaged in [token[1:], token.replace("[[GL", "[[G", 1), token.replace(":", "", 1)]:
+            p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+            assert not p.allowed, damaged
+
+    def test_source_handles_do_not_leak_cardinality_or_grow_unbounded(self):
+        """Deriving the label from len(_by_value) told the provider how many
+        protected values preceded each source, and handles bypassed capacity."""
+        v = _vault(vault_max_entries=1)
+        v.deidentify(f"mail {EMAIL}")
+        h1 = v.source_handle("web_content", "a@example.com")
+        h2 = v.source_handle("web_content", "b@example.com")
+        assert h1 != h2 and not h1.endswith("0001")
+        assert v.source_handle("web_content", "a@example.com") == h1
+        for i in range(6000):
+            v.source_handle("web", f"s{i}")
+        assert len(v._sources) <= v._SOURCE_HANDLE_MAX
+
+    def test_deidentify_issuance_is_transactional(self):
+        """A partial failure stranded capacity: the first value stayed stored
+        though no tokenized document was returned, so retrying failed forever
+        and the session could only be recovered by a reset."""
+        v = _vault(vault_max_entries=3)
+        v.token_for(PIIClass.EMAIL, "one@example.com")
+        v.token_for(PIIClass.EMAIL, "two@example.com")
+        before = len(v)
+        result = v.deidentify("three@example.com and four@example.com")
+        assert not result.allowed
+        assert len(v) == before, "failed call left entries behind"
 
     def test_compressed_ipv6_is_detected(self):
         from guardllm.security.types import ClassPolicy

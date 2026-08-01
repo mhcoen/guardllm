@@ -82,6 +82,49 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
+def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
+    """Locate credentials in ``text``, returning spans and unlocatable labels.
+
+    Shared with L13 so the boundary denier and the egress blocker cannot
+    disagree about what a credential is. Reusing only ``_SECRET_PATTERNS``
+    was not enough: this scanner also finds unprefixed high-entropy tokens and
+    hex-encoded secrets, and applies invisible-character and whitespace
+    stripping, so a value L3 blocks on the way out could still cross on the
+    way in.
+
+    Spans are offsets into ``text``. Findings that exist only in a
+    deobfuscated form have no faithful span, so they are returned as labels
+    for the caller to fail closed on rather than silently dropped.
+    """
+    spans: list[tuple[int, int]] = []
+    for pattern, _label in _SECRET_PATTERNS:
+        for m in pattern.finditer(text):
+            spans.append((m.start(), m.end()))
+    for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", text):
+        token = m.group()
+        entropy = _shannon_entropy(token)
+        threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
+        if entropy >= threshold:
+            spans.append((m.start(), m.end()))
+            continue
+        if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
+            try:
+                if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
+                    spans.append((m.start(), m.end()))
+            except ValueError:
+                pass
+
+    # Mask what we located, then rerun the full scanner. Whatever it still
+    # finds exists only in a deobfuscated form (an inserted space or a
+    # zero-width character), so there is no faithful span to substitute and
+    # the caller must refuse. Masking first is what makes this correct when
+    # some credentials in the text are locatable and others are not.
+    masked = text
+    for start, end in sorted(spans, reverse=True):
+        masked = masked[:start] + " " * (end - start) + masked[end:]
+    return spans, _scan_secrets(masked)
+
+
 def _scan_secrets(text: str) -> list[str]:
     """Scan text for known secret patterns and high-entropy strings."""
     found: list[str] = []

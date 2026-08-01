@@ -28,7 +28,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from guardllm.security.types import PIIClass
 
@@ -56,6 +56,34 @@ def luhn_valid(value: str) -> bool:
                 d -= 9
         total += d
     return total % 10 == 0
+
+
+#: Major-issuer prefixes. Luhn is a checksum, not an identifier: it accepts
+#: about one in ten random digit runs of the right length, which is why a
+#: colour-table constant in colorsys.py and a rounding constant in decimal.py
+#: were both classified as cards.
+def _card_issuer(ds: str) -> bool:
+    if ds.startswith("4"):  # Visa
+        return True
+    if ds[:2] in {"34", "37"}:  # Amex
+        return True
+    if 51 <= int(ds[:2]) <= 55 or 2221 <= int(ds[:4]) <= 2720:  # Mastercard
+        return True
+    if ds.startswith("6011") or ds[:2] == "65" or 644 <= int(ds[:3]) <= 649:  # Discover
+        return True
+    if ds[:2] in {"36", "38", "39"} or 300 <= int(ds[:3]) <= 305:  # Diners
+        return True
+    if 3528 <= int(ds[:4]) <= 3589:  # JCB
+        return True
+    return ds[:2] == "62"  # UnionPay
+
+
+def card_valid(value: str) -> bool:
+    """Luhn plus a real issuer prefix."""
+    ds = _digits(value)
+    if not 13 <= len(ds) <= 19:
+        return False
+    return luhn_valid(value) and _card_issuer(ds)
 
 
 def iban_valid(value: str) -> bool:
@@ -106,6 +134,49 @@ def ipv4_valid(value: str) -> bool:
         return all(0 <= int(p) <= 255 and (p == "0" or not p.startswith("0")) for p in parts)
     except ValueError:
         return False
+
+
+#: Assigned E.164 country calling codes, longest first so "1" does not shadow
+#: "1876". A compact international number is otherwise indistinguishable from a
+#: signed integer, and treating every "+" followed by digits as a phone number
+#: tokenizes counters, deltas, and version strings in code and logs.
+_E164_COUNTRY_CODES = (
+    "998 996 995 994 993 992 977 976 975 974 973 972 971 970 968 967 966 965 964 963 962 961 960 "
+    "886 880 878 875 874 873 872 871 870 856 855 853 852 850 800 692 691 690 689 688 687 686 685 "
+    "683 682 681 680 679 678 677 676 675 674 673 672 670 599 598 597 596 595 594 593 592 591 590 "
+    "509 508 507 506 505 504 503 502 501 500 423 421 420 389 387 386 385 383 382 381 380 378 377 "
+    "376 375 374 373 372 371 370 359 358 357 356 355 354 353 352 351 350 299 298 297 291 290 269 "
+    "268 267 266 265 264 263 262 261 260 258 257 256 255 254 253 252 251 250 249 248 246 245 244 "
+    "243 242 241 240 239 238 237 236 235 234 233 232 231 230 229 228 227 226 225 224 223 222 221 "
+    "220 218 216 213 212 211 98 95 94 93 92 91 90 86 84 82 81 66 65 64 63 62 61 60 58 57 56 55 54 "
+    "53 52 51 49 48 47 46 45 44 43 41 40 39 36 34 33 32 31 30 27 20 7 1"
+).split()
+
+
+def e164_valid(value: str) -> bool:
+    """Accept a compact international number only on deterministic evidence.
+
+    Requires an assigned country calling code and a total length in the range
+    real subscriber numbers occupy. Without both, "+123456789" in a diff or a
+    log line is tokenized as a phone number, which corrupts content the model
+    was asked to reason about.
+    """
+    ds = _digits(value)
+    if not 11 <= len(ds) <= 15:
+        return False
+    return any(ds.startswith(cc) for cc in _E164_COUNTRY_CODES)
+
+
+def phone_valid(value: str) -> bool:
+    """Require a plausible numbering plan, separators or not.
+
+    Passing separated forms on punctuation alone was not enough: "+3.140000"
+    in a formatted-float test string satisfies "country code, separator, digit
+    groups" and was tokenized as a phone number.
+    """
+    if value.lstrip().startswith("+"):
+        return e164_valid(value)
+    return len(_digits(value)) == 10
 
 
 def ipv6_valid(value: str) -> bool:
@@ -161,12 +232,14 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         PIIClass.CREDIT_CARD,
         "credit_card",
         r"\b(?:\d[ -]?){12,18}\d\b",
-        luhn_valid,
+        card_valid,
     ),
     DetectorSpec(
         PIIClass.SSN,
         "ssn",
-        r"(?:(?i:\bssn\b\s*:?\s*)(?P<ssn_v>\d{9})\b|\b\d{3}[-\s]\d{2}[-\s]\d{4}\b)",
+        r"(?:(?i:\b(?:ssn|social\s+security(?:\s+(?:number|no\.?|#))?)\b\s*:?\s*)"
+        r"(?P<ssn_v>\d{3}[-\s]?\d{2}[-\s]?\d{4})\b"
+        r"|\b\d{3}-\d{2}-\d{4}\b)",
         ssn_valid,
     ),
     DetectorSpec(
@@ -195,9 +268,10 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PHONE,
         "phone",
-        r"(?:\+\d{1,3}[ .\-]?(?:\(?\d{2,5}\)?[ .\-]?){1,3}\d{3,4}\b"
+        r"(?:\+\d{1,3}[ .\-](?:\(?\d{2,5}\)?[ .\-]?){1,3}\d{3,4}\b"
         r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)|\b\d{3})[ .\-]\d{3}[ .\-]\d{4}\b"
-        r"|\+\d{7,15}\b)",
+        r"|(?<![\w.+-])\+\d{11,15}(?![\d.]))",
+        phone_valid,
     ),
     DetectorSpec(
         PIIClass.DATE_OF_BIRTH,
@@ -224,7 +298,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
         "drivers_license",
-        r"(?i:\b(?:driver'?s?\s+licen[cs]e|dl)(?:\s+(?:number|no\.?|#))?\s*:?\s*)"
+        r"(?i:\b(?:driver'?s?\s+licen[cs]e(?:\s+(?:number|no\.?|#))?\s*:?\s*"
+        r"|dl(?:\s*(?:number|no\.?|#))?\s*[:#]\s*))"
         r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
     ),
     DetectorSpec(
@@ -347,14 +422,24 @@ class _AhoCorasick:
 _SEEDED_AUTOMATON_THRESHOLD = 100
 
 
-def _fold_with_offsets(text: str) -> tuple[str, list[int]]:
-    """Case-fold per character, recording each output char's original index."""
+def _fold_with_offsets(text: str) -> tuple[str, list[int] | None]:
+    """Case-fold, returning an index map only when folding changes length.
+
+    Almost all text folds one-to-one, so the common path returns ``None`` and
+    the caller uses folded offsets directly. Building one Python integer per
+    character unconditionally cost ~84MB on a 1MB input, and there is no
+    inbound size limit, so a multi-megabyte document in a deployment using
+    seeded names could exhaust memory.
+    """
+    folded = text.casefold()
+    if len(folded) == len(text):
+        return folded, None
     out: list[str] = []
     offsets: list[int] = []
     for i, ch in enumerate(text):
-        folded = ch.casefold()
-        out.append(folded)
-        offsets.extend([i] * len(folded))
+        f = ch.casefold()
+        out.append(f)
+        offsets.extend([i] * len(f))
     return "".join(out), offsets
 
 
@@ -421,9 +506,12 @@ class SeededValues:
 
         hits: list[tuple[int, int, PIIClass]] = []
         for fs, fe, cls in raw:
-            if fs >= len(offsets) or fe - 1 >= len(offsets):
-                continue
             if not _standalone(folded, fs, fe):
+                continue
+            if offsets is None:
+                hits.append((fs, fe, cls))
+                continue
+            if fs >= len(offsets) or fe - 1 >= len(offsets):
                 continue
             hits.append((offsets[fs], offsets[fe - 1] + 1, cls))
         return hits
@@ -450,6 +538,9 @@ class DetectionResult:
     #: resolved: inventing a precedence rule to break a genuine ambiguity is
     #: how a detector quietly substitutes the wrong span.
     ambiguous: list[tuple[RawMatch, RawMatch]]
+    #: Credentials detectable only in a deobfuscated form, so they have no
+    #: faithful span to substitute. The caller must refuse the content.
+    unlocatable_credentials: list[str] = field(default_factory=list)
 
 
 def _spans_overlap(a: RawMatch, b: RawMatch) -> bool:
@@ -493,20 +584,17 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
     return DetectionResult(kept, ambiguous)
 
 
-def _credential_spans(text: str) -> list[tuple[int, int]]:
-    """Locate credentials using the table L3 already scans for at egress.
+def credential_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
+    """Locate credentials using L3's complete scanner, not a subset of it.
 
-    Imported rather than copied. A second list would drift from the one
-    outbound DLP enforces, and the two would disagree about what a credential
-    is, which is the worst possible outcome for a DENY class.
+    Delegates to ``outbound_dlp.scan_secret_spans`` so the model-boundary
+    denier and the egress blocker consume the same findings. Reusing only the
+    regex table left high-entropy and hex-encoded secrets crossing inbound
+    while L3 blocked the identical values outbound.
     """
-    from guardllm.security.outbound_dlp import _SECRET_PATTERNS
+    from guardllm.security.outbound_dlp import scan_secret_spans
 
-    spans: list[tuple[int, int]] = []
-    for pattern, _label in _SECRET_PATTERNS:
-        for m in pattern.finditer(text):
-            spans.append((m.start(), m.end()))
-    return spans
+    return scan_secret_spans(text)
 
 
 def detect(
@@ -554,8 +642,10 @@ def detect(
             continue
         matches.append(RawMatch(spec.pii_class, start, end, value))
 
+    unlocatable_credentials: list[str] = []
     if PIIClass.CREDENTIAL in classes:
-        for start, end in _credential_spans(text):
+        spans, unlocatable_credentials = credential_spans(text)
+        for start, end in spans:
             if not _is_masked(start, end):
                 matches.append(
                     RawMatch(PIIClass.CREDENTIAL, start, end, text[start:end])
@@ -575,4 +665,6 @@ def detect(
                 if not _is_masked(start, end):
                     matches.append(RawMatch(cls, start, end, text[start:end], inferred=True))
 
-    return _resolve_overlaps(matches)
+    resolved = _resolve_overlaps(matches)
+    resolved.unlocatable_credentials = unlocatable_credentials
+    return resolved

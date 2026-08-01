@@ -271,6 +271,8 @@ class ProcessedContent:
     source_type: str = ""
     source_id: str = ""
     warnings: list[str] = field(default_factory=list)
+    #: L13 findings. Carries classes, offsets, and tokens, never values.
+    pii_findings: list = field(default_factory=list)
 
 
 @dataclass
@@ -364,3 +366,209 @@ class AuditEvent:
     session_id: str | None = None
     timestamp: float | None = None
     request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# L13: privacy vault
+# ---------------------------------------------------------------------------
+
+
+class PIIClass(Enum):
+    """Classes of direct identifier the vault recognizes.
+
+    PERSON and ADDRESS are reachable only through host-seeded values or a
+    recognizer plugin: the structural detectors do not attempt them, because
+    finding a name in free text means inferring a label from content, which
+    this library does not do (see the two-input model in docs/threat_model.md).
+    """
+
+    EMAIL = "email"
+    PHONE = "phone"
+    SSN = "ssn"
+    CREDIT_CARD = "credit_card"
+    IBAN = "iban"
+    ROUTING_NUMBER = "routing_number"
+    IPV4 = "ipv4"
+    IPV6 = "ipv6"
+    MAC = "mac"
+    DATE_OF_BIRTH = "date_of_birth"
+    PASSPORT = "passport"
+    DRIVERS_LICENSE = "drivers_license"
+    NATIONAL_ID = "national_id"
+    MEDICAL_RECORD = "medical_record"
+    PERSON = "person"
+    ADDRESS = "address"
+    URL = "url"
+
+
+class ClassPolicy(Enum):
+    """What happens to a class at the model boundary."""
+
+    DENY = "deny"  # must not cross in any form
+    TOKENIZE = "tokenize"  # substitute, restorable per field policy
+    ALLOW = "allow"  # cross unchanged (explicit host opt-in)
+
+
+class Destination(Enum):
+    """Where restored content is headed. Governs what may be re-identified."""
+
+    USER = "user"
+    TOOL = "tool"
+    EXTERNAL = "external"
+    LOG = "log"
+
+
+#: Sentinel for a field policy that deliberately withholds a value. Distinct
+#: from having no rule at all: silence means the policy does not cover the
+#: schema, which fails the call, while REDACT is a decision the author made.
+REDACT = "REDACT"
+
+
+#: Credential classes never cross the model boundary in any form. Tokenizing a
+#: credential implies it can come back, which is the wrong affordance: a model
+#: has no legitimate use for an API key. Driven by the same patterns L3 already
+#: scans for at egress (outbound_dlp._SECRET_PATTERNS) rather than a second
+#: list that drifts from it.
+DEFAULT_DENY_CLASSES: frozenset[PIIClass] = frozenset()
+
+DEFAULT_TOKENIZE_CLASSES: frozenset[PIIClass] = frozenset(
+    {
+        PIIClass.EMAIL,
+        PIIClass.PHONE,
+        PIIClass.SSN,
+        PIIClass.CREDIT_CARD,
+        PIIClass.IBAN,
+        PIIClass.ROUTING_NUMBER,
+        PIIClass.MEDICAL_RECORD,
+        PIIClass.PASSPORT,
+        PIIClass.DRIVERS_LICENSE,
+        PIIClass.NATIONAL_ID,
+        PIIClass.DATE_OF_BIRTH,
+        PIIClass.PERSON,
+        PIIClass.ADDRESS,
+    }
+)
+
+
+@dataclass(frozen=True)
+class PIIFinding:
+    """One detected identifier. Carries no plaintext.
+
+    ``start``/``end`` locate the span in the text that was scanned, and
+    ``token`` is what replaced it. The original value lives only in the vault.
+    Keeping it off this object is deliberate: findings are returned to the
+    host and may be logged, and a finding that quoted its own value would
+    reintroduce the disclosure the substitution just prevented.
+    """
+
+    pii_class: PIIClass
+    start: int
+    end: int
+    token: str
+    inferred: bool = False  # True when a recognizer plugin produced it
+
+
+# Resolution outcomes. Observable properties of a returned token, never claims
+# about intent: a string inside the correction radius of an issued codeword
+# resolves whether it was damaged or crafted, and once an entry is gone an
+# expired token is indistinguishable from one never issued.
+EXACT = "exact"
+CORRECTED = "corrected"
+UNKNOWN_VALID = "unknown_valid"  # well-formed codeword, not in the vault
+UNRESOLVABLE = "unresolvable"  # fails decode beyond the correction radius
+
+
+@dataclass
+class DeidentifyResult:
+    """Output of a de-identification pass.
+
+    ``content`` is safe to send to a model provider. The plaintext-to-token
+    map is deliberately absent: it aggregates every value detected in the call
+    and is more sensitive than the content it came from, so one traced result
+    object would defeat the feature. The map never leaves the vault.
+    """
+
+    content: str
+    findings: list[PIIFinding] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    denied: list[PIIClass] = field(default_factory=list)
+    allowed: bool = True
+    reason: str = "clean"
+
+
+@dataclass
+class ReidentifyResult:
+    """Output of a re-identification pass.
+
+    ``content`` holds restored plaintext, so it is excluded from ``repr`` and
+    must not be serialized into a log or trace (see the provider-safe surface
+    rules in the design notes).
+    """
+
+    allowed: bool
+    content: str = field(default="", repr=False)
+    reason: str = "clean"
+    restored: list[PIIClass] = field(default_factory=list)
+    withheld: list[PIIClass] = field(default_factory=list)
+    outcomes: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PreparedCall:
+    """A tool call whose tokens have been resolved, before authorization.
+
+    Stage 1 of the guarded flow. ``args`` holds fully restored plaintext and is
+    excluded from ``repr``. The host must build its ``AuthorizationEvent`` and
+    ``Binding`` over *these* arguments, because both bind exactly: a scope
+    authorized over a token fails against the restored value, and the binding
+    hash mismatches.
+    """
+
+    allowed: bool
+    tool: str
+    args: dict = field(default_factory=dict, repr=False)
+    reason: str = "prepared"
+    restored: list[PIIClass] = field(default_factory=list)
+    withheld: list[PIIClass] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PrivacyConfig:
+    """L13 configuration. ``Guard(privacy=None)`` leaves the layer off."""
+
+    #: Classes eligible for tokenization at the model boundary.
+    classes: frozenset[PIIClass] = DEFAULT_TOKENIZE_CLASSES
+    #: Per-class override of the model-boundary decision.
+    class_policy: dict[PIIClass, ClassPolicy] = field(default_factory=dict)
+    #: tool name -> {JSON-pointer-ish field path -> frozenset[PIIClass] | REDACT}
+    #: Lookup is per token occurrence: a field holding no token needs no rule.
+    restore_policy: dict[str, dict[str, object]] = field(default_factory=dict)
+    #: Destination -> classes restorable there. Every destination defaults to
+    #: nothing, including USER: a channel does not establish entitlement.
+    destination_policy: dict[Destination, frozenset[PIIClass]] = field(default_factory=dict)
+    #: Token resolution failures tolerated in one call before failing closed.
+    #: A damper on probing within a completion, not the security control: it
+    #: does not bound probing across completions. Payload entropy carries that.
+    max_unresolvable: int = 3
+    #: Hard capacity. Reaching it FAILS de-identification rather than evicting:
+    #: eviction would break resolution for tokens still live in the transcript,
+    #: turning a capacity problem into a correctness problem. Coupled to
+    #: token_codec.PAYLOAD_BITS, since the forgery bound is ~N/2^b.
+    vault_max_entries: int = 10_000
+    #: De-identify inbound content the host labelled SENSITIVE.
+    deidentify_sensitive_ingest: bool = True
+    #: Optional recognizer plugin with ``find(text) -> list[PIIFinding]``.
+    recognizer: object | None = None
+
+    def policy_for(self, pii_class: PIIClass) -> ClassPolicy:
+        """Resolve the model-boundary policy for one class."""
+        override = self.class_policy.get(pii_class)
+        if override is not None:
+            return override
+        if pii_class in DEFAULT_DENY_CLASSES:
+            return ClassPolicy.DENY
+        if pii_class in self.classes:
+            return ClassPolicy.TOKENIZE
+        return ClassPolicy.ALLOW

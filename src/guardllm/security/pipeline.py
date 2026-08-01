@@ -6,6 +6,8 @@ Parameterized by SecurityContext rather than branching on direction.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from guardllm.security.canary import detect_canary, generate_canary
 from guardllm.security.isolation import wrap_untrusted
 from guardllm.security.normalization import normalize_confusables
@@ -20,12 +22,15 @@ from guardllm.security.source_gate import (
     SourceGateResult,
     check_extraction_allowed,
 )
+from guardllm.security.privacy_vault import PrivacyVault
 from guardllm.security.types import (
     AuthorizationEvent,
     Binding,
     GateResult,
     OutboundResult,
     ProcessedContent,
+    PIIClass,
+    PrivacyConfig,
     RateLimitResult,
     SecurityContext,
     SensitivityLevel,
@@ -51,6 +56,7 @@ class SecurityPipeline:
         audit_logger: object | None = None,
         canary_session_id: str | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
+        privacy: PrivacyConfig | None = None,
     ) -> None:
         self._sanitizer = sanitize
         self._provenance = ProvenanceTracker()
@@ -61,6 +67,8 @@ class SecurityPipeline:
         self._principal_trust = principal_trust
         self._context_contaminated: bool = False
         self._session_escalated: bool = False
+        self._privacy = privacy
+        self._vault = PrivacyVault(privacy) if privacy is not None else None
         self._canary_session_id: str | None = canary_session_id
         self._canary: str | None = None
         if canary_session_id:
@@ -86,6 +94,21 @@ class SecurityPipeline:
         """Return the canary trusted host code must place in private context."""
         return self._canary
 
+    @property
+    def vault(self) -> PrivacyVault | None:
+        """L13 vault, or None when privacy is not configured."""
+        return self._vault
+
+    def _vault_applies(self, ctx: SecurityContext) -> bool:
+        if self._vault is None:
+            return False
+        if ctx.source_trust == TrustLevel.UNTRUSTED:
+            return True
+        return (
+            ctx.sensitivity == SensitivityLevel.SENSITIVE
+            and self._vault.config.deidentify_sensitive_ingest
+        )
+
     def reset(self, *, canary_session_id: str | None = None) -> None:
         """Reset transient pipeline state, optionally rotating the canary.
 
@@ -108,6 +131,10 @@ class SecurityPipeline:
         self._provenance = ProvenanceTracker()
         self._dlp = OutboundDLP()
         self._rate_limiter = RateLimiter()
+        if self._vault is not None:
+            # Clearing invalidates every token still live in the host's
+            # transcript. A replayed earlier turn will resolve to nothing.
+            self._vault.clear()
 
     def process_inbound(
         self,
@@ -141,6 +168,37 @@ class SecurityPipeline:
         san_result = self._sanitizer(content, ctx.content_type)
         cleaned = san_result.cleaned_text
         warnings.extend(san_result.warnings)
+
+        # L13a: ingress token scrub. Token SHAPE is audited only: an attacker
+        # can type "[[GL:...]]" without knowing an issued value, and so can a
+        # benign page, since this project's own docs carry example tokens.
+        # Escalating on shape would let A1 degrade every later tool call for
+        # free. An exact match to a live issued token cannot be guessed, so it
+        # means a token from this session's prompt came back from an untrusted
+        # source, and that is evidence.
+        if self._vault is not None and ctx.source_trust == TrustLevel.UNTRUSTED:
+            cleaned, shaped, issued = self._vault.scrub_tokens(cleaned)
+            if shaped:
+                warnings.append(f"Stripped {shaped} token-shaped span(s) from untrusted content")
+            if issued:
+                warnings.append("Live issued privacy token present in untrusted content")
+                self._session_escalated = True
+
+        # L13b: substitute identifiers. Applied to `cleaned` only. `content`
+        # stays plaintext because DLP and provenance need the values
+        # themselves: their function is recognizing a specific string
+        # reappearing at egress, and a tokenized copy holds nothing worth
+        # remembering.
+        pii_findings: list = []
+        if self._vault_applies(ctx):
+            deid = self._vault.deidentify(cleaned, deny_action="marker")
+            if deid.allowed:
+                cleaned = deid.content
+                pii_findings = deid.findings
+                warnings.extend(deid.warnings)
+                san_result = replace(san_result, cleaned_text=cleaned)
+            else:
+                warnings.append(f"De-identification skipped: {deid.reason}")
 
         # L1: Isolate untrusted content
         isolated = False
@@ -187,6 +245,15 @@ class SecurityPipeline:
         if self._canary and detect_canary(content, self._canary):
             warnings.append("Canary token detected in inbound content")
 
+        # Scrub LAST, over the complete warning list. SanitizationResult has
+        # four string-bearing public fields, not one: mixed_script_words holds
+        # offending words verbatim, sanitization_summary joins up to five of
+        # them, the same words reach warnings, and those are copied onto
+        # ProcessedContent. One homoglyph in an address puts a value in all of
+        # them, and that path fires precisely on adversarial input.
+        if self._vault is not None:
+            san_result, warnings = self._vault.scrub_diagnostics(san_result, warnings)
+
         return ProcessedContent(
             content=cleaned,
             sanitization=san_result,
@@ -194,7 +261,29 @@ class SecurityPipeline:
             source_type=ctx.source_type,
             source_id=ctx.source_id,
             warnings=warnings,
+            pii_findings=pii_findings,
         )
+
+    def check_outbound_content(
+        self,
+        content: str,
+        ctx: SecurityContext,
+        has_quoting_directive: bool = False,
+    ) -> OutboundResult:
+        """L5, L3, and L4 with no L6 quota or action accounting.
+
+        The exclusion is L6 *only*. Egress escalation is preserved: a canary
+        block and a DLP hard block both still set ``_session_escalated``.
+        Dropping those would silently remove backward-propagating escalation
+        from ``check_outbound`` as well, since that method is built on this
+        one, so a high-confidence leak would stop tightening later tool calls.
+
+        Separated from ``check_outbound`` so a tool call can be content-checked
+        during preparation, before L9/L11/L12 have admitted it. Recording an
+        outbound action there would let repeatedly denied proposals consume
+        quota and mark recipients as known for calls that never happened.
+        """
+        return self._content_checks(content, ctx, has_quoting_directive)
 
     def check_outbound(
         self,
@@ -223,6 +312,32 @@ class SecurityPipeline:
         Client mode: tool arguments (e.g. email body).
         Server mode: tool responses.
         """
+        result = self._content_checks(content, ctx, has_quoting_directive)
+        if not result.allowed:
+            return result
+
+        # L6: Rate limit check
+        rate_result = self._rate_limiter.check(
+            action="outbound",
+            ctx=ctx,
+            recipient=recipient,
+        )
+        if not rate_result.allowed:
+            return OutboundResult(
+                allowed=False,
+                reason=rate_result.reason,
+                anomalies=rate_result.anomalies,
+            )
+        self._rate_limiter.record(action="outbound", ctx=ctx, recipient=recipient)
+        result.anomalies = rate_result.anomalies
+        return result
+
+    def _content_checks(
+        self,
+        content: str,
+        ctx: SecurityContext,
+        has_quoting_directive: bool = False,
+    ) -> OutboundResult:
         if ctx.principal_trust != self._principal_trust:
             raise ValueError(
                 f"principal_trust mismatch: context has {ctx.principal_trust}, "
@@ -230,6 +345,19 @@ class SecurityPipeline:
             )
         # TR39 confusable normalization at outbound trust boundary.
         content = normalize_confusables(content)
+
+        # L13: an issued token at egress proves restoration was skipped. This
+        # is an exact membership test against the registry, not a pattern
+        # match, so it cannot fire on real content. It blocks rather than warns
+        # because A-AS9 has hosts enforce on `allowed`, so a warning would let
+        # a compliant host dispatch a payload carrying a literal token. It does
+        # not escalate: a missing prepare_tool_call is a host bug, not an
+        # attack, and escalation is reserved for evidence of one.
+        if self._vault is not None and self._vault.contains_issued_token(content):
+            return OutboundResult(
+                allowed=False,
+                reason="Unrestored privacy token in outbound content (restoration was skipped)",
+            )
 
         # L5: a remembered canary is authoritative session metadata. Attribute
         # it before generic DLP can claim the same random-looking token as an
@@ -280,31 +408,11 @@ class SecurityPipeline:
                 echo_lcs=dlp_result.echo_lcs,
             )
 
-        # L6: Rate limit check
-        rate_result = self._rate_limiter.check(
-            action="outbound",
-            ctx=ctx,
-            recipient=recipient,
-        )
-        if not rate_result.allowed:
-            return OutboundResult(
-                allowed=False,
-                reason=rate_result.reason,
-                anomalies=rate_result.anomalies,
-            )
-
-        # L6: record the now-permitted outbound action so the rate limiter
-        # accumulates state across calls (otherwise check() never trips).
-        self._rate_limiter.record(action="outbound", ctx=ctx, recipient=recipient)
-
-        # Surface non-blocking anomaly signals (burst, novel recipient) rather
-        # than discarding them, so downstream audit/callers can act on them.
         return OutboundResult(
             allowed=True,
             reason="clean" if not dlp_result.echo_detected else "clean (echo signal only)",
             echo_detected=dlp_result.echo_detected,
             echo_lcs=dlp_result.echo_lcs,
-            anomalies=rate_result.anomalies,
         )
 
     def check_tool_execution(

@@ -276,6 +276,13 @@ class ProcessedContent:
     #: True when de-identification failed and ``content`` was withheld rather
     #: than returned as plaintext. Hosts must not forward blocked content.
     blocked: bool = False
+    #: A registered tier-3 detector did not run, so coverage is unknown rather
+    #: than clean. Typed so a host can adopt the stricter posture without
+    #: parsing warning text.
+    detection_incomplete: bool = False
+    #: True when a tier-3 detector was loaded. The documented sub-millisecond,
+    #: no-ML, no-network characteristics describe the built-in tiers only.
+    inference_used: bool = False
 
 
 @dataclass

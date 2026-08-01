@@ -66,23 +66,51 @@ def luhn_valid(value: str) -> bool:
 #: colour-table constant in colorsys.py and a rounding constant in decimal.py
 #: were both classified as cards.
 def _card_issuer(ds: str) -> bool:
-    if ds.startswith("4"):  # Visa
+    """Recognized issuer ranges for UNLABELLED detection.
+
+    Deliberately not a completeness claim. Issuer ranges are reassigned
+    continuously (Mastercard republishes its account-range table daily), so a
+    table compiled into a library is stale the week it ships. This exists only
+    to stop Luhn, which accepts roughly one random digit run in ten, from
+    classifying colour constants and rounding constants as cards. A PAN in a
+    range absent here is still covered when labelled, which is the path a
+    deployment handling non-listed schemes should use.
+    """
+    two, three, four, six = ds[:2], ds[:3], ds[:4], ds[:6]
+    if ds[0] == "4":  # Visa
         return True
-    if ds[:2] in {"34", "37"}:  # Amex
+    if two in {"34", "37"}:  # Amex
         return True
-    if 51 <= int(ds[:2]) <= 55 or 2221 <= int(ds[:4]) <= 2720:  # Mastercard
+    if 51 <= int(two) <= 55 or 2221 <= int(four) <= 2720:  # Mastercard
         return True
-    if ds.startswith("6011") or ds[:2] == "65" or 644 <= int(ds[:3]) <= 649:  # Discover
+    if two in {"50", "56", "57", "58", "67"}:  # Maestro
         return True
-    if ds[:2] in {"36", "38", "39"} or 300 <= int(ds[:3]) <= 305:  # Diners
+    if ds.startswith("6011") or two == "65" or 644 <= int(three) <= 649:  # Discover
         return True
-    if 3528 <= int(ds[:4]) <= 3589:  # JCB
+    if 622126 <= int(six) <= 622925:  # Discover/UnionPay co-range
         return True
-    return ds[:2] == "62"  # UnionPay
+    if two in {"36", "38", "39"} or 300 <= int(three) <= 305:  # Diners
+        return True
+    if 3528 <= int(four) <= 3589:  # JCB
+        return True
+    if 2200 <= int(four) <= 2204:  # MIR
+        return True
+    if two in {"60", "81", "82"} or three == "508":  # RuPay
+        return True
+    if six in {"506699", "509000", "606282", "637095"}:  # Elo, Hipercard
+        return True
+    if ds[0] == "1":  # UATP
+        return True
+    return two == "62"  # UnionPay
+
+
+def labelled_card_valid(value: str) -> bool:
+    """A labelled PAN needs only Luhn: the label supplies the intent."""
+    return luhn_valid(value)
 
 
 def card_valid(value: str) -> bool:
-    """Luhn plus a real issuer prefix."""
+    """Luhn plus a recognized issuer prefix, for unlabelled detection."""
     ds = _digits(value)
     if not 13 <= len(ds) <= 19:
         return False
@@ -152,34 +180,52 @@ _E164_COUNTRY_CODES = (
     "268 267 266 265 264 263 262 261 260 258 257 256 255 254 253 252 251 250 249 248 246 245 244 "
     "243 242 241 240 239 238 237 236 235 234 233 232 231 230 229 228 227 226 225 224 223 222 221 "
     "220 218 216 213 212 211 98 95 94 93 92 91 90 86 84 82 81 66 65 64 63 62 61 60 58 57 56 55 54 "
+    "991 979 888 883 882 881 878 870 808 800 "
     "53 52 51 49 48 47 46 45 44 43 41 40 39 36 34 33 32 31 30 27 20 7 1"
 ).split()
 
 
 def e164_valid(value: str) -> bool:
-    """Accept a compact international number only on deterministic evidence.
+    """Accept an international number on deterministic evidence.
 
-    Requires an assigned country calling code and a total length in the range
-    real subscriber numbers occupy. Without both, "+123456789" in a diff or a
-    log line is tokenized as a phone number, which corrupts content the model
-    was asked to reason about.
+    Requires an assigned country calling code and a length E.164 permits. A
+    *compact* number additionally needs 11 digits, because a bare "+" followed
+    by a short digit run is indistinguishable from a signed integer and
+    tokenizing "+123456789" in a diff corrupts content the model was asked to
+    reason about. Separated forms carry that evidence in their punctuation, so
+    they are accepted from 8 digits: "+47 22 59 13 00" and "+65 6123 4567" are
+    ordinary numbers that a universal 11-digit floor rejected.
     """
     ds = _digits(value)
-    if not 11 <= len(ds) <= 15:
+    compact = not any(c in value for c in " .-()")
+    floor = 11 if compact else 8
+    if not floor <= len(ds) <= 15:
         return False
     return any(ds.startswith(cc) for cc in _E164_COUNTRY_CODES)
 
 
 def phone_valid(value: str) -> bool:
-    """Require a plausible numbering plan, separators or not.
+    """Validate a candidate against a numbering plan.
 
-    Passing separated forms on punctuation alone was not enough: "+3.140000"
-    in a formatted-float test string satisfies "country code, separator, digit
-    groups" and was tokenized as a phone number.
+    Unlabelled national detection covers the NANP only, where ten digits is a
+    reliable signal. Requiring exactly ten digits *everywhere* was a NANP
+    assumption applied globally, and it silently missed ordinary numbers from
+    the UK, Norway, Denmark, Singapore, Ireland, New Zealand, Germany, and
+    India, each of which then crossed the model boundary in plaintext.
+
+    Numbers outside the NANP are covered by their international form, by a
+    "tel"/"phone"/"mobile" label, or by host seeding. That boundary is stated
+    rather than implied, because the alternative is a hand-maintained table of
+    every national plan that silently rots.
     """
     if value.lstrip().startswith("+"):
         return e164_valid(value)
     return len(_digits(value)) == 10
+
+
+def labelled_phone_valid(value: str) -> bool:
+    """A labelled number needs only a plausible length, not a known plan."""
+    return 7 <= len(_digits(value)) <= 15
 
 
 def ipv6_valid(value: str) -> bool:
@@ -238,6 +284,13 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         card_valid,
     ),
     DetectorSpec(
+        PIIClass.CREDIT_CARD,
+        "credit_card_labelled",
+        r"(?i:\b(?:card(?:\s*(?:number|no\.?|#))?|pan|credit\s+card)\s*[:.]?\s*)"
+        r"(?P<credit_card_labelled_v>(?:\d[ -]?){12,18}\d)",
+        labelled_card_valid,
+    ),
+    DetectorSpec(
         PIIClass.SSN,
         "ssn",
         r"(?:(?i:\b(?:ssn|social\s+security(?:\s+(?:number|no\.?|#))?)\b\s*:?\s*)"
@@ -271,10 +324,17 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PHONE,
         "phone",
-        r"(?:\+\d{1,3}[ .\-](?:\(?\d{2,5}\)?[ .\-]?){1,3}\d{3,4}\b"
+        r"(?:\+\d{1,4}(?:[ .\-]\(?\d{1,9}\)?){1,6}\b"
         r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)|\b\d{3})[ .\-]\d{3}[ .\-]\d{4}\b"
         r"|(?<![\w.+-])\+\d{11,15}(?![\d.]))",
         phone_valid,
+    ),
+    DetectorSpec(
+        PIIClass.PHONE,
+        "phone_labelled",
+        r"(?i:\b(?:tel|telephone|phone|mobile|cell|fax)(?:\s+(?:number|no\.?|#))?\s*[:.]?\s*)"
+        r"(?P<phone_labelled_v>\+?[\d][\d .()\-]{5,19}\d)",
+        labelled_phone_valid,
     ),
     DetectorSpec(
         PIIClass.DATE_OF_BIRTH,
@@ -581,19 +641,73 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
     # Validated spans are placed first so an inferred span can never be the
     # incumbent that a validated one has to displace.
     ordered = sorted(matches, key=lambda m: (m.inferred, m.start, -(m.end - m.start)))
+    validated = [m for m in ordered if not m.inferred]
+    # An inferred span overlapping a validated one is trimmed to its
+    # non-overlapping remainder rather than discarded. Dropping it outright
+    # meant a detector marking "Jane Doe <jane@example.com>" as PERSON lost the
+    # whole span to the validated email, so the name crossed in plaintext while
+    # the address was protected. A checksum still beats a model on the bytes
+    # they disagree about; it says nothing about the bytes it never covered.
+    trimmed: list[RawMatch] = []
+    for cand in ordered:
+        if not cand.inferred:
+            trimmed.append(cand)
+            continue
+        start, end = cand.start, cand.end
+        for v in validated:
+            if v.start < end and start < v.end:
+                if v.start <= start and end <= v.end:
+                    start = end = 0  # fully covered by a validated span
+                    break
+                if start < v.start:
+                    end = min(end, v.start)
+                else:
+                    start = max(start, v.end)
+        if end - start >= 2:
+            text_span = cand.value[start - cand.start : end - cand.start]
+            stripped = text_span.strip()
+            if stripped:
+                lead = len(text_span) - len(text_span.lstrip())
+                trimmed.append(
+                    RawMatch(
+                        cand.pii_class,
+                        start + lead,
+                        start + lead + len(stripped),
+                        stripped,
+                        inferred=True,
+                    )
+                )
+
     kept: list[RawMatch] = []
     ambiguous: list[tuple[RawMatch, RawMatch]] = []
-    for cand in ordered:
+    for cand in trimmed:
         replaced = False
         drop = False
         for i, existing in enumerate(kept):
             if not _spans_overlap(cand, existing):
                 continue
             if cand.inferred and not existing.inferred:
-                # The sort puts every validated span in `kept` first, so this is
-                # the only mixed case reachable. Not reported as ambiguous:
-                # nothing about it is ambiguous.
+                # Trimming above removed any overlap with a validated span, so
+                # reaching here means the remainder still touches one. Drop it.
                 drop = True
+                break
+            if (
+                cand.inferred
+                and existing.inferred
+                and cand.start == existing.start
+                and cand.end == existing.end
+            ):
+                if cand.pii_class is existing.pii_class:
+                    drop = True  # identical span and class: deduplicate
+                else:
+                    # Two detectors claiming the same span under different
+                    # classes is ambiguous, and registration order must not
+                    # decide it: the class chosen governs restoration, so a
+                    # field permitting PERSON but not ADDRESS would admit the
+                    # value purely because detectors were registered in a
+                    # different order.
+                    ambiguous.append((existing, cand))
+                    drop = True
                 break
             if _contains(existing, cand):
                 drop = True
@@ -643,38 +757,63 @@ def _run_detector(
         # warnings. Registration is an assertion that detection will happen.
         return [], f"detector {detector_id!r} rejected: no callable `find`"
 
+    # Materialize inside the boundary. Catching only the call left three
+    # escapes: a generator that raises after yielding, a non-iterable return,
+    # and an attribute read that raises. The first two propagated out of the
+    # library; all three mean coverage is unknown, not clean.
     try:
         raw = find(text)
+        if raw is None:
+            return [], f"detector {detector_id!r} returned None"
+        raw = list(raw)
     except Exception as exc:  # noqa: BLE001 - host code, any failure is ours to report
         return [], f"detector {detector_id!r} raised {type(exc).__name__}"
 
-    if raw is None:
-        return [], f"detector {detector_id!r} returned None"
-
     limit = len(text)
     kept: list[DetectedSpan] = []
+    rejected = 0
     seen: set[tuple[int, int, PIIClass]] = set()
     for span in raw:
-        start = getattr(span, "start", None)
-        end = getattr(span, "end", None)
-        cls = getattr(span, "pii_class", None)
+        try:
+            start = getattr(span, "start", None)
+            end = getattr(span, "end", None)
+            cls = getattr(span, "pii_class", None)
+            confidence = getattr(span, "confidence", None)
+        except Exception:  # noqa: BLE001 - a property that raises is a failure
+            rejected += 1
+            continue
         # bool is an int subclass; a True offset is a bug, not a position.
         if not isinstance(start, int) or isinstance(start, bool):
+            rejected += 1
             continue
         if not isinstance(end, int) or isinstance(end, bool):
+            rejected += 1
             continue
         if not isinstance(cls, PIIClass):
+            rejected += 1
             continue
         if not (0 <= start < end <= limit):
+            rejected += 1
             continue
         if cls not in declared:
             # A detector may not widen its own remit at runtime.
+            rejected += 1
             continue
         key = (start, end, cls)
         if key in seen:
             continue
         seen.add(key)
-        kept.append(DetectedSpan(start, end, cls, getattr(span, "confidence", None)))
+        kept.append(DetectedSpan(start, end, cls, confidence))
+
+    if raw and not kept:
+        # Every span rejected. Returning an empty success here reported clean
+        # coverage for a detector that produced nothing usable, which is the
+        # silent non-coverage this protocol exists to prevent.
+        return [], (
+            f"detector {detector_id!r} returned {len(raw)} span(s), none valid"
+        )
+    if rejected:
+        return kept, f"detector {detector_id!r}: {rejected} invalid span(s) dropped"
     return kept, None
 
 
@@ -755,9 +894,12 @@ def detect(
     for detector in detectors:
         spans, failure = _run_detector(detector, text)
         if failure is not None:
-            detection_failed = True
             detector_warnings.append(failure)
-            continue
+            # Spans came back, so the detector ran and only some output was
+            # dropped. No spans means coverage is unknown.
+            if not spans:
+                detection_failed = True
+                continue
         for span in spans:
             if span.pii_class in classes and not _is_masked(span.start, span.end):
                 matches.append(

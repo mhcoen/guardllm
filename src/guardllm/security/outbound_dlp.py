@@ -82,47 +82,84 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
+def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
+    """Remove characters, recording each survivor's original index.
+
+    ``drop=None`` means whitespace. Passing a literal string of whitespace
+    characters would be wrong: any membership test against a sentinel string
+    also matches the letters in that sentinel.
+    """
+    out: list[str] = []
+    idx: list[int] = []
+    for i, ch in enumerate(text):
+        if ch.isspace() if drop is None else (ch in drop):
+            continue
+        out.append(ch)
+        idx.append(i)
+    return "".join(out), idx
+
+
 def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
-    """Locate credentials in ``text``, returning spans and unlocatable labels.
+    """Locate credentials in ``text``, returning spans into the ORIGINAL text.
 
-    Shared with L13 so the boundary denier and the egress blocker cannot
-    disagree about what a credential is. Reusing only ``_SECRET_PATTERNS``
-    was not enough: this scanner also finds unprefixed high-entropy tokens and
-    hex-encoded secrets, and applies invisible-character and whitespace
-    stripping, so a value L3 blocks on the way out could still cross on the
-    way in.
+    Shared with L13 so the model-boundary denier and the egress blocker cannot
+    disagree about what a credential is. The full scan, not just the regex
+    table: unprefixed high-entropy tokens and hex-encoded secrets count, and so
+    do values obfuscated with inserted whitespace or invisible characters.
 
-    Spans are offsets into ``text``. Findings that exist only in a
-    deobfuscated form have no faithful span, so they are returned as labels
-    for the caller to fail closed on rather than silently dropped.
+    Obfuscated findings are mapped back through the strip to a conservative
+    span running from the first participating character to the last. Without
+    that mapping they had no span, de-identification refused the whole
+    document, and an untrusted content author could suppress any retrieved page
+    by embedding one spaced credential-shaped string.
     """
     spans: list[tuple[int, int]] = []
-    for pattern, _label in _SECRET_PATTERNS:
-        for m in pattern.finditer(text):
-            spans.append((m.start(), m.end()))
-    for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", text):
-        token = m.group()
-        entropy = _shannon_entropy(token)
-        threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
-        if entropy >= threshold:
-            spans.append((m.start(), m.end()))
-            continue
-        if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
-            try:
-                if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                    spans.append((m.start(), m.end()))
-            except ValueError:
-                pass
 
-    # Mask what we located, then rerun the full scanner. Whatever it still
-    # finds exists only in a deobfuscated form (an inserted space or a
-    # zero-width character), so there is no faithful span to substitute and
-    # the caller must refuse. Masking first is what makes this correct when
-    # some credentials in the text are locatable and others are not.
+    def _collect(form: str, idx: list[int] | None, merged: bool = False) -> None:
+        def _record(start: int, end: int) -> None:
+            if idx is None:
+                spans.append((start, end))
+            elif start < len(idx) and end - 1 < len(idx):
+                spans.append((idx[start], idx[end - 1] + 1))
+
+        for pattern, _label in _SECRET_PATTERNS:
+            for m in pattern.finditer(form):
+                _record(m.start(), m.end())
+        for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
+            token = m.group()
+            # On a whitespace-merged form, only tokens containing a digit are
+            # candidates. Without this a natural-language sentence, whose words
+            # merge into one long alphabetic run, exceeds the entropy threshold.
+            # _scan_secrets applies the same guard for the same reason.
+            if merged and not any(c.isdigit() for c in token):
+                continue
+            entropy = _shannon_entropy(token)
+            threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
+            if entropy >= threshold:
+                _record(m.start(), m.end())
+                continue
+            if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
+                try:
+                    if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
+                        _record(m.start(), m.end())
+                except ValueError:
+                    pass
+
+    _collect(text, None)
+    stripped, stripped_idx = _strip_with_offsets(text, "\u200b\u200c\u200d\u2060\ufeff")
+    if stripped != text:
+        _collect(stripped, stripped_idx)
+    ws_removed, ws_idx = _strip_with_offsets(stripped, None)
+    if ws_removed != stripped:
+        _collect(ws_removed, [stripped_idx[i] for i in ws_idx], merged=True)
+
+    # Mask what we located and rerun the full scanner. Anything it still finds
+    # has no faithful span even after the offset mapping, so the caller must
+    # refuse rather than emit content still carrying it.
     masked = text
-    for start, end in sorted(spans, reverse=True):
+    for start, end in sorted(set(spans), reverse=True):
         masked = masked[:start] + " " * (end - start) + masked[end:]
-    return spans, _scan_secrets(masked)
+    return sorted(set(spans)), _scan_secrets(masked)
 
 
 def _scan_secrets(text: str) -> list[str]:

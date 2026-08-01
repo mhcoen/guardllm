@@ -654,10 +654,52 @@ class TestDetectorInterface:
         )
         r = v.deidentify(text)
         assert r.allowed
-        classes = {f.pii_class for f in r.findings}
-        assert PIIClass.SSN in classes
-        assert PIIClass.PERSON not in classes
+        # The validated SSN keeps its own class, so restoration cannot hand an
+        # SSN to a destination entitled only to names.
+        ssn_findings = [f for f in r.findings if f.pii_class is PIIClass.SSN]
+        assert len(ssn_findings) == 1
         assert SSN not in r.content
+        # The inferred span is trimmed to what the validated one did not cover,
+        # not discarded. Dropping it outright meant a detector marking
+        # "Jane Doe <jane@example.com>" as PERSON lost the whole span, so the
+        # name crossed in plaintext while the address was protected.
+        assert not any(
+            f.pii_class is PIIClass.PERSON and f.start <= ssn_findings[0].start < f.end
+            for f in r.findings
+        )
+
+    def test_an_inferred_span_keeps_the_part_a_validated_span_did_not_cover(self):
+        text = "Jane Doe <jane@example.com>"
+        greedy = _Detector([_person(0, len(text))])
+        v = _vault(
+            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,)
+        )
+        r = v.deidentify(text)
+        assert r.allowed
+        classes = {f.pii_class for f in r.findings}
+        assert PIIClass.EMAIL in classes, "validated email must survive"
+        assert PIIClass.PERSON in classes, "name must not cross in plaintext"
+        assert "jane@example.com" not in r.content
+        assert "Jane Doe" not in r.content
+
+    def test_identical_inferred_spans_with_different_classes_are_ambiguous(self):
+        """Registration order must not pick the class, since the class chosen
+        governs restoration: a field permitting PERSON but not ADDRESS would
+        admit the value purely because detectors were registered differently."""
+        from guardllm.security.pii_detect import detect as _detect
+
+        class _D:
+            def __init__(self, idn, cls):
+                self.id, self.classes, self._cls = idn, frozenset({cls}), cls
+
+            def find(self, text):
+                return [DetectedSpan(4, 8, self._cls)]
+
+        a = _D("p", PIIClass.PERSON)
+        b = _D("a", PIIClass.ADDRESS)
+        classes = DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON, PIIClass.ADDRESS}
+        for order in ((a, b), (b, a)):
+            assert _detect("Ask Dana", classes=classes, detectors=order).ambiguous
 
     def test_out_of_range_offsets_are_dropped_not_clamped(self):
         text = "Ask Dana."
@@ -747,3 +789,155 @@ class TestDetectorInterface:
         first = _vault(classes=cls, detectors=(a, b)).deidentify(text)
         second = _vault(classes=cls, detectors=(b, a)).deidentify(text)
         assert len(first.findings) == len(second.findings) == 1
+
+
+class TestRoundThreeRegressions:
+    """Each of these passed the previous suite and leaked, corrupted, or
+    denied service in a realistic deployment."""
+
+    def test_all_invalid_detector_output_is_incomplete_not_clean(self):
+        """Returning an empty success reported clean coverage for a detector
+        that produced nothing usable, which is the silent non-coverage the
+        protocol exists to prevent."""
+        from guardllm.security.pii_detect import _run_detector
+
+        class AllInvalid:
+            id = "ni"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                return [DetectedSpan(-5, -1, PIIClass.PERSON)]
+
+        spans, failure = _run_detector(AllInvalid(), "Dana Smith")
+        assert spans == [] and failure is not None
+
+    @pytest.mark.parametrize("kind", ["not_iterable", "generator_raises", "property_raises"])
+    def test_detector_failures_never_escape_the_library(self, kind):
+        from guardllm.security.pii_detect import _run_detector
+
+        class D:
+            id = "d"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                if kind == "not_iterable":
+                    return DetectedSpan(0, 4, PIIClass.PERSON)
+                if kind == "generator_raises":
+                    def gen():
+                        yield DetectedSpan(0, 4, PIIClass.PERSON)
+                        raise RuntimeError("boom")
+                    return gen()
+
+                class Bad:
+                    start, end = 0, 4
+
+                    @property
+                    def pii_class(self):
+                        raise ValueError("x")
+
+                return [Bad()]
+
+        spans, failure = _run_detector(D(), "Dana Smith")
+        assert spans == [] and failure is not None
+
+    def test_detection_incomplete_reaches_processed_content(self):
+        """Without the typed flag a host had to parse warning text to adopt
+        the stricter posture the spec says the flag enables."""
+
+        class Raiser:
+            id = "ner"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                raise ValueError("boom")
+
+        guard = Guard(privacy=_config(detectors=(Raiser(),)))
+        out = guard.process_inbound("Ask Dana.", Guard.context_web())
+        assert out.detection_incomplete is True
+        assert out.inference_used is True
+
+    @pytest.mark.parametrize("sep", [".", "/", "_", ","])
+    def test_punctuation_inside_a_token_body_fails_a_tool_call(self, sep):
+        """These evaded both the valid-token parser and the contiguous-body
+        scan, so the malformed token dispatched as a literal recipient."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        body = token.split(":")[2].rstrip("]")
+        damaged = token.replace(body, body[:7] + sep + body[7:])
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+        assert not p.allowed
+        if p.args:
+            assert EMAIL not in str(p.args)
+
+    @pytest.mark.parametrize("sep", [" ", "-"])
+    def test_whitespace_and_hyphens_in_a_body_are_recovered_not_refused(self, sep):
+        """Crockford strips these before the decoder runs, so they are
+        tolerated mangling rather than damage. Refusing them would fail calls
+        over the most common thing a model does to a long token."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        body = token.split(":")[2].rstrip("]")
+        mangled = token.replace(body, body[:7] + sep + body[7:])
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": mangled}]})
+        assert p.allowed
+        assert p.args["to"][0]["address"] == EMAIL
+
+    @pytest.mark.parametrize("number", [
+        "+44 20 7183 8750", "+47 22 59 13 00", "+65 6123 4567", "+64 9 123 4567",
+        "+353 1 234 5678", "+49 30 901820", "+91 98765 43210",
+    ])
+    def test_international_numbers_are_detected(self, number):
+        """Requiring exactly ten digits was a NANP assumption applied globally,
+        and each of these then crossed the boundary in plaintext."""
+        r = detect(number, classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.PHONE in {m.pii_class for m in r.matches}
+
+    @pytest.mark.parametrize("labelled", [
+        "Tel: 020 7183 8750", "phone 22 59 13 00", "mobile: 09876 543210",
+    ])
+    def test_labelled_national_numbers_outside_the_nanp(self, labelled):
+        r = detect(labelled, classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.PHONE in {m.pii_class for m in r.matches}
+
+    @pytest.mark.parametrize("pan", ["6759000000000000", "2200000000000004", "5062000000000004"])
+    def test_additional_card_ranges_are_recognized(self, pan):
+        r = detect(pan, classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD in {m.pii_class for m in r.matches}
+
+    def test_a_labelled_pan_needs_only_luhn(self):
+        """Issuer ranges are reassigned continuously, so a compiled table
+        cannot support a general coverage claim. A label supplies the intent."""
+        r = detect("card number 9468822170900693", classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD in {m.pii_class for m in r.matches}
+
+    @pytest.mark.parametrize("cred", ["sk-abcdefghij klmnopqrstuvwx", "AKIAIOSF ODNN7EXAMPLE"])
+    def test_obfuscated_credentials_are_marked_not_used_to_suppress_content(self, cred):
+        """Refusing the document let an untrusted author suppress any retrieved
+        page by embedding one spaced credential-shaped string."""
+        guard = Guard(privacy=_config())
+        out = guard.process_inbound(f"key: {cred}", Guard.context_web())
+        assert not out.blocked
+        assert cred not in out.content
+        assert "redacted:credential" in out.content
+
+    def test_credential_parity_with_l3_across_obfuscation(self):
+        from guardllm.security.outbound_dlp import _scan_secrets
+        from guardllm.security.pii_detect import credential_spans
+
+        for probe in [
+            "sk-abcdefghij klmnopqrstuvwx", "AKIAIOSF ODNN7EXAMPLE",
+            "x9Qv2Lm8Np4Rs7Tw3Yz6Bc1Df5Gh9Jk2", "ghp_" + "a" * 36,
+            "the quick brown fox jumps over the lazy dog",
+            "https://example.com/a/long/path/here", "ordinary english prose",
+        ]:
+            text = f"ctx {probe}"
+            spans, unlocatable = credential_spans(text)
+            assert bool(spans or unlocatable) == bool(_scan_secrets(text)), probe
+
+    def test_source_handles_do_not_alias_past_the_cache_cap(self):
+        """One shared literal past the cap cost model-visible attribution in
+        any large RAG or mailbox session."""
+        v = _vault()
+        handles = [v.source_handle("web", f"s{i}") for i in range(v._SOURCE_HANDLE_MAX + 400)]
+        assert len(set(handles)) == len(handles)
+        assert len(v._sources) <= v._SOURCE_HANDLE_MAX

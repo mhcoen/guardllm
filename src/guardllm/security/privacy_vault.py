@@ -30,6 +30,7 @@ radius, resolve at all.
 
 from __future__ import annotations
 
+import hmac
 import re
 import secrets
 import threading
@@ -73,7 +74,7 @@ _TOKEN_PREFIX = "[[GL:"
 #: be a probe as a typo.
 _TOKEN_RE = re.compile(
     r"\\?\[\s*\\?\[\s*GL\s*:\s*(?P<cls>[A-Za-z_]+)\s*:\s*"
-    r"(?P<body>[0-9A-Za-z\s\-]{15,60}?)\s*\\?\]\s*\\?\]"
+    r"(?P<body>[0-9A-Za-z\s\-./\\_,]{15,60}?)\s*\\?\]\s*\\?\]"
 )
 
 #: A ``[[GL:`` opener that never parses. Counted, not ignored.
@@ -196,6 +197,9 @@ def _iter_strings(node: object):
 # ---------------------------------------------------------------------------
 
 
+_STRIP_SEPARATORS_TABLE = str.maketrans("", "", " \t\r\n-./\\_,")
+
+
 @dataclass
 class _Entry:
     value: str
@@ -233,6 +237,8 @@ class PrivacyVault:
         # lock for the same reason.
         self._lock = threading.RLock()
         self._sources: dict[tuple[str, str], str] = {}
+        self._source_key = secrets.token_bytes(32)
+        self._STRIP_SEPARATORS = _STRIP_SEPARATORS_TABLE
         self.seeded = SeededValues()
 
     # -- lifecycle ------------------------------------------------------
@@ -322,9 +328,15 @@ class PrivacyVault:
             if existing is not None:
                 return existing
             if len(self._sources) >= self._SOURCE_HANDLE_MAX:
-                # Deterministic and non-identifying. Better than growing without
-                # bound or than reusing a handle that would alias two sources.
-                return "src-overflow"
+                # Past the cache cap, derive the handle instead of storing it.
+                # Returning one shared literal aliased every later source, so a
+                # large RAG or mailbox session lost model-visible attribution
+                # between documents. Keyed by a per-session secret, so handles
+                # stay unlinkable across sessions and memory stays bounded.
+                digest = hmac.new(
+                    self._source_key, f"{source_type}\x00{source_id}".encode(), "sha256"
+                ).hexdigest()[:8]
+                return f"src-{digest}"
             handle = f"src-{secrets.token_hex(4)}"
             self._sources[key] = handle
             return handle
@@ -344,16 +356,20 @@ class PrivacyVault:
         with self._lock:
             issued: dict[tuple[PIIClass, str], str] = {}
             new_keys: list[tuple[PIIClass, str, str]] = []
+            # Set-backed. The previous linear scan of new_keys per candidate was
+            # quadratic, costing seconds on a contact export or roster
+            # approaching the supported capacity.
+            pending: set[tuple[PIIClass, str]] = set()
             for pii_class, value in wanted:
                 key = (pii_class, self._normalize(pii_class, value))
-                if key in issued:
+                if key in issued or key in pending:
                     continue
                 existing = self._by_value.get(key)
                 if existing is not None:
                     issued[key] = existing.token
                     continue
-                if not any(k[:2] == key for k in new_keys):
-                    new_keys.append((key[0], key[1], value))
+                pending.add(key)
+                new_keys.append((key[0], key[1], value))
 
             if len(self._by_payload) + len(new_keys) > self._config.vault_max_entries:
                 raise VaultCapacityError(
@@ -375,21 +391,52 @@ class PrivacyVault:
     #: Framing-independent on purpose: checking for a surviving "[[" only
     #: catches damage to the closing bracket, so "[GL:EMAIL:...]]" and every
     #: other opening-prefix corruption dispatched literally.
-    _BODY_RE = re.compile(r"(?<![0-9A-Za-z])[0-9A-TV-Za-tv-z]{15}(?![0-9A-Za-z])")
+    #: A run of Crockford symbols possibly split by separators a model might
+    #: insert. Framing-independent on purpose, and separator-tolerant because
+    #: checking only contiguous runs missed "YS5F6JM.VKYQCSD5", which evaded
+    #: the valid-token parser and dispatched as a literal recipient.
+    #: Two passes rather than one. The contiguous case dominates real input and
+    #: is cheap; the separator-tolerant pattern backtracks and runs only over
+    #: regions that actually contain a separator between alphanumerics.
+    _BODY_RE = re.compile(r"(?<![0-9A-Za-z])[0-9A-Za-z]{15}(?![0-9A-Za-z])")
+    _SPLIT_BODY_RE = re.compile(
+        r"(?<![0-9A-Za-z])[0-9A-Za-z](?:[\s\-./\\_,]*[0-9A-Za-z]){14,24}(?![0-9A-Za-z])"
+    )
+    #: The separator-tolerant pass backtracks, so it is bounded. This runs over
+    #: tool-call arguments, which are small; the bound exists so a pathological
+    #: argument cannot stall dispatch, not because large input is expected.
+    _SPLIT_SCAN_MAX = 64_000
+    _SPLIT_HINT_RE = re.compile(r"[0-9A-Za-z][\s\-./\\_,][0-9A-Za-z]")
 
     def _has_stray_issued_payload(self, text: str) -> bool:
         """True when a live issued payload survives outside a valid token.
 
-        Substitution consumes properly framed tokens, so anything reaching
-        here with a payload that resolves to a live entry is a token whose
-        framing the model damaged. Membership is exact, so a false positive
-        would require a 60-bit collision.
+        Substitution consumes properly framed tokens, so a payload resolving to
+        a live entry after that is a token whose framing or body the model
+        damaged. Membership is exact, so a false positive needs a 60-bit
+        collision, which is what lets this be aggressive about candidates.
         """
-        for m in self._BODY_RE.finditer(text):
-            result = codec.decode_text(m.group())
-            if result.ok and codec.payload_key(result.payload) in self._by_payload:
-                return True
-        return False
+        if not self._by_payload:
+            return False
+
+        def _hits(pattern: re.Pattern[str]) -> bool:
+            for m in pattern.finditer(text):
+                compact = m.group().translate(self._STRIP_SEPARATORS)
+                if len(compact) != codec.CODEWORD_SYMBOLS:
+                    continue
+                result = codec.decode_text(compact)
+                if result.ok and codec.payload_key(result.payload) in self._by_payload:
+                    return True
+            return False
+
+        if _hits(self._BODY_RE):
+            return True
+        # Only worth the expensive pattern where a separator actually sits
+        # between two alphanumerics, which ordinary prose and code rarely do
+        # inside a 15-symbol run.
+        if len(text) > self._SPLIT_SCAN_MAX or not self._SPLIT_HINT_RE.search(text):
+            return False
+        return _hits(self._SPLIT_BODY_RE)
 
     def contains_issued_token(self, text: str) -> bool:
         """Exact membership test, not a pattern match.

@@ -191,6 +191,8 @@ class SecurityPipeline:
         # remembering.
         pii_findings: list = []
         blocked = False
+        detection_incomplete = False
+        inference_used = False
         if self._vault_applies(ctx):
             deid = self._vault.deidentify(cleaned, deny_action="marker")
             if deid.allowed:
@@ -208,6 +210,8 @@ class SecurityPipeline:
                 cleaned = "[de-identification failed: content withheld]"
                 san_result = replace(san_result, cleaned_text=cleaned)
                 warnings.append(f"De-identification failed: {deid.reason}")
+            detection_incomplete = deid.detection_incomplete
+            inference_used = deid.inference_used
 
         # L1: Isolate untrusted content
         isolated = False
@@ -280,6 +284,8 @@ class SecurityPipeline:
             warnings=warnings,
             pii_findings=pii_findings,
             blocked=blocked,
+            detection_incomplete=detection_incomplete,
+            inference_used=inference_used,
         )
 
     def ingest_sensitive(self, content: str) -> None:

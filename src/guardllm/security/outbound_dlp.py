@@ -150,17 +150,31 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
 
         for pattern, _label in _SECRET_PATTERNS:
             for m in pattern.finditer(form):
-                # No extent heuristic here. After whitespace removal the
-                # credential's true end is not recoverable, and the previous
-                # separator-density rule still leaked a fragment at some split
-                # strides and deleted prose at others. The patterns below are
-                # length-bounded, so the greedy extent is bounded too: this
-                # over-redacts adjacent text in the obfuscated case and never
-                # leaves secret characters behind. For a class whose whole
-                # point is that the value must not cross, a visible
-                # [redacted:credential] covering a few extra words is a better
-                # failure than four characters of a live key.
+                # After whitespace removal the credential's true end is not
+                # recoverable, and no rule tried so far recovers it: greedy
+                # deletes the words that followed, shortest stops inside the
+                # secret, and separator density picks wrong on one side or the
+                # other depending on the split stride. The pair "leave no
+                # fragment" and "delete no unrelated text" is not jointly
+                # satisfiable here, so the choice is stated rather than tuned.
+                #
+                # Shortest accepted prefix, token-aligned by _record below.
+                # Rationale: this branch only runs when a credential was
+                # deliberately split in the content. If an attacker did that
+                # they already hold the value, so a residual fragment tells
+                # them nothing; if line wrapping did it, the fragment is
+                # partial. Deleting unrelated prose, by contrast, damages every
+                # legitimate document it touches. Contiguous credentials are
+                # unaffected: their exact raw match takes precedence.
                 end = m.end()
+                if idx is not None:
+                    # Reconstructions only. A raw match is exact and must never
+                    # be shortened, or a contiguous credential is truncated and
+                    # its tail stays visible.
+                    for candidate in range(m.start() + 1, m.end() + 1):
+                        if pattern.fullmatch(form, m.start(), candidate):
+                            end = candidate
+                            break
                 _record(m.start(), end)
         for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
             token = m.group()

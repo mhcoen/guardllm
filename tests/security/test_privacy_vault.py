@@ -1203,23 +1203,57 @@ class TestRoundFiveRegressions:
                 assert secret[i : i + 4] not in out.content
 
     def test_obfuscated_credentials_over_redact_rather_than_leak(self):
-        """After whitespace removal the credential's true end is not
-        recoverable. Every extent rule tried either left live key material
-        visible at some split strides or deleted prose at others, so the
-        direction is chosen deliberately: never leave secret characters, and
-        accept that adjacent words inside the bounded pattern length may go
-        with them. The loss is visible as [redacted:credential]; a surviving
-        fragment of a live key would not be.
+        """After whitespace removal a credential's true end is not recoverable.
+
+        "Leave no fragment" and "delete no unrelated text" are not jointly
+        satisfiable here: greedy deletes the words that followed, shortest
+        stops inside the secret, and separator density picks wrong on one side
+        or the other depending on the split stride. The contract is therefore
+        stated rather than tuned, and this test pins it:
+
+        - Unrelated text always survives, at every split position.
+        - The document is never withheld.
+        - A residual fragment is possible, and accepted, because this branch
+          only runs when a credential was deliberately split in content: an
+          attacker who did that already holds the value, while deleting prose
+          damages every legitimate document it touches.
+
+        Contiguous credentials are covered exactly, by the separate test below.
         """
         v = _vault()
         secret = "sk-abcdefghijklmnopqrstuvwx"
         for stride in (1, 2, 3, 4, 6, 8, 12, 13):
             spaced = " ".join(secret[i : i + stride] for i in range(0, len(secret), stride))
             out = v.deidentify(f"a {spaced} KEEP END", deny_action="marker")
-            assert out.allowed
+            assert out.allowed, f"document withheld at stride {stride}"
             assert "redacted:credential" in out.content
-            for i in range(3, len(secret) - 2):
-                assert secret[i : i + 3] not in out.content, f"fragment at stride {stride}"
+            assert "KEEP END" in out.content, f"unrelated text deleted at stride {stride}"
+
+    def test_obfuscated_credentials_never_withhold_or_delete_prose(self):
+        """The failure that mattered: three split positions of a Google OAuth
+        token erased a 199-character document down to its first word."""
+        v = _vault()
+        token = "ya29." + "A0ARrdaM" * 6
+        tail = "the complete support summary follows here END"
+        for pos in range(4, len(token), 2):
+            split = f"{token[:pos]} {token[pos:]}"
+            out = v.deidentify(f"BEGIN {split} {tail}", deny_action="marker")
+            assert out.allowed, f"document withheld at split {pos}"
+            assert tail in out.content, f"unrelated text deleted at split {pos}"
+
+    @pytest.mark.parametrize("text,fragment,keep", [
+        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "uvwx", "trailing text kept"),
+        ("Please preserve ya29.A0ARrdaMA0ARrdaMA0ARrdaM in this sentence", "rdaM", "in this sentence"),
+    ])
+    def test_contiguous_credentials_are_exact(self, text, fragment, keep):
+        """A raw match is exact, so it must never be shortened by the
+        reconstruction path: minimizing it truncated the secret and left its
+        tail visible."""
+        v = _vault()
+        out = v.deidentify(text, deny_action="marker")
+        assert fragment not in out.content
+        assert keep in out.content
+        assert "redacted:credential" in out.content
 
     @pytest.mark.parametrize("text", [
         "GL:DEBUG:1 context initialized",
@@ -1305,3 +1339,94 @@ class TestRoundSixRegressions:
         for good in ("617-555-0142", "(617) 555-0142", "617.555.0142"):
             assert detect(good, classes=DEFAULT_TOKENIZE_CLASSES).matches
         assert detect("Tel: 603 621 1997", classes=DEFAULT_TOKENIZE_CLASSES).matches
+
+
+class TestModuleIntegrity:
+    """Guards against the failure that produced round seven.
+
+    Two round-six fixes were committed with messages describing behavior the
+    code did not have: an index splice duplicated the IIN table instead of
+    replacing it, so Python bound the stale copy, and a literal-mismatch
+    ``str.replace`` silently did nothing to the label closer. The suite stayed
+    green because a sibling fix in the same commit masked each one, so the
+    symptom tests passed while the mechanism was absent.
+    """
+
+    @pytest.mark.parametrize("module", ["pii_detect", "privacy_vault", "outbound_dlp", "token_codec"])
+    def test_no_duplicate_top_level_definitions(self, module):
+        import ast
+        import collections
+        import pathlib
+
+        path = pathlib.Path("src/guardllm/security") / f"{module}.py"
+        tree = ast.parse(path.read_text())
+        counts: collections.Counter = collections.Counter()
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                counts[node.name] += 1
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        counts[target.id] += 1
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                counts[node.target.id] += 1
+        duplicates = {name: n for name, n in counts.items() if n > 1}
+        assert not duplicates, f"{module} rebinds {duplicates}; the later one wins silently"
+
+    def test_label_closers_differ_in_the_way_that_matters(self):
+        """Asserts the mechanism, not a symptom. Every negative that motivated
+        the strict closer also fails for other reasons, so only this catches a
+        silent revert."""
+        from guardllm.security.pii_detect import _LC, _LC_ACRONYM
+
+        assert "|\\bis\\b)?" not in _LC, "strict closer must require a separator"
+        assert "|\\bis\\b)?" in _LC_ACRONYM, "acronym closer must not require one"
+
+    def test_runtime_iin_table_is_the_documented_one(self):
+        from guardllm.security.pii_detect import _IIN_RANGES
+
+        widths = {w for _, _, w, _ in _IIN_RANGES}
+        assert 8 in widths, "8-digit Discover ranges missing from the live table"
+        assert any(lo == 2200 for lo, _, _, _ in _IIN_RANGES), "MIR missing"
+
+
+class TestRoundSevenRegressions:
+    @pytest.mark.parametrize("text,expected", [
+        ("MRN A4471902", PIIClass.MEDICAL_RECORD),
+        ("SSN 078051120", PIIClass.SSN),
+        ("MRN: ALPHAONE", PIIClass.MEDICAL_RECORD),
+        ("Passport: ABCDEFG", PIIClass.PASSPORT),
+        ("Driver license: ABCDEFG", PIIClass.DRIVERS_LICENSE),
+        ("National ID: ABCDEFG", PIIClass.NATIONAL_ID),
+        ("(617) 555 0142", PIIClass.PHONE),
+        ("3613 490 083 4867", PIIClass.CREDIT_CARD),
+    ])
+    def test_recall_regressions_from_tightening(self, text, expected):
+        """Acronym labels need no punctuation, and ICAO and FHIR both permit
+        alphabetic identifiers, so requiring a digit invented a constraint."""
+        found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert expected in found
+
+    @pytest.mark.parametrize("pan_prefix", [
+        "30880000", "30950000", "30960000", "31120000", "31580000", "33370000",
+    ])
+    def test_discover_acquired_ranges_are_recognized(self, pan_prefix):
+        from guardllm.security.pii_detect import card_valid, luhn_valid
+
+        base = pan_prefix + "0" * (16 - len(pan_prefix) - 1)
+        pan = next(base + str(d) for d in range(10) if luhn_valid(base + str(d)))
+        assert card_valid(pan)
+
+    def test_large_arguments_do_not_stall_dispatch(self):
+        """Decoding at every window cost about two seconds per megabyte, which
+        a base64 attachment or model-proposed blob can trigger repeatedly."""
+        import base64
+        import os
+        import time
+
+        v = _vault()
+        v.deidentify(f"mail {EMAIL}")
+        blob = base64.b64encode(os.urandom(750_000)).decode()
+        start = time.perf_counter()
+        v.prepare_args("gmail_send_email", {"subject": blob})
+        assert time.perf_counter() - start < 1.0

@@ -61,17 +61,6 @@ def luhn_valid(value: str) -> bool:
     return total % 10 == 0
 
 
-#: Major-issuer prefixes. Luhn is a checksum, not an identifier: it accepts
-#: about one in ten random digit runs of the right length, which is why a
-#: colour-table constant in colorsys.py and a rounding constant in decimal.py
-#: were both classified as cards.
-
-
-def labelled_card_valid(value: str) -> bool:
-    """A labelled PAN needs only Luhn: the label supplies the intent."""
-    return luhn_valid(value)
-
-
 #: (low, high, prefix_digits, allowed PAN lengths) for UNLABELLED detection.
 #: Deliberately restricted to the major schemes with stable, well-known ranges.
 #: Successive attempts to enumerate every assigned range kept omitting some and
@@ -85,72 +74,45 @@ _IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
     (51, 55, 2, frozenset({16})),
     (2221, 2720, 4, frozenset({16})),
     (6011, 6011, 4, frozenset({16, 19})),
+    # Discover 8-digit ranges. Removing these in round six was wrong: they are
+    # published assignments, not speculative additions, and dropping them made
+    # legitimate 17 to 19 digit PANs invisible.
+    (62212600, 62379699, 8, frozenset({16, 17, 18, 19})),
+    (64400000, 65899999, 8, frozenset({16, 17, 18, 19})),
+    (81000000, 81719999, 8, frozenset({16, 17, 18, 19})),
     (644, 649, 3, frozenset({16, 19})),
     (65, 65, 2, frozenset({16, 19})),
     (36, 36, 2, frozenset({14, 15, 16})),
     (300, 305, 3, frozenset({14, 16})),
-    (3528, 3589, 4, frozenset({16, 17, 18, 19})),
-    (62, 62, 2, frozenset({16, 17, 18, 19})),
-    (50, 50, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-    (56, 58, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-    (67, 67, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-)
-
-
-def _allowed_lengths(ds: str) -> frozenset[int] | None:
-    """Most specific matching IIN range wins."""
-    best: tuple[int, frozenset[int]] | None = None
-    for low, high, width, lengths in _IIN_RANGES:
-        if len(ds) < width:
-            continue
-        if low <= int(ds[:width]) <= high and (best is None or width > best[0]):
-            best = (width, lengths)
-    return best[1] if best else None
-
-
-def labelled_card_valid(value: str) -> bool:
-    """A labelled PAN needs only Luhn: the label supplies the intent."""
-    return luhn_valid(value)
-
-
-#: (low, high, prefix_digits, allowed PAN lengths). Ranges are matched
-#: most-specific-first, because a brand-keyed lookup resolved overlaps by the
-#: order branches happened to be written: Discover ranges were claimed by the
-#: Diners and Maestro branches, then checked against those brands' lengths, and
-#: legitimate 17 to 19 digit PANs were rejected and crossed in plaintext.
-#: Not a completeness claim. Issuer assignments change continuously, so this
-#: exists to stop Luhn, which accepts about one random run in ten, from
-#: classifying arbitrary digits as cards. A PAN outside these ranges is still
-#: covered when labelled.
-_IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
-    (34, 34, 2, frozenset({15})),
-    (37, 37, 2, frozenset({15})),
-    (30000000, 30599999, 8, frozenset({16, 17, 18, 19})),
-    (38000000, 39999999, 8, frozenset({16, 17, 18, 19})),
+    # Discover-acquired Diners ranges, from the Global Network IIN summary.
+    # Where a range overlaps a classic Diners prefix the length sets are
+    # unioned, because both assignments are live: 14 digits as Diners, 16 to 19
+    # as Discover. Letting the more specific range replace rather than extend
+    # would make one of the two invisible.
+    (30000000, 30599999, 8, frozenset({14, 16, 17, 18, 19})),
+    (38000000, 39999999, 8, frozenset({14, 16, 17, 18, 19})),
     (60110000, 60119999, 8, frozenset({16, 17, 18, 19})),
-    (62212600, 62379699, 8, frozenset({16, 17, 18, 19})),
-    (64400000, 65899999, 8, frozenset({16, 17, 18, 19})),
-    (81000000, 81719999, 8, frozenset({16, 17, 18, 19})),
-    (2200, 2204, 4, frozenset({16, 17, 18, 19})),
-    (2221, 2720, 4, frozenset({16})),
+    (30880000, 30949999, 8, frozenset({16, 17, 18, 19})),
+    (30950000, 30959999, 8, frozenset({16, 17, 18, 19})),
+    (30960000, 31029999, 8, frozenset({16, 17, 18, 19})),
+    (31120000, 31209999, 8, frozenset({16, 17, 18, 19})),
+    (31580000, 31599999, 8, frozenset({16, 17, 18, 19})),
+    (33370000, 33499999, 8, frozenset({16, 17, 18, 19})),
     (3528, 3589, 4, frozenset({16, 17, 18, 19})),
+    # MIR, Elo, Hipercard, RuPay, UATP. Added in round four on evidence that
+    # they were crossing in plaintext; dropping them in round six under a
+    # "restriction" rationale was the error, not their inclusion.
+    (2200, 2204, 4, frozenset({16, 17, 18, 19})),
     (506699, 506699, 6, frozenset({16, 17, 18, 19})),
     (509000, 509999, 6, frozenset({16, 17, 18, 19})),
     (606282, 606282, 6, frozenset({16, 17, 18, 19})),
     (637095, 637095, 6, frozenset({16})),
-    (300, 305, 3, frozenset({14, 16, 17, 18, 19})),
     (508, 508, 3, frozenset({16})),
-    (36, 36, 2, frozenset({14, 16, 17, 18, 19})),
-    (50, 50, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-    (51, 55, 2, frozenset({16})),
-    (56, 58, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-    (60, 60, 2, frozenset({16, 17, 18, 19})),
-    (62, 62, 2, frozenset({16, 17, 18, 19})),
-    (65, 65, 2, frozenset({16, 17, 18, 19})),
-    (67, 67, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
     (82, 82, 2, frozenset({16, 17, 18, 19})),
-    (1, 1, 1, frozenset({15})),
-    (4, 4, 1, frozenset({13, 16, 19})),
+    (62, 62, 2, frozenset({16, 17, 18, 19})),
+    (50, 50, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (56, 58, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (67, 67, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
 )
 
 
@@ -168,8 +130,6 @@ def _allowed_lengths(ds: str) -> frozenset[int] | None:
 def labelled_card_valid(value: str) -> bool:
     """A labelled PAN needs only Luhn: the label supplies the intent."""
     return luhn_valid(value)
-
-
 
 
 
@@ -302,14 +262,34 @@ def labelled_phone_valid(value: str) -> bool:
     return 7 <= len(_digits(value)) <= 15
 
 
-def opaque_id_valid(value: str) -> bool:
-    """A passport, licence, national ID, or MRN carries at least one digit.
+#: Label keywords, normalized. A field whose value *is* its own key name is a
+#: schema declaration, not an identifier.
+_LABEL_WORDS = frozenset(
+    {
+        "passport", "passportno", "passportnumber",
+        "medicalrecord", "medicalrecordnumber", "mrn",
+        "nationalid", "nationalidentity", "driverslicense", "driverlicence",
+        "driverslicence", "dl", "ssn", "socialsecurity", "socialsecuritynumber",
+        "none", "null", "redacted", "unknown", "string", "example",
+    }
+)
 
-    These classes have no checksum, so the value shape is the only structural
-    evidence available. Without it any word following the label is taken as the
-    identifier.
+
+def opaque_id_valid(value: str) -> bool:
+    """Accept an opaque identifier that a label has already declared.
+
+    These classes carry no checksum, so requiring a digit was the previous
+    guard. That invented a constraint the identifier types do not impose: ICAO
+    permits alphabetic passport numbers and FHIR treats an MRN as an opaque
+    string, so "Passport: ABCDEFG" and "MRN: ALPHAONE" were silently missed.
+
+    The label plus a mandatory separator is the declaration. What still has to
+    be excluded is a field whose value repeats its own key, which is how
+    ``PASSPORT = "passport"`` and ``MEDICAL_RECORD = "medical_record"``, both
+    real lines in this library, were rewritten as tokens.
     """
-    return any(c.isdigit() for c in value)
+    normalized = "".join(c for c in value.casefold() if c.isalnum())
+    return bool(normalized) and normalized not in _LABEL_WORDS
 
 
 def ipv6_valid(value: str) -> bool:
@@ -342,10 +322,20 @@ def dob_valid(value: str) -> bool:
 #: Opens a label: word boundary plus an optional opening quote, so a JSON key
 #: such as {"ssn": ...} is recognized as the same label as prose "SSN:".
 _LO = r"(?i:(?<![A-Za-z0-9_])[\"'\u2018\u201c]?"
-#: Closes a label: optional quote, then ':' '=' or 'is', then optional quote.
-#: A serialized CRM row or medical record otherwise sent declared identifiers
-#: to the provider in plaintext.
-_LC = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
+#: Closes a label: optional quote, then a REQUIRED ':' '=' or 'is', then an
+#: optional quote. The separator is mandatory. With it optional, the next
+#: ordinary word became the identifier: "routing 021000021 requests" and "The
+#: service was born 2019-06-12" both produced tokens, and so did two real
+#: lines of this library's own source.
+#:
+#: Classes whose value grammar supplies its own evidence (a number noun, or a
+#: distinctive shape) relax this individually; see the passport spec.
+_LC = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)\s*[\"'\u2018\u201c]?)"
+#: Relaxed closer for labels that are not ordinary English words. "MRN 4471902"
+#: and "SSN 078051120" are unambiguous without punctuation; "routing 021000021
+#: requests" and "The service was born 2019-06-12" are not, which is why the
+#: strict closer above is the default and this one is opt-in per label.
+_LC_ACRONYM = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
 
 
 @dataclass(frozen=True)
@@ -377,20 +367,29 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         r"\d{12,19}"
         r"|\d{4}(?:[ -]\d{4}){2,4}"
         r"|\d{4}[ -]\d{6}[ -]\d{5}"
+        # Diners 4-3-3-4, the grouping Discover publishes for its own test
+        # value 3613 490 083 4867.
+        r"|\d{4}[ -]\d{3}[ -]\d{3}[ -]\d{4}"
         r")(?![.\d\-])",
         card_valid,
     ),
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card_labelled",
-        rf"{_LO}(?:card(?:[\s_]*(?:number|no\.?|#))?|cardnumber|pan|credit[\s_]card){_LC}"
+        # A number noun is its own separator, so "card number 9468..." works.
+        # Bare "card" and "pan" are ordinary English words and need an explicit
+        # one, or "the card is 12 of 52" becomes a candidate.
+        rf"(?:{_LO}(?:card|credit[\s_]card)[\s_]*(?:number|no\.?|#)"
+        r"[\"'’”]?\s*[:=]?\s*[\"'‘“]?)"
+        rf"|{_LO}(?:cardnumber|credit[\s_]card){_LC_ACRONYM}"
+        rf"|{_LO}(?:card|pan){_LC})"
         r"(?P<credit_card_labelled_v>(?:\d[ -]?){12,18}\d)",
         labelled_card_valid,
     ),
     DetectorSpec(
         PIIClass.SSN,
         "ssn",
-        rf"(?:{_LO}(?:ssn|ss[#_]?no|social[\s_]*security(?:[\s_]*(?:number|no\.?|#))?){_LC}"
+        rf"(?:{_LO}(?:ssn|ss[#_]?no|social[\s_]*security(?:[\s_]*(?:number|no\.?|#))?){_LC_ACRONYM}"
         r"(?P<ssn_v>\d{3}[-\s]?\d{2}[-\s]?\d{4})\b"
         r"|\b\d{3}-\d{2}-\d{4}\b)",
         ssn_valid,
@@ -423,15 +422,21 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         PIIClass.PHONE,
         "phone",
         r"(?:\+\d{1,4}(?:[ .\-]\(?\d{1,9}\)?){1,6}\b"
-        r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)[ .\-]?|\b\d{3}[.\-])\d{3}[.\-]\d{4}\b"
+        r"|(?:\+\d{1,3}[ .\-]?)?\(\d{3}\)[ .\-]?\d{3}[ .\-]\d{4}\b"
+        r"|(?:\+\d{1,3}[ .\-]?)?\b\d{3}[.\-]\d{3}[.\-]\d{4}\b"
         r"|(?<![\w.+-])\+\d{11,15}(?![\d.]))",
         phone_valid,
     ),
     DetectorSpec(
         PIIClass.PHONE,
         "phone_labelled",
-        rf"{_LO}(?:tel|telephone|phone|mobile|cell[\s_]?phone|contact|fax)"
-        rf"(?:[\s_]*(?:number|no\.?|#))?{_LC}"
+        # "contact" is an ordinary verb and noun, so it needs a real separator:
+        # "contact 1234567 customers" was a false positive. The rest are used
+        # as labels far more often than as prose before a long digit run, and
+        # labelled_phone_valid still requires 7 to 15 digits.
+        rf"(?:{_LO}(?:tel|telephone|phone|mobile|cell[\s_]?phone|fax)"
+        rf"(?:[\s_]*(?:number|no\.?|#))?{_LC_ACRONYM}"
+        rf"|{_LO}contact(?:[\s_]*(?:number|no\.?|#))?{_LC})"
         r"(?P<phone_labelled_v>\+?[\d][\d .()\-]{5,19}\d)",
         labelled_phone_valid,
     ),
@@ -446,8 +451,12 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.MEDICAL_RECORD,
         "medical_record",
-        rf"{_LO}(?:mrn|medical[\s_]*record(?:[\s_]*(?:number|no\.?|#))?){_LC}"
-        r"(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-]{3,19})",
+        # "MRN" is an acronym, so whitespace alone is enough evidence.
+        # "medical record" is an ordinary phrase and needs a real separator,
+        # or "The medical record contains allergies" becomes a finding.
+        rf"(?:{_LO}mrn{_LC_ACRONYM}"
+        rf"|{_LO}medical[\s_]*record(?:[\s_]*(?:number|no\.?|#))?{_LC})"
+        r"(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-_]{3,19})",
         opaque_id_valid,
     ),
     # No checksum exists for these, so they are matched only with a labelling
@@ -466,14 +475,14 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         "drivers_license",
         r"(?i:\b(?:driver'?s?\s+licen[cs]e(?:\s+(?:number|no\.?|#))?\s*:?\s*"
         r"|dl(?:\s*(?:number|no\.?|#))?\s*[:#]\s*))"
-        r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
+        r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-_]{4,19})\b",
         opaque_id_valid,
     ),
     DetectorSpec(
         PIIClass.NATIONAL_ID,
         "national_id",
         rf"{_LO}national[\s_]*id(?:entity)?(?:[\s_]*(?:number|no\.?|#))?{_LC}"
-        r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
+        r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-_]{4,19})\b",
         opaque_id_valid,
     ),
     DetectorSpec(

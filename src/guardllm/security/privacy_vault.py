@@ -201,6 +201,15 @@ def _iter_strings(node: object):
 #: damaged GuardLLM token from unrelated text that merely looks similar.
 _CLASS_NAMES = frozenset(c.name for c in PIIClass)
 
+#: Crockford folding for the fast scan: case-insensitive, with I/L to 1 and
+#: O to 0, matching what the decoder does before it looks at anything else.
+_CROCKFORD_FOLD_TABLE = str.maketrans("ILOilo", "110110")
+
+
+def _crockford_fold(body: str) -> str:
+    return body.upper().translate(str.maketrans("ILO", "110"))
+
+
 _STRIP_SEPARATORS_TABLE = str.maketrans("", "", " \t\r\n-./\\_,")
 
 
@@ -241,6 +250,7 @@ class PrivacyVault:
         # lock for the same reason.
         self._lock = threading.RLock()
         self._sources: dict[tuple[str, str], str] = {}
+        self._issued_bodies: set[str] = set()
         self._source_key = secrets.token_bytes(32)
         self._STRIP_SEPARATORS = _STRIP_SEPARATORS_TABLE
         self.seeded = SeededValues()
@@ -252,6 +262,7 @@ class PrivacyVault:
         with self._lock:
             self._by_value.clear()
             self._by_payload.clear()
+            self._issued_bodies.clear()
             self._sources.clear()
             # Seeded values are session state too. A Guard reused between
             # tenants otherwise keeps applying the previous tenant's labels.
@@ -310,6 +321,10 @@ class PrivacyVault:
         entry = _Entry(value=value, pii_class=pii_class, token=render_token(pii_class, body))
         self._by_value[key] = entry
         self._by_payload[payload] = entry
+        # Canonical full codeword bodies, for the O(1) scan in
+        # _has_stray_issued_payload. An intact body is an exact lookup and
+        # never needs decoding.
+        self._issued_bodies.add(_crockford_fold(body))
         return entry.token
 
     #: Source handles live outside the value vault. Deriving them from
@@ -446,14 +461,20 @@ class PrivacyVault:
         # Deleting the colon between class and body defeats the artifact
         # pattern AND the standalone-run scanners, so
         # "[[GL:EMAIL54G621VXXEJ1RX4]]" dispatched as a literal recipient.
-        # Slide a window over every alphanumeric run and test exact membership:
-        # O(1) per position, and a false positive needs a 60-bit collision.
-        for run in re.finditer(r"[0-9A-Za-z]{15,}", text):
-            block = run.group()
-            for k in range(len(block) - codec.CODEWORD_SYMBOLS + 1):
-                window = block[k : k + codec.CODEWORD_SYMBOLS]
-                result = codec.decode_text(window)
-                if result.ok and codec.payload_key(result.payload) in self._by_payload:
+        # Slide a window over every alphanumeric run.
+        #
+        # Set membership, not decoding. Decoding at every position cost about
+        # two seconds on a one-megabyte base64 argument, which a model-proposed
+        # blob or an attachment can trigger repeatedly: a straightforward way to
+        # occupy a worker. An intact body is an exact lookup after the same
+        # Crockford folding the decoder would apply first, so decoding is only
+        # needed for genuinely damaged bodies, and those are found by the
+        # bounded patterns below.
+        n = codec.CODEWORD_SYMBOLS
+        for run in re.finditer(r"[0-9A-Za-z]{%d,}" % n, text):
+            folded = _crockford_fold(run.group())
+            for k in range(len(folded) - n + 1):
+                if folded[k : k + n] in self._issued_bodies:
                     return True
 
         for m in self._ARTIFACT_RE.finditer(text):
@@ -572,9 +593,18 @@ class PrivacyVault:
                     + "; ".join(found.detector_warnings)
                 ),
             )
-        if found.unlocatable_credentials:
-            # Present only in an obfuscated form, so there is no faithful span
-            # to substitute. Refuse rather than emit content still carrying it.
+        if found.unlocatable_credentials and deny_action == "fail":
+            # No faithful span to substitute. On the host-assembled path that
+            # is a refusal: the host declared this content sensitive and asked
+            # for de-identification, so emitting it with the value still in it
+            # is not an option.
+            #
+            # On the untrusted-ingress path it is NOT a refusal. Withholding
+            # the document there handed any content author a way to suppress
+            # its own retrieval by embedding one split credential-shaped
+            # string, and it fired routinely on a leftover high-entropy
+            # fragment of a credential that had already been located and
+            # redacted. Ingress gets a bounded local replacement and a warning.
             return DeidentifyResult(
                 content=text,
                 allowed=False,
@@ -583,6 +613,11 @@ class PrivacyVault:
                     + ", ".join(found.unlocatable_credentials)
                 ),
                 denied=[PIIClass.CREDENTIAL],
+            )
+        if found.unlocatable_credentials:
+            warnings.append(
+                "Obfuscated credential fragment may remain: "
+                + ", ".join(found.unlocatable_credentials)
             )
         if found.ambiguous:
             # Partial overlap without containment is genuinely ambiguous.

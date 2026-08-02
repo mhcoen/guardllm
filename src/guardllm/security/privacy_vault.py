@@ -249,6 +249,13 @@ class PrivacyVault:
             self._by_value.clear()
             self._by_payload.clear()
             self._sources.clear()
+            # Seeded values are session state too. A Guard reused between
+            # tenants otherwise keeps applying the previous tenant's labels.
+            self.seeded.clear()
+            # Rotating the key is what makes derived handles unlinkable across
+            # sessions; without it a provider can join overflow handles from
+            # before and after a reset.
+            self._source_key = secrets.token_bytes(32)
 
     def __len__(self) -> int:
         return len(self._by_payload)
@@ -305,6 +312,9 @@ class PrivacyVault:
     #: len(_by_value) leaked how many protected values a session had seen
     #: before each new source, and storing them in _by_value let a crawler or
     #: mailbox session grow unbounded despite the advertised hard capacity.
+    #: 128 bits for both stored and derived handles. Eight hex characters gave
+    #: 32 bits, which collides at roughly 1% by 10,000 sources and 25% by
+    #: 50,000, presenting unrelated documents to the model as one source.
     _SOURCE_HANDLE_MAX = 4096
 
     def source_handle(self, source_type: str, source_id: str) -> str:
@@ -335,9 +345,9 @@ class PrivacyVault:
                 # stay unlinkable across sessions and memory stays bounded.
                 digest = hmac.new(
                     self._source_key, f"{source_type}\x00{source_id}".encode(), "sha256"
-                ).hexdigest()[:8]
+                ).hexdigest()[:32]
                 return f"src-{digest}"
-            handle = f"src-{secrets.token_hex(4)}"
+            handle = f"src-{secrets.token_hex(16)}"
             self._sources[key] = handle
             return handle
 
@@ -402,10 +412,16 @@ class PrivacyVault:
     _SPLIT_BODY_RE = re.compile(
         r"(?<![0-9A-Za-z])[0-9A-Za-z](?:[\s\-./\\_,]*[0-9A-Za-z]){14,24}(?![0-9A-Za-z])"
     )
-    #: The separator-tolerant pass backtracks, so it is bounded. This runs over
-    #: tool-call arguments, which are small; the bound exists so a pathological
-    #: argument cannot stall dispatch, not because large input is expected.
+    #: The separator-tolerant pass backtracks, so it is bounded. Correctness no
+    #: longer depends on it: _ARTIFACT_RE below is linear and unbounded, and
+    #: catches damaged tokens at any input size.
     _SPLIT_SCAN_MAX = 64_000
+
+    #: The distinctive GuardLLM token signature. Body damage that changes the
+    #: symbol count (an inserted or deleted symbol) leaves nothing for a
+    #: length-exact payload scan to match, so combined framing and body damage
+    #: dispatched literally at any size. The signature survives both.
+    _ARTIFACT_RE = re.compile(r"\bGL\s*:\s*[A-Za-z_]{2,20}\s*:\s*[0-9A-Za-z]")
     _SPLIT_HINT_RE = re.compile(r"[0-9A-Za-z][\s\-./\\_,][0-9A-Za-z]")
 
     def _has_stray_issued_payload(self, text: str) -> bool:
@@ -416,6 +432,8 @@ class PrivacyVault:
         damaged. Membership is exact, so a false positive needs a 60-bit
         collision, which is what lets this be aggressive about candidates.
         """
+        if self._ARTIFACT_RE.search(text):
+            return True
         if not self._by_payload:
             return False
 

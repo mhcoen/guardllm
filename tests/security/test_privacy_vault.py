@@ -941,3 +941,185 @@ class TestRoundThreeRegressions:
         handles = [v.source_handle("web", f"s{i}") for i in range(v._SOURCE_HANDLE_MAX + 400)]
         assert len(set(handles)) == len(handles)
         assert len(v._sources) <= v._SOURCE_HANDLE_MAX
+
+
+class TestRoundFourRegressions:
+    @pytest.mark.parametrize("damage", ["opening", "appended", "inserted", "deleted", "oversize"])
+    def test_combined_framing_and_body_damage_fails_a_tool_call(self, damage):
+        """A length-exact payload scan has nothing to match once a symbol is
+        inserted or deleted, so combined damage dispatched literally at any
+        size. The GL: signature survives both kinds."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        body = token.split(":")[2].rstrip("]")
+        variants = {
+            "opening": token[1:],
+            "appended": token[1:-2] + body[0] + "]]",
+            "inserted": token[1:].replace(body, body[:5] + body[5] + body[5:]),
+            "deleted": token[1:].replace(body, body[:5] + body[6:]),
+            "oversize": "x" * 70_000 + " " + token[1:],
+        }
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": variants[damage]}]})
+        assert not p.allowed
+        assert EMAIL not in str(p.args)
+
+    def test_partial_detector_rejection_is_incomplete_coverage(self):
+        """One valid span plus one rejected span reported complete coverage,
+        so the identifier in the rejected span crossed in plaintext while the
+        library already knew output had been dropped."""
+
+        class Partial:
+            id = "partial"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                return [DetectedSpan(0, 5, PIIClass.PERSON), DetectedSpan(-9, -1, PIIClass.PERSON)]
+
+        guard = Guard(privacy=_config(
+            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(Partial(),)
+        ))
+        out = guard.process_inbound("Alice met Bob", Guard.context_web())
+        assert out.detection_incomplete is True
+
+    def test_reset_clears_seeded_values(self):
+        """A Guard reused between tenants kept applying the previous tenant's
+        labels, corrupting later prompts."""
+        guard = Guard(privacy=_config(
+            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}
+        ))
+        guard.seed_private_values({"May": PIIClass.PERSON})
+        guard.reset()
+        assert guard.deidentify("May report").content == "May report"
+
+    def test_reset_rotates_the_source_key(self):
+        """Without rotation a provider can join overflow handles from before
+        and after a reset."""
+        v = _vault()
+        for i in range(v._SOURCE_HANDLE_MAX + 5):
+            v.source_handle("web", f"s{i}")
+        derived = v.source_handle("web", "beyond-cap")
+        v.clear()
+        for i in range(v._SOURCE_HANDLE_MAX + 5):
+            v.source_handle("web", f"s{i}")
+        assert v.source_handle("web", "beyond-cap") != derived
+
+    def test_source_handles_are_128_bit(self):
+        """32 bits collided at roughly 1% by 10,000 sources, presenting
+        unrelated documents to the model as one source."""
+        v = _vault()
+        stored = v.source_handle("web", "a")
+        for i in range(v._SOURCE_HANDLE_MAX + 2):
+            v.source_handle("web", f"f{i}")
+        derived = v.source_handle("web", "past-the-cap")
+        for handle in (stored, derived):
+            assert len(handle.split("-", 1)[1]) == 32
+
+    def test_both_remainders_survive_a_validated_span_in_the_middle(self):
+        v_text = "Jane Doe <jane@example.com> Smith"
+
+        class Greedy:
+            id = "g"
+            classes = frozenset({PIIClass.PERSON})
+
+            def find(self, text):
+                return [DetectedSpan(0, len(text), PIIClass.PERSON)]
+
+        r = detect(
+            v_text,
+            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON},
+            detectors=(Greedy(),),
+        )
+        person = [m.value for m in r.matches if m.pii_class is PIIClass.PERSON]
+        assert any("Jane Doe" in p for p in person)
+        assert any("Smith" in p for p in person)
+
+    @pytest.mark.parametrize("text,tail", [
+        ("Please preserve sk-ABCDEFGHIJKLMNOPQRST in this ordinary sentence", "in this ordinary sentence"),
+        ("key sk-ABCDEFGHIJ KLMNOPQRST and more words after it", "and more words after it"),
+        ("token AKIAIOSF ODNN7EXAMPLE plus trailing prose here", "plus trailing prose here"),
+    ])
+    def test_credential_substitution_preserves_surrounding_text(self, text, tail):
+        """A greedy pattern on a whitespace-merged form ran through the words
+        after the credential, so substitution deleted the rest of the line."""
+        v = _vault()
+        result = v.deidentify(text, deny_action="marker")
+        assert tail in result.content
+        assert "redacted:credential" in result.content
+
+    def test_a_contiguous_credential_is_not_truncated(self):
+        """Minimizing a reconstruction must not displace an exact raw match."""
+        v = _vault()
+        out = v.deidentify("lead sk-abcdefghijklmnopqrstuvwx trailing", deny_action="marker")
+        assert "uvwx" not in out.content
+        assert "trailing" in out.content
+
+
+# ---------------------------------------------------------------------------
+# Standing precision/recall corpus.
+#
+# Every previous round moved these grammars in whichever direction the last
+# review pushed, and the next review found the overshoot. Individual regex
+# examples were not converging, so positives and negatives live here together
+# and both directions fail loudly.
+# ---------------------------------------------------------------------------
+
+_POSITIVES: tuple[tuple[str, PIIClass], ...] = (
+    ("+44 20 7183 8750", PIIClass.PHONE),
+    ("+47 22 59 13 00", PIIClass.PHONE),
+    ("+65 6123 4567", PIIClass.PHONE),
+    ("+64 9 123 4567", PIIClass.PHONE),
+    ("+353 1 234 5678", PIIClass.PHONE),
+    ("+49 30 901820", PIIClass.PHONE),
+    ("+91 98765 43210", PIIClass.PHONE),
+    ("+247 247 41234", PIIClass.PHONE),
+    ("617-555-0142", PIIClass.PHONE),
+    ("(617) 555-0142", PIIClass.PHONE),
+    ("Phone number is 020 7183 8750", PIIClass.PHONE),
+    ("Contact number: 020 7183 8750", PIIClass.PHONE),
+    ("Telephone is 020 7183 8750", PIIClass.PHONE),
+    ("078-05-1120", PIIClass.SSN),
+    ("SSN: 078 05 1120", PIIClass.SSN),
+    ("4111111111111111", PIIClass.CREDIT_CARD),
+    ("378282246310005", PIIClass.CREDIT_CARD),
+    ("6759000000000000", PIIClass.CREDIT_CARD),
+    ("card number 9468822170900693", PIIClass.CREDIT_CARD),
+    ("jane.ellsworth@clinic.example.org", PIIClass.EMAIL),
+    ("GB82 WEST 1234 5698 7654 32", PIIClass.IBAN),
+    ("MRN: a4471902", PIIClass.MEDICAL_RECORD),
+    ("ABA: 021000021", PIIClass.ROUTING_NUMBER),
+)
+
+_NEGATIVES: tuple[str, ...] = (
+    '{"imperative": 0.41935483870967744}',
+    "value=1.2345678901234567",
+    "Decimal('1.2345E+12345680')",
+    "Decimal('+35236450.6')",
+    "'+3.140000; -3.140000'",
+    "DELTA = +123456789",
+    "seq +9987654321",
+    "+1 2 3 4 5 678",
+    "offset +12 -34",
+    "build 1.2.3 +20240101",
+    "v2.1.0+build.99",
+    "id: 123 45 6789",
+    "COLOR_SCALE = 9468822170900693",
+    "2026-08-02T11:22:33.123456Z",
+    "commit 0123456789abcdef0123456789abcdef01234567",
+    "range 1000000 2000000 3000000",
+    "cell division 12 34 56",
+    "chunk 4 of 16 at offset 1048576",
+)
+
+
+@pytest.mark.parametrize("text,expected", _POSITIVES)
+def test_corpus_positive(text, expected):
+    """A miss here is plaintext at the provider with no observable failure."""
+    found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+    assert expected in found, f"missed {expected.value} in {text!r}"
+
+
+@pytest.mark.parametrize("text", _NEGATIVES)
+def test_corpus_negative(text):
+    """A hit here corrupts content the model was asked to process."""
+    found = detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
+    assert not found, f"false positive in {text!r}: {[(m.pii_class.value, m.value) for m in found]}"

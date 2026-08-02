@@ -82,6 +82,11 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
+#: How much non-participating text a mapped-back span may cover beyond the
+#: match itself: a handful of inserted spaces or zero-width characters.
+_MAX_OBFUSCATION_SLACK = 8
+
+
 def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
     """Remove characters, recording each survivor's original index.
 
@@ -114,17 +119,46 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     by embedding one spaced credential-shaped string.
     """
     spans: list[tuple[int, int]] = []
+    raw_spans: list[tuple[int, int]] = []
 
     def _collect(form: str, idx: list[int] | None, merged: bool = False) -> None:
         def _record(start: int, end: int) -> None:
             if idx is None:
                 spans.append((start, end))
-            elif start < len(idx) and end - 1 < len(idx):
-                spans.append((idx[start], idx[end - 1] + 1))
+                return
+            if not (start < len(idx) and end - 1 < len(idx)):
+                return
+            lo, hi = idx[start], idx[end - 1] + 1
+            # A raw match is exact. A deobfuscated one is a reconstruction, so
+            # it must not displace or truncate a raw span covering the same
+            # text: minimizing a reconstruction to its shortest accepted prefix
+            # is right when it would otherwise run through following words, and
+            # wrong when the raw match already had the true extent.
+            if any(a < hi and lo < b for a, b in raw_spans):
+                return
+            # sk[-_][A-Za-z0-9]{20,} is greedy, and on a whitespace-merged form
+            # it runs straight through the words that followed the credential.
+            # Mapping that back to a bounding range made marker substitution
+            # delete the rest of the sentence. A real obfuscated credential
+            # carries a few inserted separators, not fifty.
+            if (hi - lo) - (end - start) > _MAX_OBFUSCATION_SLACK:
+                return
+            spans.append((lo, hi))
 
         for pattern, _label in _SECRET_PATTERNS:
             for m in pattern.finditer(form):
-                _record(m.start(), m.end())
+                end = m.end()
+                if idx is not None:
+                    # On a merged form a quantifier like {20,} keeps consuming
+                    # through the words that followed the credential, so the
+                    # mapped span swallows them. Shrink to the shortest prefix
+                    # the same pattern still accepts: that is the credential
+                    # itself, and everything after it is ordinary text.
+                    for candidate in range(m.start() + 1, m.end() + 1):
+                        if pattern.fullmatch(form, m.start(), candidate):
+                            end = candidate
+                            break
+                _record(m.start(), end)
         for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
             token = m.group()
             # On a whitespace-merged form, only tokens containing a digit are
@@ -146,6 +180,7 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
                     pass
 
     _collect(text, None)
+    raw_spans = list(spans)
     stripped, stripped_idx = _strip_with_offsets(text, "\u200b\u200c\u200d\u2060\ufeff")
     if stripped != text:
         _collect(stripped, stripped_idx)
@@ -156,10 +191,23 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     # Mask what we located and rerun the full scanner. Anything it still finds
     # has no faithful span even after the offset mapping, so the caller must
     # refuse rather than emit content still carrying it.
+    # Prefer the narrowest span covering each credential. A greedy pattern on
+    # a whitespace-merged form matches straight through the words that followed
+    # the credential, so its mapped-back span is a superset of the raw match,
+    # and substituting it deleted the rest of the sentence. Dropping any span
+    # that strictly contains another keeps the tight one regardless of which
+    # pass produced it.
+    unique = sorted(set(spans))
+    minimal = [
+        (a, b)
+        for a, b in unique
+        if not any((c, d) != (a, b) and a <= c and d <= b for c, d in unique)
+    ]
+
     masked = text
-    for start, end in sorted(set(spans), reverse=True):
+    for start, end in sorted(minimal, reverse=True):
         masked = masked[:start] + " " * (end - start) + masked[end:]
-    return sorted(set(spans)), _scan_secrets(masked)
+    return minimal, _scan_secrets(masked)
 
 
 def _scan_secrets(text: str) -> list[str]:

@@ -65,7 +65,7 @@ def luhn_valid(value: str) -> bool:
 #: about one in ten random digit runs of the right length, which is why a
 #: colour-table constant in colorsys.py and a rounding constant in decimal.py
 #: were both classified as cards.
-def _card_issuer(ds: str) -> bool:
+def _card_issuer_unused(ds: str) -> bool:
     """Recognized issuer ranges for UNLABELLED detection.
 
     Deliberately not a completeness claim. Issuer ranges are reassigned
@@ -109,12 +109,69 @@ def labelled_card_valid(value: str) -> bool:
     return luhn_valid(value)
 
 
+#: Issuer -> the PAN lengths that issuer actually assigns. Luhn plus a prefix
+#: was not enough: the fractional digits of 0.41935483870967744 begin with 4
+#: and pass Luhn, so a benchmark result file in this repository was rewritten
+#: with a CREDIT_CARD token.
+_ISSUER_LENGTHS: tuple[tuple[str, frozenset[int]], ...] = (
+    ("amex", frozenset({15})),
+    ("diners", frozenset({14, 16, 19})),
+    ("visa", frozenset({13, 16, 19})),
+    ("mastercard", frozenset({16})),
+    ("maestro", frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    ("discover", frozenset({16, 19})),
+    ("jcb", frozenset({16, 17, 18, 19})),
+    ("mir", frozenset({16, 17, 18, 19})),
+    ("rupay", frozenset({16})),
+    ("elo", frozenset({16})),
+    ("uatp", frozenset({15})),
+    ("unionpay", frozenset({16, 17, 18, 19})),
+)
+
+
+def _issuer_of(ds: str) -> str | None:
+    two, three, four, six = ds[:2], ds[:3], ds[:4], ds[:6]
+    if two in {"34", "37"}:
+        return "amex"
+    if two in {"36", "38", "39"} or 300 <= int(three) <= 305:
+        return "diners"
+    if ds[0] == "4":
+        return "visa"
+    if 51 <= int(two) <= 55 or 2221 <= int(four) <= 2720:
+        return "mastercard"
+    if two in {"50", "56", "57", "58", "67"}:
+        return "maestro"
+    if ds.startswith("6011") or two == "65" or 644 <= int(three) <= 649:
+        return "discover"
+    if 622126 <= int(six) <= 622925:
+        return "discover"
+    if 3528 <= int(four) <= 3589:
+        return "jcb"
+    if 2200 <= int(four) <= 2204:
+        return "mir"
+    if two in {"60", "81", "82"} or three == "508":
+        return "rupay"
+    if six in {"506699", "509000", "606282", "637095"}:
+        return "elo"
+    if ds[0] == "1":
+        return "uatp"
+    if two == "62":
+        return "unionpay"
+    return None
+
+
 def card_valid(value: str) -> bool:
-    """Luhn plus a recognized issuer prefix, for unlabelled detection."""
+    """Luhn, a recognized issuer prefix, AND a length that issuer assigns."""
     ds = _digits(value)
     if not 13 <= len(ds) <= 19:
         return False
-    return luhn_valid(value) and _card_issuer(ds)
+    issuer = _issuer_of(ds)
+    if issuer is None:
+        return False
+    lengths = dict(_ISSUER_LENGTHS)[issuer]
+    if len(ds) not in lengths:
+        return False
+    return luhn_valid(value)
 
 
 def iban_valid(value: str) -> bool:
@@ -180,7 +237,7 @@ _E164_COUNTRY_CODES = (
     "268 267 266 265 264 263 262 261 260 258 257 256 255 254 253 252 251 250 249 248 246 245 244 "
     "243 242 241 240 239 238 237 236 235 234 233 232 231 230 229 228 227 226 225 224 223 222 221 "
     "220 218 216 213 212 211 98 95 94 93 92 91 90 86 84 82 81 66 65 64 63 62 61 60 58 57 56 55 54 "
-    "991 979 888 883 882 881 878 870 808 800 "
+    "991 979 888 883 882 881 878 870 808 800 297 290 269 268 247 246 "
     "53 52 51 49 48 47 46 45 44 43 41 40 39 36 34 33 32 31 30 27 20 7 1"
 ).split()
 
@@ -201,7 +258,13 @@ def e164_valid(value: str) -> bool:
     floor = 11 if compact else 8
     if not floor <= len(ds) <= 15:
         return False
-    return any(ds.startswith(cc) for cc in _E164_COUNTRY_CODES)
+    if not any(ds.startswith(cc) for cc in _E164_COUNTRY_CODES):
+        return False
+    # A numeric list such as "+1 2 3 4 5 678" satisfies country code plus digit
+    # groups. Real plans put at most one single-digit group after the country
+    # code (a national trunk or area digit), never a run of them.
+    groups = [g for g in re.split(r"[ .\-()]+", value.lstrip("+")) if g]
+    return sum(1 for g in groups if len(g) == 1) <= 1
 
 
 def phone_valid(value: str) -> bool:
@@ -280,7 +343,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card",
-        r"\b(?:\d[ -]?){12,18}\d\b",
+        r"(?<![.\d])\b(?:\d[ -]?){12,18}\d\b(?![.\d])",
         card_valid,
     ),
     DetectorSpec(
@@ -332,7 +395,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PHONE,
         "phone_labelled",
-        r"(?i:\b(?:tel|telephone|phone|mobile|cell|fax)(?:\s+(?:number|no\.?|#))?\s*[:.]?\s*)"
+        r"(?i:\b(?:tel|telephone|phone|mobile|contact|fax)"
+        r"(?:\s+(?:number|no\.?|#))?(?:\s+is)?\s*[:.]?\s*)"
         r"(?P<phone_labelled_v>\+?[\d][\d .()\-]{5,19}\d)",
         labelled_phone_valid,
     ),
@@ -653,30 +717,36 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
         if not cand.inferred:
             trimmed.append(cand)
             continue
-        start, end = cand.start, cand.end
+        # Subtract every validated span from the inferred one and keep all
+        # surviving pieces. Keeping only the left remainder lost the second
+        # name in "Jane Doe <jane@example.com> Smith".
+        pieces = [(cand.start, cand.end)]
         for v in validated:
-            if v.start < end and start < v.end:
-                if v.start <= start and end <= v.end:
-                    start = end = 0  # fully covered by a validated span
-                    break
-                if start < v.start:
-                    end = min(end, v.start)
-                else:
-                    start = max(start, v.end)
-        if end - start >= 2:
-            text_span = cand.value[start - cand.start : end - cand.start]
-            stripped = text_span.strip()
-            if stripped:
-                lead = len(text_span) - len(text_span.lstrip())
-                trimmed.append(
-                    RawMatch(
-                        cand.pii_class,
-                        start + lead,
-                        start + lead + len(stripped),
-                        stripped,
-                        inferred=True,
-                    )
+            nxt: list[tuple[int, int]] = []
+            for lo, hi in pieces:
+                if v.end <= lo or hi <= v.start:
+                    nxt.append((lo, hi))
+                    continue
+                if lo < v.start:
+                    nxt.append((lo, v.start))
+                if v.end < hi:
+                    nxt.append((v.end, hi))
+            pieces = nxt
+        for lo, hi in pieces:
+            raw_text = cand.value[lo - cand.start : hi - cand.start]
+            stripped = raw_text.strip()
+            if len(stripped) < 2:
+                continue
+            lead = len(raw_text) - len(raw_text.lstrip())
+            trimmed.append(
+                RawMatch(
+                    cand.pii_class,
+                    lo + lead,
+                    lo + lead + len(stripped),
+                    stripped,
+                    inferred=True,
                 )
+            )
 
     kept: list[RawMatch] = []
     ambiguous: list[tuple[RawMatch, RawMatch]] = []
@@ -895,10 +965,13 @@ def detect(
         spans, failure = _run_detector(detector, text)
         if failure is not None:
             detector_warnings.append(failure)
-            # Spans came back, so the detector ran and only some output was
-            # dropped. No spans means coverage is unknown.
+            # Any rejection means coverage is incomplete, even when other spans
+            # survived. Treating a partial rejection as complete let a valid
+            # span be vaulted while the identifier in the rejected span reached
+            # the provider in plaintext, with the library already knowing its
+            # detector output had been dropped.
+            detection_failed = True
             if not spans:
-                detection_failed = True
                 continue
         for span in spans:
             if span.pii_class in classes and not _is_masked(span.start, span.end):

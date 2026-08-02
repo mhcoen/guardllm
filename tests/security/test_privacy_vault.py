@@ -1089,6 +1089,20 @@ _POSITIVES: tuple[tuple[str, PIIClass], ...] = (
     ("ABA: 021000021", PIIClass.ROUTING_NUMBER),
 )
 
+_STRUCTURED_POSITIVES: tuple[tuple[str, PIIClass], ...] = (
+    ('{"ssn":"078051120"}', PIIClass.SSN),
+    ('{"phone":"020 7183 8750"}', PIIClass.PHONE),
+    ('{"date_of_birth":"1974-03-11"}', PIIClass.DATE_OF_BIRTH),
+    ('{"routing_number":"021000021"}', PIIClass.ROUTING_NUMBER),
+    ('{"medical_record":"A4471902"}', PIIClass.MEDICAL_RECORD),
+    ('{"passport_no":"X1234567"}', PIIClass.PASSPORT),
+    ('{"cardNumber":"9468822170900693"}', PIIClass.CREDIT_CARD),
+    ("ssn=078051120", PIIClass.SSN),
+    ("phone=020 7183 8750", PIIClass.PHONE),
+    ("Telephone is 020 7183 8750", PIIClass.PHONE),
+    ("passport number X1234567", PIIClass.PASSPORT),
+)
+
 _NEGATIVES: tuple[str, ...] = (
     '{"imperative": 0.41935483870967744}',
     "value=1.2345678901234567",
@@ -1108,7 +1122,34 @@ _NEGATIVES: tuple[str, ...] = (
     "range 1000000 2000000 3000000",
     "cell division 12 34 56",
     "chunk 4 of 16 at offset 1048576",
+    # Label-shaped but carrying no identifier. A looser label grammar is
+    # exactly where these appear.
+    '{"phone_home": true}',
+    '{"contact":"support"}',
+    '{"cardNumber": null}',
+    "contact = None",
+    "card = deck.draw()",
+    "pan_id=4",
+    "phone: str",
+    "dob = None",
+    "ssn_field = \"redacted\"",
+    "routing = router.get()",
+    "card number of items: 12",
+    "passport control queue 5",
+    "passport office opens 9",
+    # Ordinary GL: text. Any of these previously failed a tool call outright.
+    "GL:DEBUG:1 context initialized",
+    '{"backend":"GL:CORE:4","ok":true}',
+    "shader=GL:VERSION:4",
 )
+
+
+@pytest.mark.parametrize("text,expected", _STRUCTURED_POSITIVES)
+def test_corpus_structured_positive(text, expected):
+    """Serialized records were evading every label-dependent class, so a CRM
+    row or medical record as JSON sent declared identifiers in plaintext."""
+    found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+    assert expected in found, f"missed {expected.value} in {text!r}"
 
 
 @pytest.mark.parametrize("text,expected", _POSITIVES)
@@ -1123,3 +1164,62 @@ def test_corpus_negative(text):
     """A hit here corrupts content the model was asked to process."""
     found = detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
     assert not found, f"false positive in {text!r}: {[(m.pii_class.value, m.value) for m in found]}"
+
+
+class TestRoundFiveRegressions:
+    @pytest.mark.parametrize("pan", [
+        "30000000000000007", "380000000000000006", "60110000000000001",
+        "622126000000000000", "65000000000000003", "8100000000000000000",
+    ])
+    def test_overlapping_iin_ranges_resolve_to_the_right_lengths(self, pan):
+        """A brand-keyed lookup resolved overlaps by branch order, so Discover
+        ranges were claimed by the Diners and Maestro branches and checked
+        against the wrong length sets. These Luhn-valid PANs were rejected and
+        crossed in plaintext."""
+        found = {m.pii_class for m in detect(pan, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert PIIClass.CREDIT_CARD in found
+
+    def test_split_credentials_leave_no_fragment(self):
+        """The shortest accepted prefix stops inside the secret when the
+        pattern's minimum is shorter than the real value."""
+        v = _vault()
+        secret = "sk-abcdefghijklmnopqrstuvwx"
+        for stride in (1, 2, 3, 4):
+            spaced = " ".join(secret[i : i + stride] for i in range(0, len(secret), stride))
+            out = v.deidentify(f"a {spaced} z", deny_action="marker")
+            assert out.allowed, "a spaced credential must not suppress the document"
+            assert "redacted:credential" in out.content
+            for i in range(4, len(secret) - 3):
+                assert secret[i : i + 4] not in out.content
+
+    @pytest.mark.parametrize("text,keep", [
+        ("prefix sk-abcdefghij klmnopqrstuvwx suffix remains here", "suffix remains here"),
+        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing text kept"),
+        ("token AKIAIOSF ODNN7EXAMPLE plus trailing prose here", "plus trailing prose here"),
+    ])
+    def test_sparse_splits_preserve_surrounding_prose(self, text, keep):
+        """One inserted space is prose with a credential in it, not a split
+        credential, so the words on either side must survive."""
+        v = _vault()
+        out = v.deidentify(text, deny_action="marker")
+        assert keep in out.content
+        assert "redacted:credential" in out.content
+
+    @pytest.mark.parametrize("text", [
+        "GL:DEBUG:1 context initialized",
+        '{"backend":"GL:CORE:4","ok":true}',
+        'raise RuntimeError("GL:ERROR:7")',
+        "https://example.test/trace/GL:DEBUG:1",
+        "shader=GL:VERSION:4",
+    ])
+    def test_ordinary_gl_text_does_not_block_a_tool_call(self, text):
+        """Matching any GL:WORD:x rejected log lines, JSON values, OpenGL
+        version strings, and URL segments, on an empty vault too."""
+        v = _vault()
+        assert v.prepare_args("gmail_send_email", {"subject": text}).allowed
+
+    def test_damaged_token_still_rejected_after_narrowing(self):
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": token[1:]}]})
+        assert not p.allowed

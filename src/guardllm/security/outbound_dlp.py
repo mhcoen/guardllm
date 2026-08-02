@@ -82,9 +82,10 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
-#: How much non-participating text a mapped-back span may cover beyond the
-#: match itself: a handful of inserted spaces or zero-width characters.
-_MAX_OBFUSCATION_SLACK = 8
+#: Above this fraction of separators, a mapped region is not prose with a
+#: credential in it: it is a credential someone split apart. Redacting the
+#: whole run there costs nothing real and leaves no usable fragment.
+_DENSE_SPLIT_RATIO = 0.15
 
 
 def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
@@ -129,6 +130,16 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             if not (start < len(idx) and end - 1 < len(idx)):
                 return
             lo, hi = idx[start], idx[end - 1] + 1
+            # In merged text the credential's true end is unknowable: the
+            # greedy match runs through following words, and the shortest
+            # accepted prefix stops inside the secret, leaving a fragment
+            # visible. Neither extent is right, so widen to the whitespace
+            # delimited tokens the match participates in. A split credential is
+            # covered exactly, and the prose on either side is untouched.
+            while lo > 0 and not text[lo - 1].isspace():
+                lo -= 1
+            while hi < len(text) and not text[hi].isspace():
+                hi += 1
             # A raw match is exact. A deobfuscated one is a reconstruction, so
             # it must not displace or truncate a raw span covering the same
             # text: minimizing a reconstruction to its shortest accepted prefix
@@ -141,23 +152,28 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             # Mapping that back to a bounding range made marker substitution
             # delete the rest of the sentence. A real obfuscated credential
             # carries a few inserted separators, not fifty.
-            if (hi - lo) - (end - start) > _MAX_OBFUSCATION_SLACK:
-                return
             spans.append((lo, hi))
 
         for pattern, _label in _SECRET_PATTERNS:
             for m in pattern.finditer(form):
                 end = m.end()
                 if idx is not None:
-                    # On a merged form a quantifier like {20,} keeps consuming
-                    # through the words that followed the credential, so the
-                    # mapped span swallows them. Shrink to the shortest prefix
-                    # the same pattern still accepts: that is the credential
-                    # itself, and everything after it is ordinary text.
-                    for candidate in range(m.start() + 1, m.end() + 1):
-                        if pattern.fullmatch(form, m.start(), candidate):
-                            end = candidate
-                            break
+                    # In merged text a quantifier like {20,} cannot tell where
+                    # the secret ends. Greedy runs through the following words;
+                    # the shortest accepted prefix stops inside the secret and
+                    # leaves a fragment. Separator density decides which risk
+                    # is real. Ordinary prose interrupted by one inserted space
+                    # is sparse, so take the shortest extent and keep the words.
+                    # A value split every character or two is not prose at all,
+                    # so take the greedy extent and leave no fragment.
+                    lo_o, hi_o = idx[m.start()], idx[m.end() - 1] + 1
+                    covered = hi_o - lo_o
+                    separators = covered - (m.end() - m.start())
+                    if covered and separators / covered <= _DENSE_SPLIT_RATIO:
+                        for candidate in range(m.start() + 1, m.end() + 1):
+                            if pattern.fullmatch(form, m.start(), candidate):
+                                end = candidate
+                                break
                 _record(m.start(), end)
         for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
             token = m.group()

@@ -65,43 +65,6 @@ def luhn_valid(value: str) -> bool:
 #: about one in ten random digit runs of the right length, which is why a
 #: colour-table constant in colorsys.py and a rounding constant in decimal.py
 #: were both classified as cards.
-def _card_issuer_unused(ds: str) -> bool:
-    """Recognized issuer ranges for UNLABELLED detection.
-
-    Deliberately not a completeness claim. Issuer ranges are reassigned
-    continuously (Mastercard republishes its account-range table daily), so a
-    table compiled into a library is stale the week it ships. This exists only
-    to stop Luhn, which accepts roughly one random digit run in ten, from
-    classifying colour constants and rounding constants as cards. A PAN in a
-    range absent here is still covered when labelled, which is the path a
-    deployment handling non-listed schemes should use.
-    """
-    two, three, four, six = ds[:2], ds[:3], ds[:4], ds[:6]
-    if ds[0] == "4":  # Visa
-        return True
-    if two in {"34", "37"}:  # Amex
-        return True
-    if 51 <= int(two) <= 55 or 2221 <= int(four) <= 2720:  # Mastercard
-        return True
-    if two in {"50", "56", "57", "58", "67"}:  # Maestro
-        return True
-    if ds.startswith("6011") or two == "65" or 644 <= int(three) <= 649:  # Discover
-        return True
-    if 622126 <= int(six) <= 622925:  # Discover/UnionPay co-range
-        return True
-    if two in {"36", "38", "39"} or 300 <= int(three) <= 305:  # Diners
-        return True
-    if 3528 <= int(four) <= 3589:  # JCB
-        return True
-    if 2200 <= int(four) <= 2204:  # MIR
-        return True
-    if two in {"60", "81", "82"} or three == "508":  # RuPay
-        return True
-    if six in {"506699", "509000", "606282", "637095"}:  # Elo, Hipercard
-        return True
-    if ds[0] == "1":  # UATP
-        return True
-    return two == "62"  # UnionPay
 
 
 def labelled_card_valid(value: str) -> bool:
@@ -109,67 +72,74 @@ def labelled_card_valid(value: str) -> bool:
     return luhn_valid(value)
 
 
-#: Issuer -> the PAN lengths that issuer actually assigns. Luhn plus a prefix
-#: was not enough: the fractional digits of 0.41935483870967744 begin with 4
-#: and pass Luhn, so a benchmark result file in this repository was rewritten
-#: with a CREDIT_CARD token.
-_ISSUER_LENGTHS: tuple[tuple[str, frozenset[int]], ...] = (
-    ("amex", frozenset({15})),
-    ("diners", frozenset({14, 16, 19})),
-    ("visa", frozenset({13, 16, 19})),
-    ("mastercard", frozenset({16})),
-    ("maestro", frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
-    ("discover", frozenset({16, 19})),
-    ("jcb", frozenset({16, 17, 18, 19})),
-    ("mir", frozenset({16, 17, 18, 19})),
-    ("rupay", frozenset({16})),
-    ("elo", frozenset({16})),
-    ("uatp", frozenset({15})),
-    ("unionpay", frozenset({16, 17, 18, 19})),
+#: (low, high, prefix_digits, allowed PAN lengths). Ranges are matched
+#: most-specific-first, because a brand-keyed lookup resolved overlaps by the
+#: order branches happened to be written: Discover ranges were claimed by the
+#: Diners and Maestro branches, then checked against those brands' lengths, and
+#: legitimate 17 to 19 digit PANs were rejected and crossed in plaintext.
+#: Not a completeness claim. Issuer assignments change continuously, so this
+#: exists to stop Luhn, which accepts about one random run in ten, from
+#: classifying arbitrary digits as cards. A PAN outside these ranges is still
+#: covered when labelled.
+_IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
+    (34, 34, 2, frozenset({15})),
+    (37, 37, 2, frozenset({15})),
+    (30000000, 30599999, 8, frozenset({16, 17, 18, 19})),
+    (38000000, 39999999, 8, frozenset({16, 17, 18, 19})),
+    (60110000, 60119999, 8, frozenset({16, 17, 18, 19})),
+    (62212600, 62379699, 8, frozenset({16, 17, 18, 19})),
+    (64400000, 65899999, 8, frozenset({16, 17, 18, 19})),
+    (81000000, 81719999, 8, frozenset({16, 17, 18, 19})),
+    (2200, 2204, 4, frozenset({16, 17, 18, 19})),
+    (2221, 2720, 4, frozenset({16})),
+    (3528, 3589, 4, frozenset({16, 17, 18, 19})),
+    (506699, 506699, 6, frozenset({16, 17, 18, 19})),
+    (509000, 509999, 6, frozenset({16, 17, 18, 19})),
+    (606282, 606282, 6, frozenset({16, 17, 18, 19})),
+    (637095, 637095, 6, frozenset({16})),
+    (300, 305, 3, frozenset({14, 16, 17, 18, 19})),
+    (508, 508, 3, frozenset({16})),
+    (36, 36, 2, frozenset({14, 16, 17, 18, 19})),
+    (50, 50, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (51, 55, 2, frozenset({16})),
+    (56, 58, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (60, 60, 2, frozenset({16, 17, 18, 19})),
+    (62, 62, 2, frozenset({16, 17, 18, 19})),
+    (65, 65, 2, frozenset({16, 17, 18, 19})),
+    (67, 67, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (82, 82, 2, frozenset({16, 17, 18, 19})),
+    (1, 1, 1, frozenset({15})),
+    (4, 4, 1, frozenset({13, 16, 19})),
 )
 
 
-def _issuer_of(ds: str) -> str | None:
-    two, three, four, six = ds[:2], ds[:3], ds[:4], ds[:6]
-    if two in {"34", "37"}:
-        return "amex"
-    if two in {"36", "38", "39"} or 300 <= int(three) <= 305:
-        return "diners"
-    if ds[0] == "4":
-        return "visa"
-    if 51 <= int(two) <= 55 or 2221 <= int(four) <= 2720:
-        return "mastercard"
-    if two in {"50", "56", "57", "58", "67"}:
-        return "maestro"
-    if ds.startswith("6011") or two == "65" or 644 <= int(three) <= 649:
-        return "discover"
-    if 622126 <= int(six) <= 622925:
-        return "discover"
-    if 3528 <= int(four) <= 3589:
-        return "jcb"
-    if 2200 <= int(four) <= 2204:
-        return "mir"
-    if two in {"60", "81", "82"} or three == "508":
-        return "rupay"
-    if six in {"506699", "509000", "606282", "637095"}:
-        return "elo"
-    if ds[0] == "1":
-        return "uatp"
-    if two == "62":
-        return "unionpay"
-    return None
+def _allowed_lengths(ds: str) -> frozenset[int] | None:
+    """Most specific matching IIN range wins."""
+    best: tuple[int, frozenset[int]] | None = None
+    for low, high, width, lengths in _IIN_RANGES:
+        if len(ds) < width:
+            continue
+        if low <= int(ds[:width]) <= high and (best is None or width > best[0]):
+            best = (width, lengths)
+    return best[1] if best else None
+
+
+def labelled_card_valid(value: str) -> bool:
+    """A labelled PAN needs only Luhn: the label supplies the intent."""
+    return luhn_valid(value)
+
+
+
+
 
 
 def card_valid(value: str) -> bool:
-    """Luhn, a recognized issuer prefix, AND a length that issuer assigns."""
+    """Luhn, a recognized IIN range, and a length that range assigns."""
     ds = _digits(value)
-    if not 13 <= len(ds) <= 19:
+    if not 12 <= len(ds) <= 19:
         return False
-    issuer = _issuer_of(ds)
-    if issuer is None:
-        return False
-    lengths = dict(_ISSUER_LENGTHS)[issuer]
-    if len(ds) not in lengths:
+    lengths = _allowed_lengths(ds)
+    if lengths is None or len(ds) not in lengths:
         return False
     return luhn_valid(value)
 
@@ -318,6 +288,15 @@ def dob_valid(value: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+#: Opens a label: word boundary plus an optional opening quote, so a JSON key
+#: such as {"ssn": ...} is recognized as the same label as prose "SSN:".
+_LO = r"(?i:(?<![A-Za-z0-9_])[\"'\u2018\u201c]?"
+#: Closes a label: optional quote, then ':' '=' or 'is', then optional quote.
+#: A serialized CRM row or medical record otherwise sent declared identifiers
+#: to the provider in plaintext.
+_LC = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
+
+
 @dataclass(frozen=True)
 class DetectorSpec:
     pii_class: PIIClass
@@ -343,20 +322,20 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card",
-        r"(?<![.\d])\b(?:\d[ -]?){12,18}\d\b(?![.\d])",
+        r"(?<![.\d])\b(?:\d[ -]?){11,18}\d\b(?![.\d])",
         card_valid,
     ),
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card_labelled",
-        r"(?i:\b(?:card(?:\s*(?:number|no\.?|#))?|pan|credit\s+card)\s*[:.]?\s*)"
+        rf"{_LO}(?:card(?:[\s_]*(?:number|no\.?|#))?|cardnumber|pan|credit[\s_]card){_LC}"
         r"(?P<credit_card_labelled_v>(?:\d[ -]?){12,18}\d)",
         labelled_card_valid,
     ),
     DetectorSpec(
         PIIClass.SSN,
         "ssn",
-        r"(?:(?i:\b(?:ssn|social\s+security(?:\s+(?:number|no\.?|#))?)\b\s*:?\s*)"
+        rf"(?:{_LO}(?:ssn|ss[#_]?no|social[\s_]*security(?:[\s_]*(?:number|no\.?|#))?){_LC}"
         r"(?P<ssn_v>\d{3}[-\s]?\d{2}[-\s]?\d{4})\b"
         r"|\b\d{3}-\d{2}-\d{4}\b)",
         ssn_valid,
@@ -364,7 +343,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.ROUTING_NUMBER,
         "routing_number",
-        r"(?i:\b(?:routing|aba|rtn)(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<routing_number_v>\d{9})\b",
+        rf"{_LO}(?:routing|aba|rtn)(?:[\s_]*(?:number|no\.?|#))?{_LC}"
+        r"(?P<routing_number_v>\d{9})\b",
         routing_valid,
     ),
     DetectorSpec(
@@ -395,15 +375,15 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PHONE,
         "phone_labelled",
-        r"(?i:\b(?:tel|telephone|phone|mobile|contact|fax)"
-        r"(?:\s+(?:number|no\.?|#))?(?:\s+is)?\s*[:.]?\s*)"
+        rf"{_LO}(?:tel|telephone|phone|mobile|cell[\s_]?phone|contact|fax)"
+        rf"(?:[\s_]*(?:number|no\.?|#))?{_LC}"
         r"(?P<phone_labelled_v>\+?[\d][\d .()\-]{5,19}\d)",
         labelled_phone_valid,
     ),
     DetectorSpec(
         PIIClass.DATE_OF_BIRTH,
         "date_of_birth",
-        r"(?i:\b(?:dob|date\s+of\s+birth|born)\b\s*:?\s*)"
+        rf"{_LO}(?:dob|date[\s_]*of[\s_]*birth|birth[\s_]*date|born){_LC}"
         r"(?P<date_of_birth_v>\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}|"
         r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})",
         dob_valid,
@@ -411,7 +391,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.MEDICAL_RECORD,
         "medical_record",
-        r"(?i:\b(?:mrn|medical\s+record(?:\s+(?:number|no\.?|#))?)\s*:?\s*)(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-]{3,19})",
+        rf"{_LO}(?:mrn|medical[\s_]*record(?:[\s_]*(?:number|no\.?|#))?){_LC}"
+        r"(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-]{3,19})",
     ),
     # No checksum exists for these, so they are matched only with a labelling
     # context. An unanchored pattern would be mostly false positives, and a
@@ -420,7 +401,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PASSPORT,
         "passport",
-        r"(?i:\bpassport(?:\s+(?:number|no\.?|#))?\s*:?\s*)(?P<passport_v>[A-Za-z0-9]{6,9})\b",
+        rf"{_LO}passport(?:[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"r"|[\"'’”]?\s*[:=]\s*[\"'‘“]?))"
+        r"(?P<passport_v>[A-Za-z0-9]{6,9})\b",
     ),
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
@@ -432,7 +414,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.NATIONAL_ID,
         "national_id",
-        r"(?i:\bnational\s+id(?:entity)?(?:\s+(?:number|no\.?|#))?\s*:?\s*)"
+        rf"{_LO}national[\s_]*id(?:entity)?(?:[\s_]*(?:number|no\.?|#))?{_LC}"
         r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
     ),
     DetectorSpec(

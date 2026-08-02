@@ -197,6 +197,10 @@ def _iter_strings(node: object):
 # ---------------------------------------------------------------------------
 
 
+#: Class names as they appear in a rendered token, for distinguishing a
+#: damaged GuardLLM token from unrelated text that merely looks similar.
+_CLASS_NAMES = frozenset(c.name for c in PIIClass)
+
 _STRIP_SEPARATORS_TABLE = str.maketrans("", "", " \t\r\n-./\\_,")
 
 
@@ -421,7 +425,9 @@ class PrivacyVault:
     #: symbol count (an inserted or deleted symbol) leaves nothing for a
     #: length-exact payload scan to match, so combined framing and body damage
     #: dispatched literally at any size. The signature survives both.
-    _ARTIFACT_RE = re.compile(r"\bGL\s*:\s*[A-Za-z_]{2,20}\s*:\s*[0-9A-Za-z]")
+    _ARTIFACT_RE = re.compile(
+        r"\bGL\s*:\s*(?P<cls>[A-Za-z_]{2,20})\s*:\s*(?P<body>[0-9A-Za-z][0-9A-Za-z\s\-./\\_,]{10,30})"
+    )
     _SPLIT_HINT_RE = re.compile(r"[0-9A-Za-z][\s\-./\\_,][0-9A-Za-z]")
 
     def _has_stray_issued_payload(self, text: str) -> bool:
@@ -432,10 +438,20 @@ class PrivacyVault:
         damaged. Membership is exact, so a false positive needs a 60-bit
         collision, which is what lets this be aggressive about candidates.
         """
-        if self._ARTIFACT_RE.search(text):
-            return True
+        # An empty vault has issued nothing, so nothing here can be a damaged
+        # token. Checking first also stops a fresh Guard rejecting ordinary
+        # GL: text.
         if not self._by_payload:
             return False
+        for m in self._ARTIFACT_RE.finditer(text):
+            # Require a real PII class name and a body near codeword length.
+            # Matching any "GL:WORD:x" rejected ordinary content: a log line,
+            # a JSON value, an OpenGL version string, a URL path segment.
+            if m.group("cls").upper() not in _CLASS_NAMES:
+                continue
+            compact = m.group("body").translate(self._STRIP_SEPARATORS)
+            if abs(len(compact) - codec.CODEWORD_SYMBOLS) <= 2:
+                return True
 
         def _hits(pattern: re.Pattern[str]) -> bool:
             for m in pattern.finditer(text):

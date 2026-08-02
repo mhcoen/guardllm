@@ -142,6 +142,19 @@ def _pattern_and_entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]
     return out
 
 
+def _looks_random(s: str) -> bool:
+    """Does this clear the same randomness bar the entropy scanner applies?
+
+    Same threshold and same length allowance, so "random" means one thing in
+    this module rather than two.
+    """
+    if len(s) < _ENTROPY_MIN_LENGTH:
+        return False
+    return _shannon_entropy(s) >= min(
+        _ENTROPY_THRESHOLD, math.log2(len(s)) - _ENTROPY_LENGTH_MARGIN
+    )
+
+
 def _line_end(text: str, pos: int) -> int:
     """End of the line containing ``pos``, exclusive of the newline."""
     nl = text.find("\n", pos)
@@ -326,14 +339,26 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             # Nothing is ambiguous, so nothing around it is touched.
             if _is_exact(pattern_spans, lo, hi):
                 continue
-            # A credential begins where a token begins. Removing whitespace
-            # creates prefixes that never existed: `sk_` sits inside
-            # `netmask_cache`, and once the following words are joined to it,
-            # twenty alphanumerics follow and the OpenAI grammar matches. Acted
-            # on, that redacted 67,445 characters of ipaddress.py. Quotes,
-            # colons and brackets still count as boundaries, so a key inside
-            # JSON or YAML is unaffected.
-            if lo > 0 and (text[lo - 1].isalnum() or text[lo - 1] in "_-"):
+            # Removing whitespace creates prefixes that never existed: `sk_`
+            # sits inside `netmask_cache`, and once the following words are
+            # joined to it, twenty alphanumerics follow and the OpenAI grammar
+            # matches. Acted on, that redacted 67,445 characters of
+            # ipaddress.py.
+            #
+            # A match that begins where a token begins is taken at face value;
+            # quotes, colons and brackets all satisfy that, so a key inside
+            # JSON or YAML is unaffected. One that begins mid-token has to earn
+            # it, because that is the shape the merge invents.
+            #
+            # What earns it is randomness, not a digit. Requiring the boundary
+            # alone was defeated by typing one character in front of the value,
+            # which leaked 32 characters. Accepting a digit instead let
+            # "netmask_cache holds 20 prefixlen values here" through, since the
+            # merge joins the words and the sentence supplies the digit. The
+            # bodies differ where it counts: joined English words repeat
+            # letters and a key does not.
+            at_boundary = lo == 0 or not (text[lo - 1].isalnum() or text[lo - 1] in "_-")
+            if not at_boundary and not _looks_random(_WHITESPACE_RE.sub("", text[lo:hi])):
                 continue
             # How far the merged match reaches in original coordinates, kept
             # before the clamps below so the wrap case can consult it.

@@ -500,19 +500,17 @@ class PrivacyVault:
         """Regions worth measuring edit distance against the issued set.
 
         The prefilter has to be cheap and has to run BEFORE any window is
-        generated. A raw digit is what it tests, because a live payload always
-        carries one and ordinary bracketed prose does not: "[[Glossary of
-        terms]]" is rejected here for a few nanoseconds instead of producing
-        seventy five windows and thirteen trigrams apiece. The test is on the
-        raw text deliberately, since Crockford folding maps I, L and O onto
-        digits and would hand every English word one.
+        generated, but it must not be a guess about what a payload looks like.
+        Requiring a raw digit here was such a guess and it was wrong: a
+        Crockford body is drawn from twenty two letters and ten digits, so
+        roughly one token in 280 is all letters, and for those every framing
+        and body damage combination stopped being detected at all. The trigram
+        overlap below is the prefilter, and it is not a guess.
         """
         seen: set[str] = set()
         for pattern, trim in ((self._GL_REGION_RE, 2), (self._GL_SIGNATURE_RE, 0)):
             for m in pattern.finditer(text):
                 raw = m.group()[trim : len(m.group()) - trim] if trim else m.group()
-                if not any(c.isdigit() for c in raw):
-                    continue
                 # Colons are stripped: the damage being detected is a missing
                 # or misplaced delimiter, so the check cannot depend on one.
                 compact = _crockford_fold(

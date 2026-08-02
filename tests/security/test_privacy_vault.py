@@ -2172,3 +2172,68 @@ class TestRoundTenRegressions:
             assert v._has_stray_issued_payload(blob)
         finally:
             PrivacyVault._PROXIMITY_WINDOW_BUDGET = original
+
+    @pytest.mark.parametrize("text", [
+        "netmask_cache holds 20 prefixlen values here",
+        "the netmask_cache stores 12 computed values here",
+        "disk_usage report 2024 shows every mounted volume here",
+        "task_queue holds 15 pending items right now here",
+    ])
+    def test_a_digit_does_not_excuse_a_mid_token_merge(self, text):
+        """The mid-token allowance must be randomness, not a digit. Accepting a
+        digit let ordinary sentences through: the merge joins the words and the
+        sentence itself supplies the number."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        spans, _ = scan_secret_spans(text)
+        assert spans == []
+
+    @pytest.mark.parametrize("prefix", ["", "X", "key", "9", "_", "-"])
+    def test_a_prefixed_token_cannot_evade_the_boundary_rule(self, prefix):
+        """The token-boundary rule keeps `sk_` inside `netmask_cache` from
+        firing, but on its own it was defeated by typing one character in front
+        of the value: the match no longer began at a boundary, was skipped, and
+        32 characters leaked. A digit is the second, independent reason to
+        believe a match, and machine-issued secrets carry one."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
+        for pos in range(1, len(secret)):
+            text = f"BEGIN {prefix}{secret[:pos]} {secret[pos:]} END"
+            spans, _ = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            run = _longest_surviving_run(out, secret)
+            assert run == 0, f"prefix {prefix!r} split {pos}: {run} chars survived"
+
+    def test_an_all_letter_payload_is_still_caught_when_damaged(self):
+        """A Crockford body is drawn from 22 letters and 10 digits, so about
+        one token in 280 contains no digit at all. A prefilter that required
+        one skipped those regions entirely and every framing-by-body damage
+        combination went undetected. The existing damage matrix caught this
+        only when it happened to draw such a token, roughly one run in thirty.
+        """
+        for _ in range(6000):
+            v = _vault()
+            token = v.deidentify(f"mail {EMAIL}").findings[0].token
+            raw = token.split(":")[2].rstrip("]")
+            if not any(c.isdigit() for c in raw):
+                break
+        else:  # pragma: no cover - 6000 draws without one is not credible
+            pytest.skip("no all-letter payload drawn")
+
+        for framing in (
+            token.replace("GL:", "GL", 1),
+            token.replace(":" + raw, raw),
+            token.replace("GL:EMAIL:", "GLEMAIL"),
+        ):
+            for mutated in (
+                raw[:5] + ("Z" if raw[5] != "Z" else "Y") + raw[6:],
+                raw[:5] + raw[6:],
+                raw[:5] + raw[5] + raw[5:],
+            ):
+                damaged = framing.replace(raw, mutated)
+                p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+                assert not p.allowed, f"all-letter payload dispatched: {damaged}"
+                assert EMAIL not in str(p.args)

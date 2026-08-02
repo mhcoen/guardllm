@@ -1036,9 +1036,12 @@ def build_fixtures() -> dict:
             "call": {
                 "tool": mcp_tool,
                 "args": _data(args),
-                # The whole declared context, not a few fields of it. A policy
-                # field left out of the record is a policy field a future edit
-                # could change without failing an equality assertion.
+                # Every context field check_tool_execution reads, and all 25
+                # policy fields. A field left out of the record is a field a
+                # future edit could change without failing an equality
+                # assertion, so the omissions are deliberate and named:
+                # `sensitivity` and `confirmation_handler`, neither of which
+                # this call path consults.
                 "context": {
                     "mode": mcp_write_ctx.mode,
                     "source_type": mcp_write_ctx.source_type,

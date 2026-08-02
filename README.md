@@ -8,6 +8,7 @@
 LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
 **[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
+[A record asks for a write and a user authorizes one](https://mhcoen.github.io/guardllm/demo/guardllm_mcp_demo.html), against a third-party MCP tool surface.
 [See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
 ## How GuardLLM Works

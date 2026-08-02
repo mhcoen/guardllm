@@ -187,7 +187,7 @@ def test_map_regions_link_to_real_destinations():
     # Adding a link here is a deliberate design change, not an accident. Policy
     # is deliberately absent: the Authorization boundary and the policy card
     # already open it, so a per-flow rail link would be a third path to one page.
-    assert len(destinations) == 13
+    assert len(destinations) == 14
     assert "policy" not in destinations
     for key, (href, label) in destinations.items():
         assert (DEMO / href).exists(), f"{key} points at a missing page: {href}"
@@ -195,7 +195,7 @@ def test_map_regions_link_to_real_destinations():
 
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     hrefs = [h for h in re.findall(r'<a [^>]*href="([^"]+)"', nav) if not h.startswith("#")]
-    assert len(hrefs) == 13
+    assert len(hrefs) == 14
     assert set(hrefs) == {href for href, _ in destinations.values()}
     for href in hrefs:
         assert (DEMO / href).exists()
@@ -207,7 +207,7 @@ def test_every_map_link_names_its_destination():
     labels = dict(generator.MAP_DESTINATIONS.values())
     nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
     anchors = re.findall(r"<a class=\"[^\"]*(?:map-region|rail-pill)[^\"]*\".*?</a>", nav, re.S)
-    assert len(anchors) == 13
+    assert len(anchors) == 14
     for anchor in anchors:
         href = re.search(r'href="([^"]+)"', anchor).group(1)
         expected = labels[href]
@@ -316,6 +316,7 @@ LAYOUTS = {
     "guardllm_pipeline_demo.html": ("layout-pipeline", 0),
     "guardllm_rag_demos.html": ("layout-comparison has-lead", 0),
     "guardllm_policy_matrix_demo.html": ("layout-stack", 0),
+    "guardllm_mcp_demo.html": ("layout-stack", 0),
     "guardllm_canary_demos.html": ("layout-taxonomy", 0),
     "guardllm_tool_feedback_demo.html": ("layout-contrast", 2),
     "guardllm_security_context_demo.html": ("layout-contrast", 2),
@@ -521,7 +522,7 @@ def test_badges_do_not_rely_on_color_alone():
         for outcome, glyph, label in BADGE_RE.findall(page):
             assert (glyph, label) == generator.OUTCOME_BADGES[outcome], (name, outcome)
             seen += 1
-    assert seen == 35, seen
+    assert seen == 43, seen
 
 
 def test_demo_content_containers_wrap_long_tokens():
@@ -548,7 +549,7 @@ def test_every_demo_page_links_back_to_the_project():
     entirely when the entry-point CTA replaced it, so the index had none.
     """
     pages = sorted(DEMO.glob("*.html"))
-    assert len(pages) == 10
+    assert len(pages) == 11
     for path in pages:
         page = path.read_text()
         assert 'href="https://github.com/mhcoen/guardllm"' in page, path.name

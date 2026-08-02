@@ -725,9 +725,7 @@ class TestGeneratorRefusesAForeignLibrary:
 
     def test_this_tree_passes(self):
         generator = _load_generator()
-        generator._ensure_library_matches_tree(
-            str(ROOT / "src" / "guardllm" / "__init__.py")
-        )
+        generator._ensure_library_matches_tree(str(ROOT / "src" / "guardllm" / "__init__.py"))
         # And the real import, which is what every generation depends on.
         generator._ensure_library_matches_tree()
 

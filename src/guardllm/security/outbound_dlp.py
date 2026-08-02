@@ -126,6 +126,30 @@ def _pattern_and_entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]
     return out
 
 
+def _extend_through_fragments(text: str, end: int) -> int:
+    """Extend a span through following tokens that look like more of the value.
+
+    Alphanumeric and at least ten characters. A prose word rarely reaches ten,
+    a credential fragment usually does, and the walk stops at the first token
+    that fails, so the over-redaction is bounded to adjacent tokens rather than
+    running to the pattern's maximum length. Crosses line breaks deliberately:
+    the common way a credential gets split is being wrapped onto the next line.
+    """
+    while end < len(text):
+        nxt = end
+        while nxt < len(text) and text[nxt].isspace():
+            nxt += 1
+        stop = nxt
+        while stop < len(text) and not text[stop].isspace():
+            stop += 1
+        token = text[nxt:stop]
+        if len(token) >= 10 and token.isalnum():
+            end = stop
+            continue
+        break
+    return end
+
+
 def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     """Locate credentials in ``text``, returning spans into the ORIGINAL text.
 
@@ -236,23 +260,15 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
                 # and the extension stops at the first token that fails, so the
                 # over-redaction is bounded to adjacent tokens rather than
                 # running to the pattern's maximum length.
-                end = max(b for _, b in overlapping)
-                while end < len(text):
-                    nxt = end
-                    while nxt < len(text) and text[nxt].isspace():
-                        nxt += 1
-                    stop = nxt
-                    while stop < len(text) and not text[stop].isspace():
-                        stop += 1
-                    token = text[nxt:stop]
-                    if len(token) >= 10 and token.isalnum():
-                        end = stop
-                        continue
-                    break
-                if end > max(b for _, b in overlapping):
+                base = max(b for _, b in overlapping)
+                end = _extend_through_fragments(text, base)
+                if end > base:
                     spans.append((min(a for a, _ in overlapping), end))
                 continue
-            spans.append((lo, hi))
+            # The same walk applies to a reconstruction. Without it the line
+            # clamp above stopped at the newline and left the continuation of a
+            # wrapped credential visible on the next line.
+            spans.append((lo, _extend_through_fragments(text, hi)))
 
     # Merge overlapping spans. They are all one class, so two that overlap are
     # one finding, and leaving them separate made partially overlapping

@@ -1843,3 +1843,34 @@ class TestRoundNineRegressions:
         v = _vault()
         v.deidentify(f"mail {EMAIL}")
         assert v.prepare_args("gmail_send_email", {"subject": text}).allowed
+
+
+class TestWrappedCredential:
+    """Found by probing my own round-nine fix before sending it for review.
+
+    The line clamp stopped a reconstruction at the newline, but the walk that
+    extends through adjacent credential fragments ran only on the pattern-match
+    path. A credential wrapped onto the next line therefore had its first line
+    redacted and its continuation left in the output: 25 characters.
+    """
+
+    def test_no_run_survives_a_line_wrapped_credential(self):
+        guard = Guard(privacy=PrivacyConfig())
+        secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
+        for pos in range(4, len(secret) - 2):
+            out = guard.process_inbound(
+                f"header\n{secret[:pos]}\n{secret[pos:]}\nfooter", Guard.context_web()
+            )
+            for i in range(len(secret)):
+                for j in range(len(secret), i + 9, -1):
+                    assert secret[i:j] not in out.content, f"wrap {pos}: {len(secret[i:j])} chars"
+
+    def test_the_extension_still_stops_at_ordinary_prose(self):
+        """It must not become a licence to run to the end of the document."""
+        guard = Guard(privacy=PrivacyConfig())
+        out = guard.process_inbound(
+            "L1 header\nL2 sk-abcdefghij klmnopqrstuvwx\nL3 body\nL4 footer",
+            Guard.context_web(),
+        )
+        for keep in ("L1 header", "L3 body", "L4 footer"):
+            assert keep in out.content

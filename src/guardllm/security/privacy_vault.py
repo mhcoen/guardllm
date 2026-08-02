@@ -490,10 +490,21 @@ class PrivacyVault:
                     return True
 
         for m in self._GL_REGION_RE.finditer(text):
-            inner = m.group()[2:-2]
-            if "GL" not in inner.upper():
+            # Colons are stripped too: the damage being detected is a missing
+            # or misplaced delimiter, so the check cannot depend on one.
+            compact = (
+                m.group()[2:-2].translate(self._STRIP_SEPARATORS).replace(":", "").upper()
+            )
+            # A class name, not merely the letters "GL". Testing for the
+            # substring blocked markdown wiki links: "[[Glossary of terms]]"
+            # and "[[Global configuration]]" both contain it.
+            if not compact.startswith("GL"):
                 continue
-            compact = inner.translate(self._STRIP_SEPARATORS)
+            # The class name must sit immediately after "GL", which is the
+            # token's actual structure. Merely containing one still blocked
+            # "[[Global URL settings]]".
+            if not any(compact[2:].startswith(name) for name in _CLASS_NAMES):
+                continue
             # Long enough to be a class name plus a body, short enough not to be
             # arbitrary bracketed prose.
             if codec.CODEWORD_SYMBOLS - 2 <= len(compact) <= 60:

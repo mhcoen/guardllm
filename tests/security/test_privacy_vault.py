@@ -1624,3 +1624,52 @@ class TestPrecisionRegressions:
                 if m.pii_class is not PIIClass.EMAIL
             ]
         assert not offenders, offenders[:5]
+
+
+class TestWikiLinkFalsePositive:
+    """Found by probing my own fix before sending it for review.
+
+    The GL-region refusal tested for the substring "GL", which matches
+    GLOSSARY and GLOBAL, so ordinary markdown wiki links failed tool calls.
+    Requiring a class name immediately after "GL" is the token's actual
+    structure; requiring it merely to be present still blocked
+    "[[Global URL settings]]".
+    """
+
+    @pytest.mark.parametrize("text", [
+        "[[Glossary of terms]]",
+        "[[Global configuration]]",
+        "[[Global URL settings]]",
+        "[[Legal notice here]]",
+        "[[Angular]]",
+        "see [[Glossary of terms]] here",
+        "[[Guidelines: MAC address policy]]",
+        "[[Global: URL map]]",
+    ])
+    def test_bracketed_prose_does_not_fail_a_tool_call(self, text):
+        v = _vault()
+        v.deidentify(f"mail {EMAIL}")
+        assert v.prepare_args("gmail_send_email", {"subject": text}).allowed
+
+    def test_the_damage_matrix_is_still_closed(self):
+        """The tightening that fixed the wiki links must not reopen the
+        colon-removal cases: stripping colons is what keeps both true."""
+        import itertools
+
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        raw = token.split(":")[2].rstrip("]")
+        framings = {
+            "c1": token.replace("GL:", "GL", 1),
+            "c2": token.replace(":" + raw, raw),
+            "both": token.replace("GL:EMAIL:", "GLEMAIL"),
+        }
+        bodies = {
+            "sub": raw[:5] + ("Z" if raw[5] != "Z" else "Y") + raw[6:],
+            "del": raw[:5] + raw[6:],
+            "ins": raw[:5] + raw[5] + raw[5:],
+        }
+        for f, b in itertools.product(framings, bodies):
+            damaged = framings[f].replace(raw, bodies[b])
+            p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+            assert not p.allowed, f"{f}+{b} dispatched"

@@ -72,6 +72,47 @@ def labelled_card_valid(value: str) -> bool:
     return luhn_valid(value)
 
 
+#: (low, high, prefix_digits, allowed PAN lengths) for UNLABELLED detection.
+#: Deliberately restricted to the major schemes with stable, well-known ranges.
+#: Successive attempts to enumerate every assigned range kept omitting some and
+#: assigning wrong lengths to others, because the assignments change and a table
+#: compiled into a library is stale on release. A PAN outside these is covered
+#: when labelled, exactly as national phone formats outside the NANP are.
+_IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
+    (34, 34, 2, frozenset({15})),
+    (37, 37, 2, frozenset({15})),
+    (4, 4, 1, frozenset({13, 16, 19})),
+    (51, 55, 2, frozenset({16})),
+    (2221, 2720, 4, frozenset({16})),
+    (6011, 6011, 4, frozenset({16, 19})),
+    (644, 649, 3, frozenset({16, 19})),
+    (65, 65, 2, frozenset({16, 19})),
+    (36, 36, 2, frozenset({14, 15, 16})),
+    (300, 305, 3, frozenset({14, 16})),
+    (3528, 3589, 4, frozenset({16, 17, 18, 19})),
+    (62, 62, 2, frozenset({16, 17, 18, 19})),
+    (50, 50, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (56, 58, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+    (67, 67, 2, frozenset({12, 13, 14, 15, 16, 17, 18, 19})),
+)
+
+
+def _allowed_lengths(ds: str) -> frozenset[int] | None:
+    """Most specific matching IIN range wins."""
+    best: tuple[int, frozenset[int]] | None = None
+    for low, high, width, lengths in _IIN_RANGES:
+        if len(ds) < width:
+            continue
+        if low <= int(ds[:width]) <= high and (best is None or width > best[0]):
+            best = (width, lengths)
+    return best[1] if best else None
+
+
+def labelled_card_valid(value: str) -> bool:
+    """A labelled PAN needs only Luhn: the label supplies the intent."""
+    return luhn_valid(value)
+
+
 #: (low, high, prefix_digits, allowed PAN lengths). Ranges are matched
 #: most-specific-first, because a brand-keyed lookup resolved overlaps by the
 #: order branches happened to be written: Discover ranges were claimed by the
@@ -261,6 +302,16 @@ def labelled_phone_valid(value: str) -> bool:
     return 7 <= len(_digits(value)) <= 15
 
 
+def opaque_id_valid(value: str) -> bool:
+    """A passport, licence, national ID, or MRN carries at least one digit.
+
+    These classes have no checksum, so the value shape is the only structural
+    evidence available. Without it any word following the label is taken as the
+    identifier.
+    """
+    return any(c.isdigit() for c in value)
+
+
 def ipv6_valid(value: str) -> bool:
     """Delegate to ipaddress so compressed forms ("2001:db8::1") are accepted.
 
@@ -322,7 +373,11 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card",
-        r"(?<![.\d])\b(?:\d[ -]?){11,18}\d\b(?![.\d])",
+        r"(?<![.\d\-])(?:"
+        r"\d{12,19}"
+        r"|\d{4}(?:[ -]\d{4}){2,4}"
+        r"|\d{4}[ -]\d{6}[ -]\d{5}"
+        r")(?![.\d\-])",
         card_valid,
     ),
     DetectorSpec(
@@ -368,7 +423,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         PIIClass.PHONE,
         "phone",
         r"(?:\+\d{1,4}(?:[ .\-]\(?\d{1,9}\)?){1,6}\b"
-        r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)|\b\d{3})[ .\-]\d{3}[ .\-]\d{4}\b"
+        r"|(?:\+\d{1,3}[ .\-]?)?(?:\(\d{3}\)[ .\-]?|\b\d{3}[.\-])\d{3}[.\-]\d{4}\b"
         r"|(?<![\w.+-])\+\d{11,15}(?![\d.]))",
         phone_valid,
     ),
@@ -393,6 +448,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         "medical_record",
         rf"{_LO}(?:mrn|medical[\s_]*record(?:[\s_]*(?:number|no\.?|#))?){_LC}"
         r"(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-]{3,19})",
+        opaque_id_valid,
     ),
     # No checksum exists for these, so they are matched only with a labelling
     # context. An unanchored pattern would be mostly false positives, and a
@@ -403,6 +459,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         "passport",
         rf"{_LO}passport(?:[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"r"|[\"'’”]?\s*[:=]\s*[\"'‘“]?))"
         r"(?P<passport_v>[A-Za-z0-9]{6,9})\b",
+        opaque_id_valid,
     ),
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
@@ -410,12 +467,14 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         r"(?i:\b(?:driver'?s?\s+licen[cs]e(?:\s+(?:number|no\.?|#))?\s*:?\s*"
         r"|dl(?:\s*(?:number|no\.?|#))?\s*[:#]\s*))"
         r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
+        opaque_id_valid,
     ),
     DetectorSpec(
         PIIClass.NATIONAL_ID,
         "national_id",
         rf"{_LO}national[\s_]*id(?:entity)?(?:[\s_]*(?:number|no\.?|#))?{_LC}"
         r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-]{4,19})\b",
+        opaque_id_valid,
     ),
     DetectorSpec(
         PIIClass.URL,

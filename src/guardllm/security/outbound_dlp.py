@@ -28,15 +28,15 @@ from guardllm.security.types import OutboundResult, SecurityContext
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"sk[-_][A-Za-z0-9]{20,}"), "OpenAI API key"),
-    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,}"), "OpenAI project key"),
+    (re.compile(r"sk[-_][A-Za-z0-9]{20,64}"), "OpenAI API key"),
+    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,80}"), "OpenAI project key"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key"),
-    (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,}"), "Google OAuth token"),
-    (re.compile(r"gho_[A-Za-z0-9]{36,}"), "GitHub OAuth token"),
-    (re.compile(r"ghp_[A-Za-z0-9]{36,}"), "GitHub personal access token"),
-    (re.compile(r"ghs_[A-Za-z0-9]{36,}"), "GitHub app token"),
-    (re.compile(r"ghr_[A-Za-z0-9]{36,}"), "GitHub refresh token"),
-    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}"), "Slack token"),
+    (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,200}"), "Google OAuth token"),
+    (re.compile(r"gho_[A-Za-z0-9]{36,80}"), "GitHub OAuth token"),
+    (re.compile(r"ghp_[A-Za-z0-9]{36,80}"), "GitHub personal access token"),
+    (re.compile(r"ghs_[A-Za-z0-9]{36,80}"), "GitHub app token"),
+    (re.compile(r"ghr_[A-Za-z0-9]{36,80}"), "GitHub refresh token"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,80}"), "Slack token"),
     (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "Private key header"),
     (
         re.compile(r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"),
@@ -80,12 +80,6 @@ def _shannon_entropy_bytes(data: bytes) -> float:
         freq[b] = freq.get(b, 0) + 1
     length = len(data)
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
-
-
-#: Above this fraction of separators, a mapped region is not prose with a
-#: credential in it: it is a credential someone split apart. Redacting the
-#: whole run there costs nothing real and leaves no usable fragment.
-_DENSE_SPLIT_RATIO = 0.15
 
 
 def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
@@ -156,24 +150,17 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
 
         for pattern, _label in _SECRET_PATTERNS:
             for m in pattern.finditer(form):
+                # No extent heuristic here. After whitespace removal the
+                # credential's true end is not recoverable, and the previous
+                # separator-density rule still leaked a fragment at some split
+                # strides and deleted prose at others. The patterns below are
+                # length-bounded, so the greedy extent is bounded too: this
+                # over-redacts adjacent text in the obfuscated case and never
+                # leaves secret characters behind. For a class whose whole
+                # point is that the value must not cross, a visible
+                # [redacted:credential] covering a few extra words is a better
+                # failure than four characters of a live key.
                 end = m.end()
-                if idx is not None:
-                    # In merged text a quantifier like {20,} cannot tell where
-                    # the secret ends. Greedy runs through the following words;
-                    # the shortest accepted prefix stops inside the secret and
-                    # leaves a fragment. Separator density decides which risk
-                    # is real. Ordinary prose interrupted by one inserted space
-                    # is sparse, so take the shortest extent and keep the words.
-                    # A value split every character or two is not prose at all,
-                    # so take the greedy extent and leave no fragment.
-                    lo_o, hi_o = idx[m.start()], idx[m.end() - 1] + 1
-                    covered = hi_o - lo_o
-                    separators = covered - (m.end() - m.start())
-                    if covered and separators / covered <= _DENSE_SPLIT_RATIO:
-                        for candidate in range(m.start() + 1, m.end() + 1):
-                            if pattern.fullmatch(form, m.start(), candidate):
-                                end = candidate
-                                break
                 _record(m.start(), end)
         for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
             token = m.group()

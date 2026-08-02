@@ -443,6 +443,19 @@ class PrivacyVault:
         # GL: text.
         if not self._by_payload:
             return False
+        # Deleting the colon between class and body defeats the artifact
+        # pattern AND the standalone-run scanners, so
+        # "[[GL:EMAIL54G621VXXEJ1RX4]]" dispatched as a literal recipient.
+        # Slide a window over every alphanumeric run and test exact membership:
+        # O(1) per position, and a false positive needs a 60-bit collision.
+        for run in re.finditer(r"[0-9A-Za-z]{15,}", text):
+            block = run.group()
+            for k in range(len(block) - codec.CODEWORD_SYMBOLS + 1):
+                window = block[k : k + codec.CODEWORD_SYMBOLS]
+                result = codec.decode_text(window)
+                if result.ok and codec.payload_key(result.payload) in self._by_payload:
+                    return True
+
         for m in self._ARTIFACT_RE.finditer(text):
             # Require a real PII class name and a body near codeword length.
             # Matching any "GL:WORD:x" rejected ordinary content: a log line,

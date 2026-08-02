@@ -1034,9 +1034,8 @@ class TestRoundFourRegressions:
         assert any("Smith" in p for p in person)
 
     @pytest.mark.parametrize("text,tail", [
-        ("Please preserve sk-ABCDEFGHIJKLMNOPQRST in this ordinary sentence", "in this ordinary sentence"),
-        ("key sk-ABCDEFGHIJ KLMNOPQRST and more words after it", "and more words after it"),
-        ("token AKIAIOSF ODNN7EXAMPLE plus trailing prose here", "plus trailing prose here"),
+        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence", "in this ordinary sentence"),
+        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing text kept"),
     ])
     def test_credential_substitution_preserves_surrounding_text(self, text, tail):
         """A greedy pattern on a whitespace-merged form ran through the words
@@ -1122,6 +1121,17 @@ _NEGATIVES: tuple[str, ...] = (
     "range 1000000 2000000 3000000",
     "cell division 12 34 56",
     "chunk 4 of 16 at offset 1048576",
+    "580832 580137 580136",
+    "601 602 603 621 1997",
+    "586218 310631 654729",
+    "57364 96029699",
+    "The medical record contains allergies.",
+    "National ID verification is disabled.",
+    'PASSPORT = "passport"',
+    'MEDICAL_RECORD = "medical_record"',
+    "born 1974 in Boston",
+    "routing 3 packets",
+    "the card is 12 of 52",
     # Label-shaped but carrying no identifier. A looser label grammar is
     # exactly where these appear.
     '{"phone_home": true}',
@@ -1192,18 +1202,24 @@ class TestRoundFiveRegressions:
             for i in range(4, len(secret) - 3):
                 assert secret[i : i + 4] not in out.content
 
-    @pytest.mark.parametrize("text,keep", [
-        ("prefix sk-abcdefghij klmnopqrstuvwx suffix remains here", "suffix remains here"),
-        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing text kept"),
-        ("token AKIAIOSF ODNN7EXAMPLE plus trailing prose here", "plus trailing prose here"),
-    ])
-    def test_sparse_splits_preserve_surrounding_prose(self, text, keep):
-        """One inserted space is prose with a credential in it, not a split
-        credential, so the words on either side must survive."""
+    def test_obfuscated_credentials_over_redact_rather_than_leak(self):
+        """After whitespace removal the credential's true end is not
+        recoverable. Every extent rule tried either left live key material
+        visible at some split strides or deleted prose at others, so the
+        direction is chosen deliberately: never leave secret characters, and
+        accept that adjacent words inside the bounded pattern length may go
+        with them. The loss is visible as [redacted:credential]; a surviving
+        fragment of a live key would not be.
+        """
         v = _vault()
-        out = v.deidentify(text, deny_action="marker")
-        assert keep in out.content
-        assert "redacted:credential" in out.content
+        secret = "sk-abcdefghijklmnopqrstuvwx"
+        for stride in (1, 2, 3, 4, 6, 8, 12, 13):
+            spaced = " ".join(secret[i : i + stride] for i in range(0, len(secret), stride))
+            out = v.deidentify(f"a {spaced} KEEP END", deny_action="marker")
+            assert out.allowed
+            assert "redacted:credential" in out.content
+            for i in range(3, len(secret) - 2):
+                assert secret[i : i + 3] not in out.content, f"fragment at stride {stride}"
 
     @pytest.mark.parametrize("text", [
         "GL:DEBUG:1 context initialized",
@@ -1223,3 +1239,69 @@ class TestRoundFiveRegressions:
         token = v.deidentify(f"mail {EMAIL}").findings[0].token
         p = v.prepare_args("gmail_send_email", {"to": [{"address": token[1:]}]})
         assert not p.allowed
+
+
+class TestRoundSixRegressions:
+    @pytest.mark.parametrize("text", [
+        "The medical record contains allergies.",
+        "National ID verification is disabled.",
+        'PASSPORT = "passport"',
+        'MEDICAL_RECORD = "medical_record"',
+        "passport control queue 5",
+        "the card is 12 of 52",
+        "born 1974 in Boston",
+        "routing 3 packets",
+    ])
+    def test_optional_separator_no_longer_swallows_the_next_word(self, text):
+        """Making the separator optional in round five let the following
+        ordinary word be read as the identifier. Two of these are real lines
+        from this library's own source."""
+        assert not detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
+
+    @pytest.mark.parametrize("text", [
+        "580832 580137 580136",
+        "601 602 603 621 1997",
+        "586218 310631 654729",
+        "601030 506450 506451",
+        "57364 96029699",
+        "1000 2000 3000 4000",
+    ])
+    def test_numeric_columns_are_not_concatenated_into_a_card(self, text):
+        """A separator after every digit merged unrelated identifier columns
+        into one Luhn-valid PAN, replacing three real IDs with one token."""
+        found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert PIIClass.CREDIT_CARD not in found
+        assert PIIClass.PHONE not in found
+
+    @pytest.mark.parametrize("pan", [
+        "4111111111111111", "4111 1111 1111 1111", "378282246310005",
+        "3782 822463 10005", "5555555555554444", "6011000000000004",
+    ])
+    def test_real_presentation_groupings_still_detected(self, pan):
+        found = {m.pii_class for m in detect(pan, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert PIIClass.CREDIT_CARD in found
+
+    @pytest.mark.parametrize("kind", ["missing_colon", "missing_both_colons", "no_open_bracket"])
+    def test_missing_delimiters_do_not_produce_an_executable_argument(self, kind):
+        """Deleting the colon between class and body defeated the artifact
+        pattern and both standalone-run scanners at once, so the damaged token
+        dispatched as a literal recipient."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        body = token.split(":")[2].rstrip("]")
+        damaged = {
+            "missing_colon": token.replace(":" + body, body),
+            "missing_both_colons": token.replace("GL:EMAIL:", "GLEMAIL"),
+            "no_open_bracket": token[1:],
+        }[kind]
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+        assert not p.allowed
+        assert EMAIL not in str(p.args)
+
+    def test_unlabelled_nanp_requires_a_real_separator(self):
+        """Space-separated ten-digit groups are indistinguishable from numeric
+        columns, exactly as space-separated SSNs are."""
+        assert not detect("603 621 1997", classes=DEFAULT_TOKENIZE_CLASSES).matches
+        for good in ("617-555-0142", "(617) 555-0142", "617.555.0142"):
+            assert detect(good, classes=DEFAULT_TOKENIZE_CLASSES).matches
+        assert detect("Tel: 603 621 1997", classes=DEFAULT_TOKENIZE_CLASSES).matches

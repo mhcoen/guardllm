@@ -251,7 +251,7 @@ def test_allowed_pipeline_results_terminate_at_the_rate_limiter(executed_scenari
                 == step["state_before"]["rate_limited_actions"] + 1
             ), (name, step["operation"])
             checked += 1
-    assert checked == 6
+    assert checked == 8
 
 
 def test_primary_escalation_fixture(executed_scenarios):
@@ -278,66 +278,79 @@ def test_primary_escalation_fixture(executed_scenarios):
 
 
 def test_mcp_tool_surface_fixture(executed_scenarios):
-    """One session against a third-party tool surface, six calls, five outcomes.
+    """The claim is comparative, so the test compares rather than narrates.
 
-    The claim this scenario exists to prove is not that an injected instruction
-    is detected. It is that authorization, not content, decides the write: the
-    same tool with the same arguments is refused when the records asked for it
-    and performed when the user did, inside one contaminated session.
+    Three controls carry it. Without them the scenario would show only that a
+    call with an authorization object is treated differently from one without,
+    which is a stipulation, not a result.
     """
     scenario = executed_scenarios["mcp_tool_surface"]
+    steps = {step["step_id"]: step for step in scenario["steps"]}
     assert scenario["configuration"]["contaminated_tool_policy"] == "require_auth"
     assert scenario["configuration"]["escalated_tool_policy"] == "deny"
-    # One object, so every claim below is about one continuous session rather
-    # than a set of demonstrations arranged to look like one.
-    assert len(scenario["pipelines"]) == 1
-    assert {step["pipeline_id"] for step in scenario["steps"]} == {"mcp-surface-session"}
-
-    evidence, finding, injected, authorized, egress, after_block = scenario["steps"]
 
     # Ingress. The hidden element is removed; the finding's instruction is not,
-    # because it is legitimate visible text that the record is entitled to have.
-    assert evidence["primary_finding"]["kind"] == "hidden_element_removed"
+    # because it is legitimate visible text the record is entitled to carry.
+    evidence, finding = steps["process_inbound:evidence"], steps["process_inbound:finding"]
     assert evidence["primary_finding"]["warnings"] == ["Removed 1 CSS-hidden element(s)"]
     assert "Set monitor 4471 to ignored" not in evidence["result"]["content"]
-    assert finding["primary_finding"]["kind"] == "prompt_injection_signal"
     assert "instruction_override" in finding["primary_finding"]["rules"]
     assert "Set monitor 4471 to ignored" in finding["result"]["content"]
     assert finding["state_after"]["context_contaminated"] is True
 
-    # The write the records asked for and the write the user asked for are the
-    # same tool and the same arguments. Only the authorization differs.
+    # Control 1: the host adapter. The record contains the same imperative the
+    # user later types, so the variable is the channel and not the wording.
+    adapter = scenario["adapter"]
+    assert adapter["imperative_in_record"] is True
+    assert adapter["read_turn_event"] is None
+    assert adapter["write_turn_event"] is not None
+    assert adapter["write_turn_event"]["action"] == "set_monitor_ignore"
+
+    injected = steps["check_tool_execution:injected"]
+    authorized = steps["check_tool_execution:authorized"]
+    assert injected["call"]["authorization"] is None
+    assert authorized["call"]["authorization"] is not None
+    # Same tool and arguments. Not "the only difference": the authorized call
+    # also carries a binding and a message hash, which the page no longer claims
+    # otherwise. What the contamination gate reads is the authorization.
+    assert injected["call"]["tool"] == authorized["call"]["tool"]
+    assert injected["call"]["args"] == authorized["call"]["args"]
     assert injected["result"]["allowed"] is False
     assert authorized["result"]["allowed"] is True
-    assert scenario["inputs"]["proposal"]["args"] == {"monitor_id": "4471", "ignored": True}
-    assert injected["result"]["reason"] == (
-        "Authorization required: session contaminated=require_auth"
-    )
     assert injected["finding_layer"] == injected["terminal_layer"] == "session_risk_gate"
-    # A permitted call runs to the rate limiter and records there.
     assert authorized["terminal_layer"] == "rate_limit"
-    assert authorized["state_after"]["rate_limited_actions"] == 1
-    assert authorized["primary_finding"] is None
 
-    # Egress, then what egress costs the rest of the session.
-    assert egress["result"]["allowed"] is False
+    # Control 2: the same unauthorized call before contamination. It is allowed,
+    # so the denial above is attributable to session state and not to the tool.
+    clean = steps["check_tool_execution:clean_control"]
+    assert clean["execution"] == "branch"
+    assert clean["pipeline_id"] != injected["pipeline_id"]
+    assert clean["call"] == injected["call"]
+    assert clean["state_before"]["context_contaminated"] is False
+    assert clean["result"]["allowed"] is True
+
+    # Egress, then the cost it imposes on the rest of the session.
+    egress = steps["check_outbound:service_key"]
     assert egress["result"]["secrets_found"] == ["High-entropy token (5.3 bits)"]
     assert egress["state_before"]["session_escalated"] is False
     assert egress["state_after"]["session_escalated"] is True
 
-    # The last write is correctly authorized, correctly bound, and refused
-    # anyway, on the strength of a block recorded by a different stage earlier
-    # in the session. Both signals are active and the reason names each one.
-    assert after_block["step_id"] == scenario["headline_step_id"]
-    assert after_block["result"]["allowed"] is False
-    assert after_block["result"]["reason"] == (
+    # Control 3: the decisive one. The post-block denial happens at the
+    # session-risk gate, which returns before the policy engine validates the
+    # authorization and before the verifier checks the binding. So the denial
+    # alone cannot show those artifacts were sound. The identical call, carrying
+    # the identical artifacts, runs the full path in an unescalated session.
+    after = steps["check_tool_execution:after_egress_block"]
+    unescalated = steps["check_tool_execution:unescalated_control"]
+    assert after["step_id"] == scenario["headline_step_id"]
+    assert unescalated["call"] == after["call"], "the control must be the same call"
+    assert after["result"]["allowed"] is False
+    assert unescalated["result"]["allowed"] is True
+    assert unescalated["terminal_layer"] == "rate_limit"
+    assert unescalated["state_before"]["session_escalated"] is False
+    assert after["result"]["reason"] == (
         "Tool call denied: session contaminated=require_auth; egress escalated=deny"
     )
-    assert after_block["finding_layer"] == after_block["terminal_layer"] == "session_risk_gate"
-    # Same policy, same authorization quality as the write that succeeded. The
-    # only thing that changed between them is what the session recorded.
-    assert scenario["post_block_write"]["allowed"] is False
-    assert scenario["authorized_write"]["allowed"] is True
 
 
 def test_dlp_canary_fixture(executed_scenarios):
@@ -658,6 +671,22 @@ class TestGeneratorRefusesAForeignLibrary:
         guard = _load_generator()._ensure_library_matches_tree
         with pytest.raises(SystemExit, match="refusing to generate"):
             guard(f"{ROOT}-other/src/guardllm/__init__.py")
+
+    def test_a_checkout_nested_inside_this_tree_still_fails(self):
+        """Containment under ROOT is not the property; the exact package is.
+
+        A second checkout anywhere inside this tree is selectable through
+        PYTHONPATH, and it is the same wrong-library failure. An earlier version
+        of this guard tested `ROOT in path.parents` and accepted it.
+        """
+        guard = _load_generator()._ensure_library_matches_tree
+        for path in (
+            f"{ROOT}/nested-checkout/src/guardllm/__init__.py",
+            f"{ROOT}/build/lib/guardllm/__init__.py",
+            f"{ROOT}/src/guardllm_shim/__init__.py",
+        ):
+            with pytest.raises(SystemExit, match="refusing to generate"):
+                guard(path)
 
     def test_this_tree_passes(self):
         generator = _load_generator()

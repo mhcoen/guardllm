@@ -947,12 +947,36 @@
       "test_node": "tests/test_demo_scenarios.py::test_ingress_fixture"
     },
     "mcp_tool_surface": {
+      "adapter": {
+        "imperative_in_record": true,
+        "read_turn_event": null,
+        "read_turn_message": "Why is CC6.1 still failing?",
+        "write_turn_event": {
+          "action": "set_monitor_ignore",
+          "message_hash": "56b4d0a6ee990c09e062d1a1b9ac3029ad6bf98e43df255574eb4b9e85470db9",
+          "scope": {
+            "ignored": true,
+            "monitor_id": "4471"
+          },
+          "session_id": null,
+          "source": "api",
+          "timestamp": 1000.0
+        },
+        "write_turn_message": "We finished remediating CC6.1. Set monitor 4471 to ignored."
+      },
       "authorized_write": {
         "allowed": true,
         "anomalies": [],
         "confidence": "explicit",
         "matched_directive": "api",
         "reason": "Authorization verified"
+      },
+      "clean_control_write": {
+        "allowed": true,
+        "anomalies": [],
+        "confidence": "implicit",
+        "matched_directive": null,
+        "reason": "Non-destructive tool, implicit allow"
       },
       "configuration": {
         "capability_scopes": [
@@ -1015,9 +1039,19 @@
         "A-AS1 · A-AS9"
       ],
       "pipelines": {
+        "mcp-clean-control": {
+          "object": "SecurityPipeline",
+          "role": "control session that ingested nothing, so the same unauthorized call shows what contamination changed rather than what the tool intrinsically requires",
+          "stateful": true
+        },
         "mcp-surface-session": {
           "object": "SecurityPipeline",
           "role": "the one session that reads two third-party records, refuses the write the records asked for, performs the write the user asked for, blocks the credential on the way out, and then refuses a later authorized write",
+          "stateful": true
+        },
+        "mcp-unescalated-control": {
+          "object": "SecurityPipeline",
+          "role": "control session that never blocked anything, so the same second call with the same authorization and binding runs the full validation path and proves those artifacts are valid",
           "stateful": true
         }
       },
@@ -1179,6 +1213,16 @@
           "terminal_layer": "provenance_registration"
         },
         {
+          "call": {
+            "args": {
+              "ignored": true,
+              "monitor_id": "4471"
+            },
+            "authorization": null,
+            "binding_supplied": false,
+            "message_hash_supplied": false,
+            "tool": "set_monitor_ignore"
+          },
           "compares_with": null,
           "enclosing_operation": null,
           "execution": "sequential",
@@ -1216,6 +1260,66 @@
           "terminal_layer": "session_risk_gate"
         },
         {
+          "call": {
+            "args": {
+              "ignored": true,
+              "monitor_id": "4471"
+            },
+            "authorization": null,
+            "binding_supplied": false,
+            "message_hash_supplied": false,
+            "tool": "set_monitor_ignore"
+          },
+          "compares_with": "mcp-surface-session",
+          "enclosing_operation": null,
+          "execution": "branch",
+          "finding_layer": null,
+          "operation": "check_tool_execution:clean_control",
+          "pipeline_id": "mcp-clean-control",
+          "primary_finding": null,
+          "result": {
+            "allowed": true,
+            "anomalies": [],
+            "confidence": "implicit",
+            "matched_directive": null,
+            "reason": "Non-destructive tool, implicit allow"
+          },
+          "state_after": {
+            "context_contaminated": false,
+            "dlp_sensitive_spans": 0,
+            "dlp_untrusted_spans": 0,
+            "provenance_spans": 0,
+            "rate_limited_actions": 1,
+            "session_escalated": false
+          },
+          "state_before": {
+            "context_contaminated": false,
+            "dlp_sensitive_spans": 0,
+            "dlp_untrusted_spans": 0,
+            "provenance_spans": 0,
+            "rate_limited_actions": 0,
+            "session_escalated": false
+          },
+          "step_id": "check_tool_execution:clean_control",
+          "terminal_layer": "rate_limit"
+        },
+        {
+          "call": {
+            "args": {
+              "ignored": true,
+              "monitor_id": "4471"
+            },
+            "authorization": {
+              "action": "set_monitor_ignore",
+              "scope": {
+                "ignored": true,
+                "monitor_id": "4471"
+              }
+            },
+            "binding_supplied": true,
+            "message_hash_supplied": true,
+            "tool": "set_monitor_ignore"
+          },
           "compares_with": null,
           "enclosing_operation": null,
           "execution": "sequential",
@@ -1294,6 +1398,22 @@
           "terminal_layer": "dlp"
         },
         {
+          "call": {
+            "args": {
+              "ignored": true,
+              "monitor_id": "4472"
+            },
+            "authorization": {
+              "action": "set_monitor_ignore",
+              "scope": {
+                "ignored": true,
+                "monitor_id": "4472"
+              }
+            },
+            "binding_supplied": true,
+            "message_hash_supplied": true,
+            "tool": "set_monitor_ignore"
+          },
           "compares_with": null,
           "enclosing_operation": null,
           "execution": "sequential",
@@ -1329,10 +1449,67 @@
           },
           "step_id": "check_tool_execution:after_egress_block",
           "terminal_layer": "session_risk_gate"
+        },
+        {
+          "call": {
+            "args": {
+              "ignored": true,
+              "monitor_id": "4472"
+            },
+            "authorization": {
+              "action": "set_monitor_ignore",
+              "scope": {
+                "ignored": true,
+                "monitor_id": "4472"
+              }
+            },
+            "binding_supplied": true,
+            "message_hash_supplied": true,
+            "tool": "set_monitor_ignore"
+          },
+          "compares_with": "mcp-surface-session",
+          "enclosing_operation": null,
+          "execution": "branch",
+          "finding_layer": null,
+          "operation": "check_tool_execution:unescalated_control",
+          "pipeline_id": "mcp-unescalated-control",
+          "primary_finding": null,
+          "result": {
+            "allowed": true,
+            "anomalies": [],
+            "confidence": "explicit",
+            "matched_directive": "api",
+            "reason": "Authorization verified"
+          },
+          "state_after": {
+            "context_contaminated": false,
+            "dlp_sensitive_spans": 0,
+            "dlp_untrusted_spans": 0,
+            "provenance_spans": 0,
+            "rate_limited_actions": 1,
+            "session_escalated": false
+          },
+          "state_before": {
+            "context_contaminated": false,
+            "dlp_sensitive_spans": 0,
+            "dlp_untrusted_spans": 0,
+            "provenance_spans": 0,
+            "rate_limited_actions": 0,
+            "session_escalated": false
+          },
+          "step_id": "check_tool_execution:unescalated_control",
+          "terminal_layer": "rate_limit"
         }
       ],
       "synthetic_key_display": "service_7f3a9c21_kQ8v...uE2i",
-      "test_node": "tests/test_demo_scenarios.py::test_mcp_tool_surface_fixture"
+      "test_node": "tests/test_demo_scenarios.py::test_mcp_tool_surface_fixture",
+      "unescalated_control_write": {
+        "allowed": true,
+        "anomalies": [],
+        "confidence": "explicit",
+        "matched_directive": "api",
+        "reason": "Authorization verified"
+      }
     },
     "policy": {
       "configuration": {

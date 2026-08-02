@@ -8,6 +8,7 @@ import dataclasses
 import html
 import json
 import os
+import re
 import sys
 from enum import Enum
 from importlib.metadata import version
@@ -67,16 +68,58 @@ def _ensure_library_matches_tree(library_file: str | None = None) -> None:
 
         library_file = guardllm.__file__
     imported = Path(library_file).resolve()
-    if ROOT in imported.parents:
+    # Compare against the exact expected package file, not mere containment
+    # under ROOT. Containment would accept a second checkout nested anywhere
+    # inside this tree, which PYTHONPATH can select, and that is the same
+    # wrong-library failure wearing a path this test would have allowed.
+    expected = (ROOT / "src" / "guardllm" / "__init__.py").resolve()
+    if imported == expected:
         return
     raise SystemExit(
-        f"refusing to generate: this script lives in {ROOT}, but guardllm was "
-        f"imported from {imported}.\n"
+        f"refusing to generate: this script expects guardllm at {expected}, "
+        f"but it was imported from {imported}.\n"
         f"Generating demos against a library from another tree rewrites every "
         f"page with that tree's fields.\n"
         f"Fix by installing this tree into its own environment "
         f"(python -m venv .venv && .venv/bin/pip install -e '.[dev]'), or for a "
         f"one-off run set PYTHONPATH={ROOT / 'src'}."
+    )
+
+
+# The host obligation the library deliberately does not perform. guardllm
+# validates AuthorizationEvents; it never parses natural language to create
+# them, and Guard.authorize is a caller-trusting factory (see A-AS8 in
+# docs/threat_model.md). A demo that hands step A no event and step B one has
+# assumed the interesting part. This adapter is the interesting part: it reads
+# only the user's turn, so text arriving in a tool result cannot reach it.
+_USER_IGNORE_DIRECTIVE = re.compile(
+    r"(?:set|mark|switch)\s+monitor\s+(\d+)\s+(?:to|as)\s+ignored?"
+    r"|(?:ignore|mute|suppress)\s+monitor\s+(\d+)",
+    re.IGNORECASE,
+)
+
+
+def derive_authorization(user_message: str, tool: str, args: dict, timestamp: float):
+    """Mint an AuthorizationEvent only if the USER's own message asked for this call.
+
+    Returns None otherwise. Deliberately takes no tool-result content: the only
+    way to obtain an event is to appear in the user's turn.
+    """
+    from guardllm import Guard
+
+    if tool != "set_monitor_ignore":
+        return None
+    match = _USER_IGNORE_DIRECTIVE.search(user_message)
+    if match is None:
+        return None
+    monitor_id = match.group(1) or match.group(2)
+    if monitor_id != str(args.get("monitor_id")):
+        return None
+    return Guard.authorize(
+        action=tool,
+        scope={"monitor_id": monitor_id, "ignored": True},
+        message_hash=Guard.hash_message(user_message),
+        timestamp=timestamp,
     )
 
 
@@ -934,22 +977,44 @@ def build_fixtures() -> dict:
     mcp_finding_inbound = mcp_session.process_inbound(mcp_finding, mcp_finding_ctx)
     mcp_after_finding = pipeline_state(mcp_session)
 
-    # The injected instruction proposes the write. No AuthorizationEvent exists
-    # for it, because the host derives those from the user's message and the
-    # instruction is not in the user's message (T-IN4).
+    # The controlled comparison, and the reason it is a comparison rather than a
+    # stipulation. The injected finding contains the same imperative the user
+    # later types, word for word. What differs is the channel: authorization is
+    # derived from the user's turn, and during the turn in which the record asks
+    # for the write, the user asked only a question.
+    #
+    # Note what is NOT claimed. The adapter is a regex; handed the record's text
+    # it would happily match. The property being demonstrated is that content
+    # never reaches it, not that it could withstand content if it did.
+    mcp_read_message = "Why is CC6.1 still failing?"
+    if not _USER_IGNORE_DIRECTIVE.search(mcp_finding):
+        raise ValueError("control is vacuous: the record must contain the same imperative")
+    mcp_auth_during_read = derive_authorization(
+        mcp_read_message, mcp_tool, mcp_args, timestamp=1000.0
+    )
+    mcp_auth = derive_authorization(mcp_message, mcp_tool, mcp_args, timestamp=1000.0)
+    if mcp_auth_during_read is not None or mcp_auth is None:
+        raise ValueError("host adapter control failed: same words, the turn must decide")
+
+    # The injected instruction proposes the write, carrying whatever the adapter
+    # produced for the turn it arrived in, which is nothing.
     mcp_before_injected = pipeline_state(mcp_session)
-    mcp_injected_write = mcp_session.check_tool_execution(mcp_tool, mcp_args, mcp_write_ctx)
+    mcp_injected_write = mcp_session.check_tool_execution(
+        mcp_tool, mcp_args, mcp_write_ctx, auth_event=mcp_auth_during_read
+    )
     mcp_after_injected = pipeline_state(mcp_session)
 
+    # Control: the identical call, identical context, against a session that
+    # never ingested anything. Without contamination this write is implicitly
+    # allowed, which bounds the claim: contamination is what introduces the
+    # authorization requirement, not anything intrinsic to the tool.
+    mcp_clean = SecurityPipeline()
+    mcp_clean_before = pipeline_state(mcp_clean)
+    mcp_clean_write = mcp_clean.check_tool_execution(mcp_tool, mcp_args, mcp_write_ctx)
+    mcp_clean_after = pipeline_state(mcp_clean)
+
     # The same tool, the same arguments, the same contaminated session, asked
-    # for by the user instead. Authorization is the whole difference. A control
-    # that could not tell these apart would be an outage, not a defense.
-    mcp_auth = Guard.authorize(
-        action=mcp_tool,
-        scope=dict(mcp_args),
-        message_hash=mcp_message_hash,
-        timestamp=1000.0,
-    )
+    # for by the user instead.
     with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
         mcp_binding = Guard.bind_request(
             mcp_tool,
@@ -981,17 +1046,15 @@ def build_fixtures() -> dict:
     )
     mcp_after_egress = pipeline_state(mcp_session)
 
-    # A second write the user genuinely asked for, correctly authorized and
-    # bound. It is refused anyway, on the strength of what the egress check
-    # recorded against this session a moment earlier.
+    # A second write the user genuinely asked for. The session-risk gate runs
+    # before the policy engine and the binding verifier, so a denial there
+    # proves nothing about the authorization or the binding on its own. The
+    # control below is what establishes they are valid.
     mcp_second_args = {"monitor_id": "4472", "ignored": True}
     mcp_second_message = "Also set monitor 4472 to ignored, that control was superseded."
     mcp_second_hash = Guard.hash_message(mcp_second_message)
-    mcp_second_auth = Guard.authorize(
-        action=mcp_tool,
-        scope=dict(mcp_second_args),
-        message_hash=mcp_second_hash,
-        timestamp=1000.0,
+    mcp_second_auth = derive_authorization(
+        mcp_second_message, mcp_tool, mcp_second_args, timestamp=1000.0
     )
     with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
         mcp_second_binding = Guard.bind_request(
@@ -1014,6 +1077,38 @@ def build_fixtures() -> dict:
             message_hash=mcp_second_hash,
         )
     mcp_after_post_block = pipeline_state(mcp_session)
+
+    # Control: the same second call, carrying the same AuthorizationEvent and
+    # the same Binding objects, against a session that never blocked anything.
+    # It runs the full path, so the policy engine validates the authorization
+    # and the verifier checks the binding. Passing here is what licenses the
+    # claim that the denial above was caused by the recorded egress block and
+    # not by a defective artifact.
+    mcp_unescalated = SecurityPipeline()
+    mcp_unescalated_before = pipeline_state(mcp_unescalated)
+    with (
+        patch("guardllm.security.types.time.time", return_value=1001.0),
+        patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
+    ):
+        mcp_unescalated_write = mcp_unescalated.check_tool_execution(
+            mcp_tool,
+            mcp_second_args,
+            mcp_write_ctx,
+            auth_event=mcp_second_auth,
+            binding=mcp_second_binding,
+            message_hash=mcp_second_hash,
+        )
+    mcp_unescalated_after = pipeline_state(mcp_unescalated)
+
+    def mcp_call(args: dict, *, auth, binding, message_hash) -> dict:
+        """What a step actually dispatched, so the comparison is data, not prose."""
+        return {
+            "tool": mcp_tool,
+            "args": dict(args),
+            "authorization": None if auth is None else {"action": auth.action, "scope": auth.scope},
+            "binding_supplied": binding is not None,
+            "message_hash_supplied": message_hash is not None,
+        }
 
     def scenario(
         *,
@@ -1965,6 +2060,20 @@ def build_fixtures() -> dict:
                         "the user asked for, blocks the credential on the way out, "
                         "and then refuses a later authorized write",
                     },
+                    "mcp-clean-control": {
+                        "object": "SecurityPipeline",
+                        "stateful": True,
+                        "role": "control session that ingested nothing, so the same "
+                        "unauthorized call shows what contamination changed rather "
+                        "than what the tool intrinsically requires",
+                    },
+                    "mcp-unescalated-control": {
+                        "object": "SecurityPipeline",
+                        "stateful": True,
+                        "role": "control session that never blocked anything, so the "
+                        "same second call with the same authorization and binding runs "
+                        "the full validation path and proves those artifacts are valid",
+                    },
                 },
                 steps=[
                     {
@@ -2012,6 +2121,12 @@ def build_fixtures() -> dict:
                         "compares_with": None,
                         "enclosing_operation": None,
                         "result": _data(mcp_injected_write),
+                        "call": mcp_call(
+                            mcp_args,
+                            auth=mcp_auth_during_read,
+                            binding=None,
+                            message_hash=None,
+                        ),
                         "state_before": mcp_before_injected,
                         "state_after": mcp_after_injected,
                         "primary_finding": {
@@ -2024,6 +2139,21 @@ def build_fixtures() -> dict:
                         "terminal_layer": "session_risk_gate",
                     },
                     {
+                        "step_id": "check_tool_execution:clean_control",
+                        "operation": "check_tool_execution:clean_control",
+                        "pipeline_id": "mcp-clean-control",
+                        "execution": "branch",
+                        "compares_with": "mcp-surface-session",
+                        "enclosing_operation": None,
+                        "result": _data(mcp_clean_write),
+                        "call": mcp_call(mcp_args, auth=None, binding=None, message_hash=None),
+                        "state_before": mcp_clean_before,
+                        "state_after": mcp_clean_after,
+                        "primary_finding": None,
+                        "finding_layer": None,
+                        "terminal_layer": "rate_limit",
+                    },
+                    {
                         "step_id": "check_tool_execution:authorized",
                         "operation": "check_tool_execution:authorized",
                         "pipeline_id": "mcp-surface-session",
@@ -2031,6 +2161,12 @@ def build_fixtures() -> dict:
                         "compares_with": None,
                         "enclosing_operation": None,
                         "result": _data(mcp_authorized_write),
+                        "call": mcp_call(
+                            mcp_args,
+                            auth=mcp_auth,
+                            binding=mcp_binding,
+                            message_hash=mcp_message_hash,
+                        ),
                         "state_before": mcp_before_authorized,
                         "state_after": mcp_after_authorized,
                         "primary_finding": None,
@@ -2062,17 +2198,46 @@ def build_fixtures() -> dict:
                         "compares_with": None,
                         "enclosing_operation": None,
                         "result": _data(mcp_post_block_write),
+                        "call": mcp_call(
+                            mcp_second_args,
+                            auth=mcp_second_auth,
+                            binding=mcp_second_binding,
+                            message_hash=mcp_second_hash,
+                        ),
                         "state_before": mcp_before_post_block,
                         "state_after": mcp_after_post_block,
                         # Both session signals are active and the strictest wins.
                         # The reason names each contributing trigger, so the
-                        # deciding one is not left to inference.
+                        # deciding one is not left to inference. Note the gate
+                        # returns before the policy engine and the binding
+                        # verifier run, which is why the control step below is
+                        # required to establish that those artifacts were valid.
                         "primary_finding": {
                             "kind": "session_risk_denied",
                             "reason": mcp_post_block_write.reason,
                         },
                         "finding_layer": "session_risk_gate",
                         "terminal_layer": "session_risk_gate",
+                    },
+                    {
+                        "step_id": "check_tool_execution:unescalated_control",
+                        "operation": "check_tool_execution:unescalated_control",
+                        "pipeline_id": "mcp-unescalated-control",
+                        "execution": "branch",
+                        "compares_with": "mcp-surface-session",
+                        "enclosing_operation": None,
+                        "result": _data(mcp_unescalated_write),
+                        "call": mcp_call(
+                            mcp_second_args,
+                            auth=mcp_second_auth,
+                            binding=mcp_second_binding,
+                            message_hash=mcp_second_hash,
+                        ),
+                        "state_before": mcp_unescalated_before,
+                        "state_after": mcp_unescalated_after,
+                        "primary_finding": None,
+                        "finding_layer": None,
+                        "terminal_layer": "rate_limit",
                     },
                 ],
                 headline_step_id="check_tool_execution:after_egress_block",
@@ -2093,6 +2258,18 @@ def build_fixtures() -> dict:
                     "authorized_write": _data(mcp_authorized_write),
                     "key_block": _data(mcp_key_block),
                     "post_block_write": _data(mcp_post_block_write),
+                    "clean_control_write": _data(mcp_clean_write),
+                    "unescalated_control_write": _data(mcp_unescalated_write),
+                    # The controlled comparison for the host adapter. The record
+                    # contains the same imperative the user later types, so the
+                    # only variable is which turn it arrived in.
+                    "adapter": {
+                        "imperative_in_record": bool(_USER_IGNORE_DIRECTIVE.search(mcp_finding)),
+                        "read_turn_message": mcp_read_message,
+                        "read_turn_event": _data(mcp_auth_during_read),
+                        "write_turn_message": mcp_message,
+                        "write_turn_event": _data(mcp_auth),
+                    },
                     "second_proposal": {"tool": mcp_tool, "args": mcp_second_args},
                     "second_user_message": mcp_second_message,
                 },
@@ -3057,53 +3234,66 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     mcp = s["mcp_tool_surface"]
     mcp_steps = {step["step_id"]: step for step in mcp["steps"]}
     pages[DEMO_DIR / "guardllm_mcp_demo.html"] = _page(
-        title="Authorization decides the write, not the content",
-        lead="An assistant reads records from a third-party MCP server, then proposes writes back to it. The records ask for one write and the user asks for the same one, and only one goes through.",
+        title="The same words, from two channels, decided differently",
+        lead="A record and a user ask for the identical write, in identical words. Each row below states only what the call it displays actually reached.",
         active="ingress+authorization+egress",
         fixture=mcp,
         interactive=False,
         steps=[
             (
                 "Read an evidence record",
-                "A third party uploaded this attestation. An instruction is concealed in a display:none element, addressed to whatever reviews the document.",
+                "Content arrives under an MCP source context. An instruction sits inside a display:none element and is removed before the text is returned.",
                 "; ".join(mcp_steps["process_inbound:evidence"]["primary_finding"]["warnings"]),
                 "state",
             ),
             (
                 "Read a pentest finding",
-                "The payload field of a stored-XSS finding is attacker-authored by construction: the finding exists because someone submitted that exact string. Here it is both a valid XSS proof and an injection. Nothing is removed, because it is legitimate visible finding text, so it reaches the model intact.",
+                "The payload field of a stored-XSS finding is attacker-authored by construction. Nothing is removed here, because this is legitimate visible finding text: the detector reports it and it is returned inside an untrusted_content wrapper. It contains the same imperative the user types two rows down, word for word.",
                 "; ".join(mcp_steps["process_inbound:finding"]["primary_finding"]["rules"]),
                 "state",
             ),
             (
-                "The records ask for a write",
-                "The injected instruction proposes marking the failing monitor as ignored. No authorization event exists for it, because the host derives those from the user's message and the instruction is not in the user's message.",
+                "The record asks for the write",
+                f"The user's turn here was {mcp['adapter']['read_turn_message']!r}, a question. The host derives authorization from that turn alone, so it minted nothing, and the proposal arrives carrying no authorization event.",
                 mcp["injected_write"]["reason"],
                 "blocked",
             ),
             (
+                "Control: the same call, before contamination",
+                "The identical call and context against a session that ingested nothing. It is implicitly allowed, because this tool is not in DESTRUCTIVE_TOOLS. That bounds the row above: contamination is what introduced the authorization requirement, not anything intrinsic to the tool.",
+                mcp["clean_control_write"]["reason"],
+                "allowed",
+            ),
+            (
                 "The user asks for the same write",
-                f"Same tool, same arguments ({mcp['inputs']['proposal']['args']}), same contaminated session. The authorization event is the only difference. A control that could not tell these apart would be an outage rather than a defense.",
+                f"Same tool and same arguments ({mcp['inputs']['proposal']['args']}) in the same contaminated session. The user's turn now contains the imperative, so the host adapter minted an event, and the call also carries the binding and message hash that event permits.",
                 mcp["authorized_write"]["reason"],
                 "allowed",
             ),
             (
-                "The credential leaves in a summary",
-                "The key the client authenticates to that server with, on its way out inside ordinary prose.",
+                "The credential is caught leaving",
+                "The synthetic key the client would authenticate with, placed in ordinary outbound prose. The block is recorded against the session.",
                 mcp["key_block"]["reason"],
                 "blocked",
             ),
             (
-                "A later authorized write, same session",
-                f"The user asks for a second, unrelated write ({mcp['second_proposal']['args']}). It is correctly authorized and correctly bound. It is refused on the strength of what the egress check recorded a moment earlier, and the reason names each contributing signal.",
+                "A later write, same session",
+                f"A second write the user asked for, on an adjacent monitor ({mcp['second_proposal']['args']}). The session-risk gate returns before the policy engine and the binding verifier run, so this denial by itself says nothing about whether the authorization was valid.",
                 mcp["post_block_write"]["reason"],
                 "blocked",
             ),
+            (
+                "Control: the same call, same artifacts, unescalated session",
+                "The identical call carrying the identical AuthorizationEvent and Binding, against a session that never blocked anything. It runs the full path, so the policy engine validates the event and the verifier checks the binding. That is what licenses reading the row above as caused by the egress block.",
+                mcp["unescalated_control_write"]["reason"],
+                "allowed",
+            ),
         ],
         caveats=(
-            "One SecurityPipeline runs all six calls, so every state transition shown is continuous rather than assembled from separate demonstrations.",
-            "Policy is per context and state is per session: reads carry contaminated_tool_policy=allow while writes carry require_auth, which is what keeps reads usable after untrusted ingest while writes tighten.",
-            "The server's own scope checks are not modelled here and are not the subject. Every call an attacker induces is one the credential is entitled to make, which is why a correct scope model does not stop it.",
+            "One SecurityPipeline runs the six session rows, so their state transitions are continuous. The two control rows are separate pipelines, marked as such in the fixture.",
+            "No model and no MCP server run here. A permitted result means the gate returned allowed, not that a write was performed.",
+            "Authorization origin is a host obligation the library does not perform (A-AS8). The adapter used here reads only the user's turn. Handed the record's text it would match, since the wording is identical; what is demonstrated is that content never reaches it, not that it could withstand content if it did.",
+            "The server's own scope checks are not modelled. The assumption, not a result shown here, is that every induced call is one the credential is entitled to make.",
         ),
     )
 

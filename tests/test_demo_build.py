@@ -522,7 +522,7 @@ def test_badges_do_not_rely_on_color_alone():
         for outcome, glyph, label in BADGE_RE.findall(page):
             assert (glyph, label) == generator.OUTCOME_BADGES[outcome], (name, outcome)
             seen += 1
-    assert seen == 41, seen
+    assert seen == 43, seen
 
 
 def test_demo_content_containers_wrap_long_tokens():

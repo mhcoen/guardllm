@@ -346,7 +346,22 @@ _LC_ACRONYM = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
 #: A number noun ("number", "no.", "#") separates a label from its value on
 #: its own. Requiring punctuation *after* the noun as well is what made
 #: "Routing number 021000021" and "DL no. A1234567" invisible.
-_SEP_NOUN = r"[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"
+#: But a noun standing alone as the separator leaves the next word looking like
+#: a value, and these classes have no checksum to reject it, so "Medical record
+#: number required" tokenized the word "required". Where an explicit ``:`` or
+#: ``=`` follows the noun, the value is whatever was written. Where it does not,
+#: the value must at least be shaped like an identifier: containing a digit, or
+#: written as an uppercase code. That is the "stronger evidence" an all
+#: lowercase English word cannot supply, and it costs only the unpunctuated
+#: all-alphabetic-lowercase form, which no issuing authority uses.
+#: ``(?-i:`` is load bearing. This is spliced inside the ``(?i:`` group that
+#: _LO opens, so an uppercase class here matches lowercase too, and "required"
+#: satisfied the uppercase-code alternative exactly as before the guard existed.
+_CODE_SHAPED = r"(?=\S*\d|(?-i:[A-Z][A-Z0-9]{2,})(?![A-Za-z]))"
+_SEP_NOUN = (
+    r"[\s_]*(?:number|no\.?|#)[\"'’”]?\s*"
+    r"(?:[:=]\s*[\"'‘“]?|[\"'‘“]?" + _CODE_SHAPED + r")"
+)
 _SEP_STRICT = r"[\"'’”]?\s*(?:[:=]|\bis\b)\s*[\"'‘“]?"
 
 
@@ -459,7 +474,12 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         # A number noun is its own separator, so "card number 9468..." works.
         # Bare "card" and "pan" are ordinary English words and need an explicit
         # one, or "the card is 12 of 52" becomes a candidate.
-        rf"(?:{_LO}(?:card|credit[\s_]card)[\s_]*(?:number|no\.?|#)"
+        # UATP belongs on this branch too. It is absent from the unlabelled IIN
+        # table on purpose (a one digit prefix over-matches), so the labelled
+        # path is its only detector, and without the number nouns here "UATP
+        # account number 1354..." was a plaintext PAN.
+        rf"(?:{_LO}(?:card|credit[\s_]card|uatp(?:[\s_]*(?:card|account))?)"
+        r"[\s_]*(?:number|no\.?|#)"
         r"[\"'’”]?\s*[:=]?\s*[\"'‘“]?)"
         rf"|{_LO}(?:cardnumber|credit[\s_]card|uatp(?:[\s_]*account)?){_LC_ACRONYM}"
         rf"|{_LO}(?:card|pan){_LC})"

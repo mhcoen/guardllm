@@ -8,6 +8,9 @@ codec, the detector, and the pipeline together.
 from __future__ import annotations
 
 import itertools
+import random
+import re
+import string
 
 import pytest
 
@@ -1034,21 +1037,51 @@ class TestRoundFourRegressions:
         assert any("Smith" in p for p in person)
 
     @pytest.mark.parametrize("text,tail", [
-        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence", "in this ordinary sentence"),
-        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing text kept"),
+        ('The key is sk-ABCDEFGHIJKLMNOPQRSTUV, please use it today', "please use it today"),
+        ('The key is sk-ABCDEFGHIJKLMNOPQRSTUV. Please use it today', "Please use it today"),
+        ('use sk-abcdefghijklmnopqrstuvwx; then restart the service', "then restart the service"),
+        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', "then continue"),
+        ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
     ])
-    def test_credential_substitution_preserves_surrounding_text(self, text, tail):
-        """A greedy pattern on a whitespace-merged form ran through the words
-        after the credential, so substitution deleted the rest of the line."""
+    def test_a_delimited_credential_preserves_surrounding_text(self, text, tail):
+        """Where the extent is KNOWN, nothing around the credential is touched.
+
+        Punctuation ends the character class in the raw and the merged form
+        alike, so both scans agree on the span and no reconstruction widens it.
+        This is the precision that survives the line rule below, and it covers
+        the shapes credentials actually appear in: quoted, in JSON, in a
+        sentence, in a call.
+        """
         v = _vault()
         result = v.deidentify(text, deny_action="marker")
         assert tail in result.content
         assert "redacted:credential" in result.content
 
+    @pytest.mark.parametrize("text,gone", [
+        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence", "ordinary"),
+        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing"),
+    ])
+    def test_an_undelimited_credential_costs_the_rest_of_its_line(self, text, gone):
+        """And where the extent is UNKNOWN, the line is the unit of redaction.
+
+        This is a deliberate loss, recorded so it is not mistaken for a bug.
+        "lead sk-<27 chars> trailing" and "BEGIN sk-<20 chars> <rest of the
+        key>" are the same text: a complete raw match, whitespace, more
+        characters the grammar admits. Nothing distinguishes them, so whatever
+        is done to one is done to the other, and keeping the words here means
+        keeping 34 characters of a live key at 517 of 6,290 split positions.
+        The words go. The document is still never withheld.
+        """
+        v = _vault()
+        result = v.deidentify(text, deny_action="marker")
+        assert gone not in result.content
+        assert "redacted:credential" in result.content
+        assert result.allowed
+
     def test_a_contiguous_credential_is_not_truncated(self):
         """Minimizing a reconstruction must not displace an exact raw match."""
         v = _vault()
-        out = v.deidentify("lead sk-abcdefghijklmnopqrstuvwx trailing", deny_action="marker")
+        out = v.deidentify("lead sk-abcdefghijklmnopqrstuvwx, trailing", deny_action="marker")
         assert "uvwx" not in out.content
         assert "trailing" in out.content
 
@@ -1238,15 +1271,27 @@ class TestRoundFiveRegressions:
                 for j in range(len(secret), i + 9, -1):
                     assert secret[i:j] not in out.content, f"stride {stride}: {secret[i:j]!r}"
 
-    def test_sparse_splits_keep_prose_and_leak_nothing(self):
-        """Case 2 above: a raw pattern match on the prefix, one inserted space."""
+    def test_sparse_splits_leak_nothing_and_spare_other_lines(self):
+        """Case 2 above: a raw pattern match on the prefix, one inserted space.
+
+        The prose on the credential's OWN line goes with it (see
+        test_an_undelimited_credential_costs_the_rest_of_its_line: at these
+        split positions the text is indistinguishable from a contiguous key
+        followed by words). What must survive is everything else, because
+        running past the line was how a 199 character document was once erased
+        down to its first word.
+        """
         v = _vault()
         secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
         # The pattern needs twenty characters after "sk-", so a raw match only
         # exists from position 23 onward. Below that it is case 3.
         for pos in range(23, len(secret) - 2):
-            out = v.deidentify(f"a {secret[:pos]} {secret[pos:]} KEEP END", deny_action="marker")
-            assert "KEEP END" in out.content, f"prose deleted at split {pos}"
+            out = v.deidentify(
+                f"FIRST LINE\na {secret[:pos]} {secret[pos:]} KEEP END\nLAST LINE",
+                deny_action="marker",
+            )
+            assert "FIRST LINE" in out.content, f"line above deleted at split {pos}"
+            assert "LAST LINE" in out.content, f"line below deleted at split {pos}"
             for i in range(len(secret)):
                 for j in range(len(secret), i + 11, -1):
                     assert secret[i:j] not in out.content, f"split {pos}: {secret[i:j]!r}"
@@ -1255,22 +1300,24 @@ class TestRoundFiveRegressions:
         """The failure that mattered: three split positions of a Google OAuth
         token erased a 199-character document down to its first word.
 
-        The document is never withheld now, at any split. Whether the tail on
-        the *same line* survives depends on which case applies (see
-        test_obfuscated_credential_contract): once a raw pattern match exists,
-        the extent is anchored and the tail survives; below that there is
-        nothing in the original to anchor to.
+        The document is never withheld now, at any split, and the redaction
+        never reaches past the credential's own line. Text sharing that line is
+        a separate question with a separate answer (see
+        test_an_undelimited_credential_costs_the_rest_of_its_line).
         """
         v = _vault()
         token = "ya29." + "A0ARrdaM" * 6
-        tail = "the complete support summary follows here END"
+        # The first token of the line below is forfeit when the split leaves a
+        # fragment against the break, which is the wrap rule doing its job.
+        # Everything after it is what must survive.
+        tail = "PAD the complete support summary follows here END"
+        rest = "complete support summary follows here END"
         for pos in range(4, len(token), 2):
             split = f"{token[:pos]} {token[pos:]}"
-            out = v.deidentify(f"BEGIN {split} {tail}", deny_action="marker")
+            out = v.deidentify(f"BEGIN {split}\n{tail}", deny_action="marker")
             assert out.allowed, f"document withheld at split {pos}"
             assert "redacted:credential" in out.content
-            if pos >= 25:  # a raw "ya29." pattern match exists from here on
-                assert tail in out.content, f"unrelated text deleted at split {pos}"
+            assert rest in out.content, f"unrelated line deleted at split {pos}"
 
     def test_a_reconstruction_never_crosses_a_line_boundary(self):
         """Unanchored reconstructions used to run to the pattern's maximum
@@ -1281,18 +1328,24 @@ class TestRoundFiveRegressions:
             Guard.context_web(),
         )
         assert "L1 header" in out.content
-        assert "L3 body" in out.content
+        # One token past the break is the whole allowance; "L3" goes, its line
+        # does not, and the line after it is untouched.
+        assert "body" in out.content
         assert "L4 footer" in out.content
         assert "redacted:credential" in out.content
 
     @pytest.mark.parametrize("text,fragment,keep", [
-        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "uvwx", "trailing text kept"),
-        ("Please preserve ya29.A0ARrdaMA0ARrdaMA0ARrdaM in this sentence", "rdaM", "in this sentence"),
+        ("lead sk-abcdefghijklmnopqrstuvwx, trailing text kept", "uvwx", "trailing text kept"),
+        ("Please preserve ya29.A0ARrdaMA0ARrdaMA0ARrdaM. In this sentence", "rdaM", "In this sentence"),
     ])
     def test_contiguous_credentials_are_exact(self, text, fragment, keep):
         """A raw match is exact, so it must never be shortened by the
         reconstruction path: minimizing it truncated the secret and left its
-        tail visible."""
+        tail visible.
+
+        Delimited, so the extent is known on both scans. Undelimited is the
+        other contract, tested next door.
+        """
         v = _vault()
         out = v.deidentify(text, deny_action="marker")
         assert fragment not in out.content
@@ -1575,7 +1628,9 @@ class TestRoundEightRegressions:
             Guard.context_web(),
         )
         assert "BEGIN line one" in out.content
-        assert "END line three" in out.content
+        # "END" is the one token past the break that the wrap rule is allowed
+        # to take. The rest of the line, and the document, stay.
+        assert "line three" in out.content
         assert not out.blocked
 
     @pytest.mark.parametrize("framing", ["first_colon", "second_colon", "both_colons"])
@@ -1865,12 +1920,255 @@ class TestWrappedCredential:
                 for j in range(len(secret), i + 9, -1):
                     assert secret[i:j] not in out.content, f"wrap {pos}: {len(secret[i:j])} chars"
 
-    def test_the_extension_still_stops_at_ordinary_prose(self):
-        """It must not become a licence to run to the end of the document."""
+    def test_the_extension_stops_one_token_past_the_break(self):
+        """It must not become a licence to run to the end of the document.
+
+        Crossing the break at all is what catches a wrapped tail of ten to
+        nineteen characters, which is too short for the entropy scanner's
+        twenty character gate to see on its own line. Crossing it by exactly
+        one token is what stops that from consuming the rest of the document:
+        the line below loses its first word and nothing else, and the lines
+        after it lose nothing.
+        """
         guard = Guard(privacy=PrivacyConfig())
         out = guard.process_inbound(
             "L1 header\nL2 sk-abcdefghij klmnopqrstuvwx\nL3 body\nL4 footer",
             Guard.context_web(),
         )
-        for keep in ("L1 header", "L3 body", "L4 footer"):
+        for keep in ("L1 header", "body", "L4 footer"):
             assert keep in out.content
+        # Exactly one token past the break, not the line and not the document.
+        assert "L3" not in out.content
+
+
+# ---------------------------------------------------------------------------
+# Round ten
+# ---------------------------------------------------------------------------
+
+
+def _longest_surviving_run(haystack: str, needle: str, floor: int = 8) -> int:
+    """Longest run of ``needle`` still present, measured against the ORIGINAL
+    value rather than by re-asking the scanner that produced the redaction."""
+    for length in range(len(needle), floor - 1, -1):
+        for i in range(len(needle) - length + 1):
+            if needle[i : i + length] in haystack:
+                return length
+    return 0
+
+
+#: Punctuation bearing and at or near the grammar maximum. The predecessor of
+#: the current extent rule only followed alphanumeric fragments, so every
+#: grammar admitting "-" or "_" kept a tail: Slack 27 characters, Google 36,
+#: OpenAI project 35. Fixtures without punctuation could not show it.
+_GRAMMAR_FIXTURES = {
+    "slack": "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M",
+    "slack_hyphen_dense": "xoxp-" + "a1b2-c3d4-" * 9 + "e5f6",
+    "google_underscore": "ya29." + "A0ARrdaM-x_9KpQ" * 6,
+    "openai_project": "sk-proj-" + "Ab3-Cd4_Ef5" * 8,
+    "openai": "sk-" + "A1b2C3d4E5f6G7h8" * 4,
+    "github": "ghp_" + "A1b2C3d4E5f6G7h8I9j0" * 2,
+    "aws": "AKIAIOSFODNN7EXAMPLE",
+    "jwt": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.dBjftJeZ4CVPmB92K27uhbUJU1p1rwW1gFWFOEjXk",
+}
+
+_SPLIT_TEMPLATES = [
+    "BEGIN {a} {b} documentation configuration authentication END",
+    "line one\nprefix {a}\n{b} trailing words here\nline four",
+    "{a}\t{b}",
+    "intro line\n{a} {b}\nfollowing line kept\nlast line",
+]
+
+
+class TestRoundTenRegressions:
+    @pytest.mark.parametrize("name", sorted(_GRAMMAR_FIXTURES))
+    def test_no_grammar_leaks_a_tail_at_any_split(self, name):
+        """Finding 1. Every split position of every grammar, including the
+        punctuation-bearing ones the alphanumeric walk could not follow."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = _GRAMMAR_FIXTURES[name]
+        for pos in range(1, len(secret)):
+            for template in _SPLIT_TEMPLATES:
+                text = template.format(a=secret[:pos], b=secret[pos:])
+                spans, _ = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                run = _longest_surviving_run(out, secret)
+                assert run == 0, f"{name} split {pos}: {run} chars survived"
+
+    @pytest.mark.parametrize("text", [
+        "Please read the documentation configuration authentication guide today",
+        "internationalization localization synchronization authentication",
+        # `sk_` sits inside `netmask_cache`, and once whitespace is removed the
+        # following words supply the twenty alphanumerics the OpenAI grammar
+        # wants. Acted on, this redacted 67,445 characters of ipaddress.py. The
+        # words after it must contain no underscore, or the run ends early and
+        # the case is not reproduced at all.
+        "netmask_cache holds every prefixlen value here",
+    ])
+    def test_ordinary_long_words_are_never_redacted(self, text):
+        """Finding 1, the other direction. A ten character threshold ate three
+        real English words, and `sk_` inside `netmask_cache` acquired twenty
+        alphanumerics once whitespace was removed, redacting 67,445 characters
+        of ipaddress.py."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        spans, _ = scan_secret_spans(text)
+        assert spans == []
+
+    def test_a_bracket_free_damaged_token_is_refused(self):
+        """Finding 2. Framing and colons removed and one body symbol deleted:
+        the payload scan cannot match a short body and the proximity scan only
+        looked inside doubled brackets, so this dispatched literally."""
+        v = _vault()
+        out = v.deidentify("Contact alice.wonderland@corp.example please")
+        token = re.search(r"\[\[GL:([A-Z_]+):([0-9A-Z]+)\]\]", out.content)
+        cls, body = token.group(1), token.group(2)
+        damaged = "GL" + cls + body[:5] + body[6:]
+        assert v._has_stray_issued_payload(damaged)
+        # And the shapes either side of it, for the same reason.
+        assert v._has_stray_issued_payload("[[GL" + cls + body[:5] + body[6:] + "]]")
+        assert v._has_stray_issued_payload("GL:" + cls + ":" + body[:5] + body[6:])
+
+    def test_bracket_shaped_bulk_does_not_stall_the_scan(self):
+        """Finding 3. A megabyte of payload-shaped bracket regions took 7.4
+        seconds generating every window of every region."""
+        import time
+
+        v = _vault()
+        v.deidentify("Contact alice.wonderland@corp.example please")
+        random.seed(3)
+        alphabet = string.digits + "ABCDEFGHJKMNPQRSTVWXYZ"
+        parts, total = [], 0
+        while total < 1_000_000:
+            region = "[[GL:EMAIL:" + "".join(random.choice(alphabet) for _ in range(40)) + "]]"
+            parts.append(region)
+            total += len(region)
+        started = time.monotonic()
+        v._has_stray_issued_payload("".join(parts)[:1_000_000])
+        assert time.monotonic() - started < 2.0
+
+    def test_a_large_benign_document_is_not_refused(self):
+        """Finding 3, the other direction. A work budget alone refused 4,000
+        ordinary wiki links; the trigram prefilter is what keeps them out of
+        the scan in the first place."""
+        v = _vault()
+        v.deidentify("Contact alice.wonderland@corp.example please")
+        doc = "".join(
+            f"[[Reference GL-2024-{i:04d} approved]] some ordinary prose here. "
+            for i in range(4000)
+        )
+        assert not v._has_stray_issued_payload(doc)
+
+    @pytest.mark.parametrize("text", [
+        "UATP account number 135412345678903",
+        "UATP card number 135412345678903",
+        "UATP number 135412345678903",
+        "UATP no. 135412345678903",
+        "UATP account no. 135412345678903",
+        "uatp account number: 135412345678903",
+    ])
+    def test_uatp_labelled_forms_are_detected(self, text):
+        """Finding 4. UATP is absent from the unlabelled IIN table on purpose,
+        so a labelled form it missed was a plaintext PAN with no fallback."""
+        found = detect(text, classes=frozenset({PIIClass.CREDIT_CARD})).matches
+        assert [m.value for m in found] == ["135412345678903"]
+
+    @pytest.mark.parametrize("text", [
+        "Driver license number required",
+        "Medical record number required",
+        "National ID number required",
+        "Routing number optional",
+        "Driver license number missing",
+        "Medical record number unknown",
+        "DL no. required",
+        "National ID number pending",
+        "Please provide your driver license number promptly",
+    ])
+    def test_requirement_prose_is_not_tokenized(self, text):
+        """Finding 5. A number noun separates a label from its value on its
+        own, and these classes have no checksum, so the next word became the
+        value."""
+        classes = frozenset({
+            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD,
+            PIIClass.NATIONAL_ID, PIIClass.ROUTING_NUMBER, PIIClass.PHONE,
+        })
+        assert detect(text, classes=classes).matches == []
+
+    @pytest.mark.parametrize("text,value", [
+        ("Routing number 021000021", "021000021"),
+        ("DL no. A1234567", "A1234567"),
+        ("Medical record number 4471902", "4471902"),
+        ("National ID number 123456789", "123456789"),
+        ("Driver license number D1234567", "D1234567"),
+        ("DL number ABC1234", "ABC1234"),
+        # Uppercase code form, and the explicit separator that admits anything.
+        ("Medical record number ALPHAONE", "ALPHAONE"),
+        ("Medical record number: alphaone", "alphaone"),
+    ])
+    def test_code_shaped_values_still_detected(self, text, value):
+        """Finding 5 must not cost recall. `(?-i:` is what makes this real: the
+        guard is spliced inside the case-insensitive group _LO opens, so an
+        uppercase class matches lowercase and "required" passed as a code."""
+        classes = frozenset({
+            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD,
+            PIIClass.NATIONAL_ID, PIIClass.ROUTING_NUMBER, PIIClass.PHONE,
+        })
+        assert [m.value for m in detect(text, classes=classes).matches] == [value]
+
+    def test_a_credential_ending_inside_its_line_spares_the_lines_below(self):
+        """Finding 1. The wrap rule may only cross a line break when the value
+        runs up to it. A value terminated by whitespace earlier on the line was
+        not broken by the break, so nothing below continues it, and without
+        that gate the walk crossed break after break through ordinary prose and
+        took the rest of the document."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        text = (
+            "line one\n"
+            "line two has sk-A1b2C3d4E5f6G7h8I9j0K1l2 inside\n"
+            "line three kept\n"
+            "line four kept"
+        )
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert "line three kept" in out
+        assert "line four kept" in out
+        assert "K1l2" not in out
+
+    def test_the_window_budget_refuses_rather_than_grinding(self):
+        """Finding 3. The trigram prefilter turns ordinary content away for
+        nothing, but an attacker who has seen a token can mint unlimited
+        regions that pass it and are still no match. Those consume windows, and
+        the budget is what stops them: refusing is the safe direction, since
+        what is left unexamined might have been a damaged token.
+        """
+        v = _vault()
+        out = v.deidentify("Contact alice.wonderland@corp.example please")
+        body = re.search(r"\[\[GL:[A-Z_]+:([0-9A-Z]+)\]\]", out.content).group(1)
+        random.seed(11)
+        alphabet = string.digits + "ABCDEFGHJKMNPQRSTVWXYZ"
+        seen, regions = set(), []
+        while len(regions) < 1500:
+            cand = body[:-4] + "".join(random.choice(alphabet) for _ in range(4))
+            if cand in seen:
+                continue
+            seen.add(cand)
+            region = "[[" + cand + "]] "
+            # Keep only regions that are genuinely NOT a near miss, so any
+            # refusal below is the budget and not a real detection.
+            if not v._has_stray_issued_payload(region):
+                regions.append(region)
+        blob = "".join(regions)
+
+        original = PrivacyVault._PROXIMITY_WINDOW_BUDGET
+        try:
+            PrivacyVault._PROXIMITY_WINDOW_BUDGET = 10**9
+            assert not v._has_stray_issued_payload(blob), "fixture is a real match"
+            PrivacyVault._PROXIMITY_WINDOW_BUDGET = 200
+            assert v._has_stray_issued_payload(blob)
+        finally:
+            PrivacyVault._PROXIMITY_WINDOW_BUDGET = original

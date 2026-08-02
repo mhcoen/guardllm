@@ -34,6 +34,7 @@ import hmac
 import re
 import secrets
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 
 from guardllm.security import token_codec as codec
@@ -484,6 +485,60 @@ class PrivacyVault:
     #: like "GL:DEBUG:1" or an OpenGL version string.
     _GL_REGION_RE = re.compile(r"\[\s*\[[^\[\]]{4,80}\]\s*\]")
 
+    #: The same signature without the brackets. Requiring them meant a token
+    #: stripped of BOTH its framing and its colons was never offered to the
+    #: proximity check at all: "GLEMAIL9YP4W6Y742ZMYT", one body symbol short,
+    #: resolved to nothing, passed as ordinary text and dispatched literally.
+    _GL_SIGNATURE_RE = re.compile(r"(?i)GL[0-9A-Za-z\s\-./\\_,:]{10,60}")
+
+    #: Windows the proximity scan may examine per call. Every candidate region
+    #: yields five widths at every offset, so a megabyte of payload-shaped
+    #: content took 7.4 seconds, which is a worker occupied by one argument.
+    _PROXIMITY_WINDOW_BUDGET = 40_000
+
+    def _proximity_candidates(self, text: str) -> Iterator[str]:
+        """Regions worth measuring edit distance against the issued set.
+
+        The prefilter has to be cheap and has to run BEFORE any window is
+        generated. A raw digit is what it tests, because a live payload always
+        carries one and ordinary bracketed prose does not: "[[Glossary of
+        terms]]" is rejected here for a few nanoseconds instead of producing
+        seventy five windows and thirteen trigrams apiece. The test is on the
+        raw text deliberately, since Crockford folding maps I, L and O onto
+        digits and would hand every English word one.
+        """
+        seen: set[str] = set()
+        for pattern, trim in ((self._GL_REGION_RE, 2), (self._GL_SIGNATURE_RE, 0)):
+            for m in pattern.finditer(text):
+                raw = m.group()[trim : len(m.group()) - trim] if trim else m.group()
+                if not any(c.isdigit() for c in raw):
+                    continue
+                # Colons are stripped: the damage being detected is a missing
+                # or misplaced delimiter, so the check cannot depend on one.
+                compact = _crockford_fold(
+                    raw.translate(self._STRIP_SEPARATORS).replace(":", "")
+                )
+                if len(compact) < codec.CODEWORD_SYMBOLS - 2 or compact in seen:
+                    continue
+                seen.add(compact)
+                # Second prefilter, and the one that decides the cost. Every
+                # trigram of a window is a trigram of the region containing it,
+                # so a region sharing fewer than six with every issued body
+                # cannot hold a window that shares six, and no window need be
+                # generated for it at all. One pass over the region replaces
+                # five widths at every offset. This cannot hide a damaged
+                # token: it is a necessary condition for the inner test, not an
+                # approximation of it. Ordinary prose lands here and stops:
+                # 4,000 distinct "[[Reference GL-2024-0001 approved]]" regions
+                # were otherwise enough to exhaust the budget and refuse a
+                # perfectly good document.
+                counts: dict[str, int] = {}
+                for gram in _trigrams(compact):
+                    for body in self._body_trigrams.get(gram, ()):
+                        counts[body] = counts.get(body, 0) + 1
+                if counts and max(counts.values()) >= 6:
+                    yield compact
+
     def _has_stray_issued_payload(self, text: str) -> bool:
         """True when a live issued payload survives outside a valid token.
 
@@ -516,23 +571,26 @@ class PrivacyVault:
                 if folded[k : k + n] in self._issued_bodies:
                     return True
 
-        for m in self._GL_REGION_RE.finditer(text):
-            # Proximity to an ISSUED payload, not a shape heuristic. Keying on
-            # "GL" plus a known class name was wrong in both directions: a
-            # transposed class ("[[GL:EMIAL:...]]") evaded it, while
-            # "[[GL Email Configuration]]" and "[[GL Address Normalization]]"
-            # were refused. Edit distance to the issued set cannot do either:
-            # prose is nowhere near a random 60-bit payload, and a mistyped
-            # token is.
-            #
-            # Colons are stripped: the damage being detected is a missing or
-            # misplaced delimiter, so the check cannot depend on one.
-            compact = _crockford_fold(
-                m.group()[2:-2].translate(self._STRIP_SEPARATORS).replace(":", "")
-            )
-            n = codec.CODEWORD_SYMBOLS
+        # Proximity to an ISSUED payload, not a shape heuristic. Keying on "GL"
+        # plus a known class name was wrong in both directions: a transposed
+        # class ("[[GL:EMIAL:...]]") evaded it, while "[[GL Email
+        # Configuration]]" and "[[GL Address Normalization]]" were refused.
+        # Edit distance to the issued set cannot do either: prose is nowhere
+        # near a random 60-bit payload, and a mistyped token is.
+        n = codec.CODEWORD_SYMBOLS
+        budget = self._PROXIMITY_WINDOW_BUDGET
+        for compact in self._proximity_candidates(text):
             for width in (n - 2, n - 1, n, n + 1, n + 2):
                 for k in range(len(compact) - width + 1):
+                    budget -= 1
+                    if budget < 0:
+                        # Out of scan budget with candidates still unexamined.
+                        # Whether a damaged token is among them is now unknown,
+                        # and unknown resolves the same way everywhere else
+                        # here: refuse. Reaching this needs content that is
+                        # both payload-shaped and enormous, which is a crafted
+                        # input, not a document.
+                        return True
                     window = compact[k : k + width]
                     counts: dict[str, int] = {}
                     for gram in _trigrams(window):

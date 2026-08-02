@@ -44,6 +44,18 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
 ]
 
+def _merged_variant(source: str) -> str:
+    """Rewrite a pattern so it still matches once whitespace has been removed.
+
+    Two grammars here contain whitespace of their own: ``Bearer\\s+...`` and the
+    PEM header. Against the whitespace-merged form they could never match, so a
+    JWT split inside its payload was reconstructed by nobody and left its middle
+    segment in the text. Making their whitespace optional is what lets the
+    merged scan see them at all.
+    """
+    return source.replace(r"\s+", r"\s*").replace(" ", r"\s*")
+
+
 _ENTROPY_THRESHOLD = 4.5
 _ENTROPY_MIN_LENGTH = 20
 # A string of length L has a maximum possible Shannon entropy of log2(L).
@@ -52,6 +64,10 @@ _ENTROPY_MIN_LENGTH = 20
 # such short tokens, flag when the entropy is within this margin of the
 # theoretical maximum for the length (i.e. near-maximal randomness) instead.
 _ENTROPY_LENGTH_MARGIN = 0.30
+
+_MERGED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(_merged_variant(p.pattern)), label) for p, label in _SECRET_PATTERNS
+]
 
 # Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
@@ -126,28 +142,90 @@ def _pattern_and_entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]
     return out
 
 
-def _extend_through_fragments(text: str, end: int) -> int:
-    """Extend a span through following tokens that look like more of the value.
+def _line_end(text: str, pos: int) -> int:
+    """End of the line containing ``pos``, exclusive of the newline."""
+    nl = text.find("\n", pos)
+    return len(text) if nl == -1 else nl
 
-    Alphanumeric and at least ten characters. A prose word rarely reaches ten,
-    a credential fragment usually does, and the walk stops at the first token
-    that fails, so the over-redaction is bounded to adjacent tokens rather than
-    running to the pattern's maximum length. Crosses line breaks deliberately:
-    the common way a credential gets split is being wrapped onto the next line.
+
+def _line_start(text: str, pos: int) -> int:
+    """Start of the line containing ``pos``."""
+    return text.rfind("\n", 0, pos) + 1
+
+
+def _next_token(text: str, pos: int) -> tuple[int, int]:
+    """The next whitespace delimited token at or after ``pos``."""
+    nxt = pos
+    while nxt < len(text) and text[nxt].isspace():
+        nxt += 1
+    stop = nxt
+    while stop < len(text) and not text[stop].isspace():
+        stop += 1
+    return nxt, stop
+
+
+def _extend_ambiguous(
+    text: str, lo: int, hi: int, pattern: re.Pattern[str], reach: int, may_wrap: bool
+) -> int:
+    """Widen a span whose true extent cannot be recovered from the text.
+
+    A credential is contiguous when written. Once whitespace is inserted into
+    it, nothing marks where it stopped: the characters that continue a key are
+    the characters that spell a word. Every rule that tried to tell them apart
+    failed in one direction or the other. The predecessor here required a
+    following token to be alphanumeric and at least ten characters, which both
+    kept a 27 character tail of a Slack token, whose grammar admits ``-`` so
+    the fragment was not alphanumeric, and deleted ``documentation
+    configuration authentication`` out of ordinary prose.
+
+    So this does not guess at word boundaries. Within the line the unit of
+    redaction is the whole line. Past the line break it is a single token, and
+    only under conditions that make a wrap possible at all, because a walk that
+    was free to cross break after break took the rest of a document with it.
     """
-    while end < len(text):
-        nxt = end
-        while nxt < len(text) and text[nxt].isspace():
-            nxt += 1
-        stop = nxt
-        while stop < len(text) and not text[stop].isspace():
-            stop += 1
-        token = text[nxt:stop]
-        if len(token) >= 10 and token.isalnum():
-            end = stop
-            continue
-        break
+    end = _line_end(text, max(lo, hi - 1))
+    if not may_wrap:
+        return end
+
+    def merged_to(stop: int) -> str:
+        return _WHITESPACE_RE.sub("", text[lo:stop])
+
+    # The value may be cut short of its own grammar by the break, so take
+    # whatever tokens the minimum still requires. ``match``, not ``fullmatch``:
+    # the question is whether a complete credential is present from the start,
+    # not whether the entire span is one. Bounded by the grammar's minimum.
+    while end < len(text) and not pattern.match(merged_to(end)):
+        nxt, stop = _next_token(text, end)
+        if nxt >= len(text):
+            break
+        end = stop
+
+    # One token more, for the remainder of a value the break split after its
+    # minimum was already met. Exactly one: that covers a wrap, and it bounds
+    # what a contiguous credential sitting at a line end can cost the text
+    # below it to a single word. Skipped when the raw scan already covers the
+    # continuation from its first character, since it will redact it unaided
+    # and widening here would only destroy more.
+    if end < reach:
+        nxt, stop = _next_token(text, end)
+        if nxt < reach:
+            cand = text[nxt : min(stop, reach)]
+            if not any(a == 0 for a, _ in _pattern_and_entropy_spans(cand, merged=False)):
+                end = min(stop, max(reach, end))
     return end
+
+
+def _is_exact(spans: list[tuple[int, int]], lo: int, hi: int) -> bool:
+    """Did the raw scan already locate precisely this span?
+
+    A merged-form match that maps back onto the identical span found nothing
+    the raw grammar had not already delimited, so its extent is known and the
+    surrounding text is safe. This is what keeps quoted and punctuated contexts
+    precise: in ``{"key": "sk-...", "other": "value"}`` the quote ends the
+    character class in both forms, the two matches coincide, and nothing beyond
+    the credential is touched.
+    """
+    return any(a == lo and b == hi for a, b in spans)
 
 
 def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
@@ -163,21 +241,36 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     rather than asking the same scanner again, the shortest prefix left up to
     25 recoverable characters of a live key at 63 of 145 split positions.
 
-    What distinguishes the two cases is which scanner matched in the RAW text:
+    The settled rule is that the extent is either KNOWN or it is not, and the
+    two get different treatment:
 
-    * A **pattern** match in the raw text located the credential using its own
-      grammar, start and end. That extent is authoritative, so no
-      reconstruction may extend it, and a contiguous credential leaves the
-      surrounding prose untouched.
-    * When only the **merged** form matches, the value is split, no exact
-      extent exists in the original, and the greedy token-aligned span is used.
-      That over-redacts adjacent words, which is the correct direction for a
-      class whose definition is that the value must not cross: the loss is
-      visible as a marker, a surviving fragment is visible to nobody.
+    * **Known.** The whitespace-merged form matches over exactly the span the
+      raw grammar already delimited. Merging changed nothing, so the credential
+      is contiguous and its own start and end are authoritative. Nothing around
+      it is touched. Quoting and punctuation land here, because a quote or
+      comma ends the character class in both forms: in
+      ``{"key": "sk-...", "other": "value"}`` only the key is redacted.
+    * **Unknown.** The merged form matches over more than the raw scan
+      delimited, so whitespace was inserted into the value, or the raw match
+      was only its prefix. Nothing in the text says where it stopped: the
+      characters that continue a key are the characters that spell a word.
+      This does not guess. The unit of redaction becomes the logical line, and
+      the grammar decides how many lines: keep taking them while the merged
+      span still does not contain a complete credential, which crosses exactly
+      one line break for a wrapped value and none for a value that ended
+      inside its line.
 
-    An entropy hit is deliberately not treated as authoritative. It fires on
-    one token of a split credential, and letting it suppress the reconstruction
-    is exactly how half of a key stayed in the text.
+    Two earlier rules failed here and are recorded so they are not retried. The
+    shortest accepted prefix left up to 25 recoverable characters of a live key
+    at 63 of 145 split positions. Its replacement, extending through following
+    tokens that were alphanumeric and at least ten characters, failed in both
+    directions at once: it kept a 27 character tail of a Slack token, whose
+    grammar admits ``-`` so the fragment was not alphanumeric, and it deleted
+    ``documentation configuration authentication`` out of ordinary prose.
+
+    An entropy hit is deliberately not treated as delimiting. It fires on one
+    token of a split credential, and letting it suppress the reconstruction is
+    exactly how half of a key stayed in the text.
     """
     pattern_spans: list[tuple[int, int]] = []
     for pattern, _label in _SECRET_PATTERNS:
@@ -221,54 +314,56 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
         # high-entropy run, and mapping that back produced spans covering a
         # whole document. Entropy still contributes on the raw text above,
         # where token boundaries are intact.
-        found: list[tuple[int, int]] = []
-        for pattern, _label in _SECRET_PATTERNS:
-            found.extend((m.start(), m.end()) for m in pattern.finditer(form))
-        for lo_f, hi_f in found:
+        found: list[tuple[int, int, re.Pattern[str]]] = []
+        table = _MERGED_PATTERNS if merged else _SECRET_PATTERNS
+        for pattern, _label in table:
+            found.extend((m.start(), m.end(), pattern) for m in pattern.finditer(form))
+        for lo_f, hi_f, pattern in found:
             if not (lo_f < len(idx) and hi_f - 1 < len(idx)):
                 continue
             lo, hi = idx[lo_f], idx[hi_f - 1] + 1
-            # A reconstruction has no exact extent, so widen to the whitespace
-            # delimited tokens it participates in.
+            # The merged form located exactly what the raw grammar already had.
+            # Nothing is ambiguous, so nothing around it is touched.
+            if _is_exact(pattern_spans, lo, hi):
+                continue
+            # A credential begins where a token begins. Removing whitespace
+            # creates prefixes that never existed: `sk_` sits inside
+            # `netmask_cache`, and once the following words are joined to it,
+            # twenty alphanumerics follow and the OpenAI grammar matches. Acted
+            # on, that redacted 67,445 characters of ipaddress.py. Quotes,
+            # colons and brackets still count as boundaries, so a key inside
+            # JSON or YAML is unaffected.
+            if lo > 0 and (text[lo - 1].isalnum() or text[lo - 1] in "_-"):
+                continue
+            # How far the merged match reaches in original coordinates, kept
+            # before the clamps below so the wrap case can consult it.
+            reach = hi
+            # Otherwise the value is split, or the raw match was only its
+            # prefix. Widen to the whitespace delimited tokens involved.
             while lo > 0 and not text[lo - 1].isspace():
                 lo -= 1
             while hi < len(text) and not text[hi].isspace():
                 hi += 1
-            # Clamp to the line the match starts on. A reconstruction allowed
-            # to cross line breaks consumed the remainder of a multi-line
-            # document, which is the destruction this area exists to avoid. A
-            # credential genuinely wrapped onto the next line leaves its
-            # continuation as a separate token there, which the raw scan on
-            # that line handles on its own terms.
-            line_end = text.find("\n", lo)
-            if line_end != -1:
-                hi = min(hi, line_end)
-                if hi <= lo:
-                    continue
-            # A raw PATTERN match already fixed the extent here, so the
-            # reconstruction must not widen it into the following prose. Note
-            # this is checked against pattern spans only, never entropy spans:
-            # an entropy hit fires on one token of a split credential, and
-            # letting it suppress the reconstruction left half a key in place.
-            overlapping = [(a, b) for a, b in pattern_spans if a < hi and lo < b]
-            if overlapping:
-                # The raw match can still be a PREFIX of a split credential,
-                # which is how 19 characters survived at 33 of 145 splits.
-                # Extend through following tokens while they look like more of
-                # the same value: alphanumeric and long. A prose word rarely
-                # reaches ten characters, a credential fragment usually does,
-                # and the extension stops at the first token that fails, so the
-                # over-redaction is bounded to adjacent tokens rather than
-                # running to the pattern's maximum length.
-                base = max(b for _, b in overlapping)
-                end = _extend_through_fragments(text, base)
-                if end > base:
-                    spans.append((min(a for a, _ in overlapping), end))
+            # Clamp to the line the match starts on before widening further. A
+            # reconstruction allowed to run free consumed the remainder of a
+            # multi-line document, which is the destruction this area exists to
+            # avoid; _extend_ambiguous re-crosses a line break only when the
+            # grammar says the credential cannot have ended yet.
+            line_e = _line_end(text, lo)
+            hi = min(hi, line_e)
+            if hi <= lo:
                 continue
-            # The same walk applies to a reconstruction. Without it the line
-            # clamp above stopped at the newline and left the continuation of a
-            # wrapped credential visible on the next line.
-            spans.append((lo, _extend_through_fragments(text, hi)))
+            # Can the value have been broken by the line break at all? Only if
+            # it runs up to it. A raw match that finished earlier on this line,
+            # with whitespace after it, was terminated by that whitespace, so
+            # nothing below continues it. Without this the walk crossed break
+            # after break through ordinary prose and took the rest of a
+            # document with it, which is the failure this area exists to avoid.
+            may_wrap = not any(
+                a >= _line_start(text, lo) and b < line_e and text[b].isspace()
+                for a, b in pattern_spans
+            )
+            spans.append((lo, _extend_ambiguous(text, lo, hi, pattern, reach, may_wrap)))
 
     # Merge overlapping spans. They are all one class, so two that overlap are
     # one finding, and leaving them separate made partially overlapping
@@ -299,16 +394,24 @@ def _scan_secrets(text: str) -> list[str]:
     #  - `ws_removed`: whitespace also removed (defeats a space inserted
     #    mid-token, e.g. "sk-abcdefghij klmno...").
     # Patterns that legitimately contain whitespace (Bearer, PRIVATE KEY
-    # header) still match the raw `text`, so scan every form and union hits.
+    # header) cannot match a form their own separators were removed from, so
+    # the merged form is scanned with the variants that make that whitespace
+    # optional. Without it, splitting a JWT inside its payload was reported by
+    # nobody.
     stripped = strip_invisibles(text)
     ws_removed = _WHITESPACE_RE.sub("", stripped)
     forms = [text]
     for form in (stripped, ws_removed):
         if form not in forms:
             forms.append(form)
+    merged_only = [f for f in (ws_removed,) if f not in (text, stripped)]
 
-    for pattern, label in _SECRET_PATTERNS:
-        if label not in found and any(pattern.search(form) for form in forms):
+    for (pattern, label), (merged_pattern, _) in zip(_SECRET_PATTERNS, _MERGED_PATTERNS):
+        if label in found:
+            continue
+        if any(pattern.search(form) for form in forms) or any(
+            merged_pattern.search(form) for form in merged_only
+        ):
             found.append(label)
 
     # High-entropy token detection: look for long hex/base64-like tokens.

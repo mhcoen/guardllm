@@ -3299,7 +3299,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             ),
             (
                 "Read a pentest finding",
-                "The payload field of a stored-XSS finding is attacker-authored by construction. Nothing is removed here, because this is legitimate visible finding text: the detector reports it and it is returned inside an untrusted_content wrapper. It asks, in prose, for the write two rows down.",
+                "The payload field of a stored-XSS finding is attacker-authored by construction. Nothing is removed here, because this is legitimate visible finding text: the detector reports it and it is returned inside an untrusted_content wrapper. It asks, in prose, for the write attempted in the next row.",
                 "; ".join(mcp_steps["process_inbound:finding"]["primary_finding"]["rules"]),
                 "state",
             ),
@@ -3310,7 +3310,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                 "blocked",
             ),
             (
-                "Control: the same call, before contamination",
+                "Control: the same call, uncontaminated session",
                 "The identical call and context against a session that ingested nothing. It is implicitly allowed, because this tool is not in DESTRUCTIVE_TOOLS. That bounds the row above: contamination is what introduced the authorization requirement, not anything intrinsic to the tool.",
                 mcp["clean_control_write"]["reason"],
                 "allowed",

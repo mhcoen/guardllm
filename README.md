@@ -61,9 +61,24 @@ However, perfect security is not achievable in any system, especially LLM-based 
 
 ## Get Started
 
+Install the current version from source:
+
 ```bash
-pip install guardllm
+pip install git+https://github.com/mhcoen/guardllm.git
 ```
+
+To modify the library, run the tests, or work through the tutorials, clone it instead:
+
+```bash
+git clone https://github.com/mhcoen/guardllm.git
+cd guardllm
+pip install -e '.[dev]'
+```
+
+> **Do not install from PyPI.** The published `guardllm` package is 1.1.0 and predates
+> both the session-risk feedback loop this README describes and the detector, DLP, canary,
+> and isolation hardening in 1.2.0. Install from source until a current release is
+> published.
 
 1. Follow the quick-start guide: [docs/quick_start.md](docs/quick_start.md)
 2. Work through a [tutorial](tutorials/README.md). Each is a page to read and a script to run:

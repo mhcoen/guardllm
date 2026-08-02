@@ -1430,3 +1430,197 @@ class TestRoundSevenRegressions:
         start = time.perf_counter()
         v.prepare_args("gmail_send_email", {"subject": blob})
         assert time.perf_counter() - start < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Behavioural matrix generated from the same declarative data the
+# implementation uses.
+#
+# Source-integrity checks confirm _LC and _LC_ACRONYM differ, but not which
+# detector uses which. That gap let DOB, ABA, RTN, and DL keep requiring a
+# colon through a fix that was supposed to relax them, while the constants
+# themselves looked correct. Driving the test from LABEL_CLOSERS means adding a
+# label to the table forces its behaviour to be checked.
+# ---------------------------------------------------------------------------
+
+_LABEL_PROBE: dict[str, tuple[str, PIIClass]] = {
+    "ssn": ("078051120", PIIClass.SSN),
+    "social security": ("078051120", PIIClass.SSN),
+    "mrn": ("A4471902", PIIClass.MEDICAL_RECORD),
+    "dob": ("1974-03-11", PIIClass.DATE_OF_BIRTH),
+    "date of birth": ("1974-03-11", PIIClass.DATE_OF_BIRTH),
+    "aba": ("021000021", PIIClass.ROUTING_NUMBER),
+    "rtn": ("021000021", PIIClass.ROUTING_NUMBER),
+    "dl": ("ABCDEFG", PIIClass.DRIVERS_LICENSE),  # strict: see LABEL_CLOSERS
+    "tel": ("020 7183 8750", PIIClass.PHONE),
+    "telephone": ("020 7183 8750", PIIClass.PHONE),
+    "phone": ("020 7183 8750", PIIClass.PHONE),
+    "mobile": ("020 7183 8750", PIIClass.PHONE),
+    "fax": ("020 7183 8750", PIIClass.PHONE),
+    "routing": ("021000021", PIIClass.ROUTING_NUMBER),
+    "born": ("1974-03-11", PIIClass.DATE_OF_BIRTH),
+    "medical record": ("A4471902", PIIClass.MEDICAL_RECORD),
+    "contact": ("020 7183 8750", PIIClass.PHONE),
+    # A PAN with no recognized IIN, so the unlabelled detector cannot find it
+    # on its own and the probe measures the label path rather than that one.
+    "card": ("9468822170900693", PIIClass.CREDIT_CARD),
+    "cardnumber": ("9468822170900693", PIIClass.CREDIT_CARD),
+    "credit card": ("9468822170900693", PIIClass.CREDIT_CARD),
+    "birth date": ("1974-03-11", PIIClass.DATE_OF_BIRTH),
+    "pan": ("9468822170900693", PIIClass.CREDIT_CARD),
+    "passport": ("X1234567", PIIClass.PASSPORT),
+    "national id": ("AB12345", PIIClass.NATIONAL_ID),
+    "drivers license": ("ABCDEFG", PIIClass.DRIVERS_LICENSE),
+}
+
+
+def _closer_cases():
+    from guardllm.security.pii_detect import LABEL_CLOSERS
+
+    for label, closer in LABEL_CLOSERS.items():
+        if label in _LABEL_PROBE:
+            value, cls = _LABEL_PROBE[label]
+            yield label, closer, value, cls
+
+
+@pytest.mark.parametrize("label,closer,value,cls", list(_closer_cases()))
+def test_label_closer_matrix(label, closer, value, cls):
+    """With a colon every label detects. Without one, only acronyms do."""
+    with_sep = detect(f"{label}: {value}", classes=DEFAULT_TOKENIZE_CLASSES).matches
+    assert cls in {m.pii_class for m in with_sep}, f"{label!r} missed with a separator"
+
+    without = detect(f"{label} {value}", classes=DEFAULT_TOKENIZE_CLASSES).matches
+    found = cls in {m.pii_class for m in without}
+    if closer == "acronym":
+        assert found, f"{label!r} is declared acronym but needs punctuation"
+    else:
+        assert not found, f"{label!r} is declared strict but matched without punctuation"
+
+
+def test_every_declared_label_has_a_probe():
+    """A label added to LABEL_CLOSERS without a probe would be untested."""
+    from guardllm.security.pii_detect import LABEL_CLOSERS
+
+    missing = set(LABEL_CLOSERS) - set(_LABEL_PROBE)
+    assert not missing, f"no behavioural probe for {sorted(missing)}"
+
+
+class TestRoundEightRegressions:
+    @pytest.mark.parametrize("secret", [
+        "sk-" + "abcdefghij" * 3,
+        "ya29." + "Ab3Cd5Ef7G" * 3,
+        "ghp_" + "abcdefghij" * 4,
+        "xoxb-" + "1234567890abcdefghij",
+    ])
+    def test_no_credential_fragment_survives_any_split(self, secret):
+        """The shortest-prefix extent stopped inside the secret, so up to 19
+        characters of a live key stayed model-visible with allowed=True. A
+        DENY class cannot partially cross."""
+        from guardllm.security.outbound_dlp import _scan_secrets
+
+        guard = Guard(privacy=PrivacyConfig())
+        for pos in range(4, len(secret), 3):
+            split = f"{secret[:pos]} {secret[pos:]}"
+            out = guard.process_inbound(f"BEGIN {split} END", Guard.context_web())
+            assert not _scan_secrets(out.content), f"residue at split {pos}"
+
+    def test_the_sweep_replaces_a_line_not_the_document(self):
+        guard = Guard(privacy=PrivacyConfig())
+        out = guard.process_inbound(
+            "BEGIN line one\nkey sk-abcdefghij klmnopqrstuvwx\nEND line three",
+            Guard.context_web(),
+        )
+        assert "BEGIN line one" in out.content
+        assert "END line three" in out.content
+        assert not out.blocked
+
+    @pytest.mark.parametrize("framing", ["first_colon", "second_colon", "both_colons"])
+    @pytest.mark.parametrize("body", ["substitute", "delete", "insert"])
+    def test_framing_by_body_damage_matrix(self, framing, body):
+        """Eight of these nine dispatched literally: set membership catches an
+        intact body, and a deleted or inserted symbol cannot be corrected at
+        all, so the window never aligns with a codeword."""
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        raw = token.split(":")[2].rstrip("]")
+        damaged = {
+            "first_colon": token.replace("GL:", "GL", 1),
+            "second_colon": token.replace(":" + raw, raw),
+            "both_colons": token.replace("GL:EMAIL:", "GLEMAIL"),
+        }[framing]
+        mutated = {
+            "substitute": raw[:5] + ("Z" if raw[5] != "Z" else "Y") + raw[6:],
+            "delete": raw[:5] + raw[6:],
+            "insert": raw[:5] + raw[5] + raw[5:],
+        }[body]
+        p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged.replace(raw, mutated)}]})
+        assert not p.allowed
+        assert EMAIL not in str(p.args)
+
+    @pytest.mark.parametrize("text", [
+        "GL:DEBUG:1 context initialized",
+        '{"backend":"GL:CORE:4","ok":true}',
+        "shader=GL:VERSION:4",
+        "see [[wiki page]] for details",
+        "[[note]] and [[ref]]",
+    ])
+    def test_bracketed_and_gl_text_still_dispatches(self, text):
+        v = _vault()
+        v.deidentify(f"mail {EMAIL}")
+        assert v.prepare_args("gmail_send_email", {"subject": text}).allowed
+
+    def test_uatp_range_is_present_and_detected(self):
+        """The table claimed UATP coverage while no prefix-1 entry existed."""
+        from guardllm.security.pii_detect import card_valid
+
+        assert card_valid("100100000000007")
+        found = detect("UATP account 100100000000007", classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD in {m.pii_class for m in found.matches}
+
+
+class TestPrecisionRegressions:
+    """Measured on real corpora, not constructed examples.
+
+    Both of these were introduced by round-eight fixes and caught only by the
+    corpus sweep, not by any behavioural test written at the time.
+    """
+
+    def test_card_groupings_require_a_consistent_separator(self):
+        """"3892 713-853-3989" is a street number and a phone number. Allowing
+        a grouping to mix space and hyphen merged them into one Diners card,
+        127 times in the benign corpus."""
+        found = detect("3892 713-853-3989", classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD not in {m.pii_class for m in found.matches}
+
+    @pytest.mark.parametrize("pan", [
+        "4111 1111 1111 1111", "4111-1111-1111-1111",
+        "3782 822463 10005", "3613 490 083 4867", "36134900834867",
+    ])
+    def test_real_presentation_groupings_survive(self, pan):
+        found = detect(pan, classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD in {m.pii_class for m in found.matches}
+
+    @pytest.mark.parametrize("text", ["INCLDIR", "LLIBRARY", "BLDLIBRARY"])
+    def test_dl_label_does_not_fire_on_build_configuration(self, text):
+        """Two letters that occur constantly in build config. An optional
+        separator matched these as licence numbers in the standard library."""
+        assert not detect(f"'{text}': '/usr/include'", classes=DEFAULT_TOKENIZE_CLASSES).matches
+
+    def test_stdlib_sweep_has_no_non_email_detections(self):
+        """The only sweep that has caught every precision regression."""
+        import pathlib as _pathlib
+        import sysconfig
+
+        lib = _pathlib.Path(sysconfig.get_paths()["stdlib"])
+        offenders = []
+        for f in sorted(lib.glob("*.py"))[:200]:
+            try:
+                text = f.read_text(errors="ignore")
+            except OSError:
+                continue
+            offenders += [
+                (f.name, m.pii_class.value, m.value[:40])
+                for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
+                if m.pii_class is not PIIClass.EMAIL
+            ]
+        assert not offenders, offenders[:5]

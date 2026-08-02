@@ -102,6 +102,12 @@ _IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
     # MIR, Elo, Hipercard, RuPay, UATP. Added in round four on evidence that
     # they were crossing in plaintext; dropping them in round six under a
     # "restriction" rationale was the error, not their inclusion.
+    #
+    # UATP is the 1xxx industry identifier at 15 digits. The comment here once
+    # claimed UATP coverage while no prefix-1 entry existed, so "UATP account
+    # 100100000000007" crossed unchanged. Scoped to 1000-1999 rather than a
+    # bare leading 1, which would claim every Luhn-valid 15-digit number.
+    (1000, 1999, 4, frozenset({15})),
     (2200, 2204, 4, frozenset({16, 17, 18, 19})),
     (506699, 506699, 6, frozenset({16, 17, 18, 19})),
     (509000, 509999, 6, frozenset({16, 17, 18, 19})),
@@ -338,6 +344,50 @@ _LC = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)\s*[\"'\u2018\u201c]?)"
 _LC_ACRONYM = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
 
 
+#: Which closer each label keyword takes, declared once so the choice cannot
+#: drift out of sync with the patterns that use it. A source-integrity test can
+#: confirm the two closers differ; only a table like this lets a behavioural
+#: test check every label with and without punctuation, which is how DOB, ABA,
+#: RTN, and DL were found still requiring a colon after the fix that was
+#: supposed to relax them.
+#:
+#: ACRONYM: not an ordinary English word, so whitespace alone is evidence.
+#: STRICT:  also an ordinary word, so punctuation is required, or "routing 3
+#:          packets" and "The service was born 2019-06-12" become findings.
+LABEL_CLOSERS: dict[str, str] = {
+    # acronyms and unambiguous keyword labels
+    "ssn": "acronym",
+    "social security": "acronym",
+    "mrn": "acronym",
+    "dob": "acronym",
+    "date of birth": "acronym",
+    "aba": "acronym",
+    "rtn": "acronym",
+    # Strict despite being an acronym: two letters that appear constantly in
+    # build configuration, where an optional separator matched INCLDIR and
+    # LLIBRARY as licence numbers.
+    "dl": "strict",
+    "tel": "acronym",
+    "telephone": "acronym",
+    "phone": "acronym",
+    "mobile": "acronym",
+    "fax": "acronym",
+    "cardnumber": "acronym",
+    "credit card": "acronym",
+    # also ordinary English words
+    "routing": "strict",
+    "born": "strict",
+    "birth date": "strict",
+    "medical record": "strict",
+    "contact": "strict",
+    "card": "strict",
+    "pan": "strict",
+    "passport": "strict",
+    "national id": "strict",
+    "drivers license": "strict",
+}
+
+
 @dataclass(frozen=True)
 class DetectorSpec:
     pii_class: PIIClass
@@ -365,11 +415,20 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         "credit_card",
         r"(?<![.\d\-])(?:"
         r"\d{12,19}"
-        r"|\d{4}(?:[ -]\d{4}){2,4}"
-        r"|\d{4}[ -]\d{6}[ -]\d{5}"
+        # Separators must be consistent within a grouping. Allowing them to mix
+        # let "3892 713-853-3989", a street number followed by a phone number,
+        # match the Diners 4-3-3-4 form and become one card token: 127 such
+        # matches in the benign corpus. Written out per separator rather than
+        # with a backreference, because a named backreference inside this
+        # combined alternation would confuse the lastgroup dispatch in detect().
+        r"|\d{4}(?: \d{4}){2,4}"
+        r"|\d{4}(?:-\d{4}){2,4}"
+        r"|\d{4} \d{6} \d{5}"
+        r"|\d{4}-\d{6}-\d{5}"
         # Diners 4-3-3-4, the grouping Discover publishes for its own test
         # value 3613 490 083 4867.
-        r"|\d{4}[ -]\d{3}[ -]\d{3}[ -]\d{4}"
+        r"|\d{4} \d{3} \d{3} \d{4}"
+        r"|\d{4}-\d{3}-\d{3}-\d{4}"
         r")(?![.\d\-])",
         card_valid,
     ),
@@ -397,7 +456,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.ROUTING_NUMBER,
         "routing_number",
-        rf"{_LO}(?:routing|aba|rtn)(?:[\s_]*(?:number|no\.?|#))?{_LC}"
+        rf"(?:{_LO}(?:aba|rtn)(?:[\s_]*(?:number|no\.?|#))?{_LC_ACRONYM}"
+        rf"|{_LO}routing(?:[\s_]*(?:number|no\.?|#))?{_LC})"
         r"(?P<routing_number_v>\d{9})\b",
         routing_valid,
     ),
@@ -443,7 +503,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.DATE_OF_BIRTH,
         "date_of_birth",
-        rf"{_LO}(?:dob|date[\s_]*of[\s_]*birth|birth[\s_]*date|born){_LC}"
+        rf"(?:{_LO}(?:dob|date[\s_]*of[\s_]*birth){_LC_ACRONYM}"
+        rf"|{_LO}(?:birth[\s_]*date|born){_LC})"
         r"(?P<date_of_birth_v>\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}|"
         r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})",
         dob_valid,
@@ -473,8 +534,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
         "drivers_license",
-        r"(?i:\b(?:driver'?s?\s+licen[cs]e(?:\s+(?:number|no\.?|#))?\s*:?\s*"
-        r"|dl(?:\s*(?:number|no\.?|#))?\s*[:#]\s*))"
+        rf"(?:{_LO}dl(?:[\s_]*(?:number|no\.?|#))?{_LC}"
+        rf"|{_LO}driver'?s?[\s_]*licen[cs]e(?:[\s_]*(?:number|no\.?|#))?{_LC})"
         r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-_]{4,19})\b",
         opaque_id_valid,
     ),

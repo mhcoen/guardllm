@@ -445,6 +445,18 @@ class PrivacyVault:
     )
     _SPLIT_HINT_RE = re.compile(r"[0-9A-Za-z][\s\-./\\_,][0-9A-Za-z]")
 
+    #: A doubled-bracket region mentioning GL. Substitution has already
+    #: consumed every resolvable token, so one of these still standing is a
+    #: token whose framing or body the model damaged.
+    #:
+    #: A deleted or inserted body symbol cannot be error-corrected at all: the
+    #: window no longer aligns with any codeword, so eight of nine
+    #: framing-by-body damage combinations resolved to nothing and dispatched
+    #: literally. Recovery is not available, so refusal is the only correct
+    #: outcome, and the doubled brackets are what keep this off ordinary text
+    #: like "GL:DEBUG:1" or an OpenGL version string.
+    _GL_REGION_RE = re.compile(r"\[\s*\[[^\[\]]{4,80}\]\s*\]")
+
     def _has_stray_issued_payload(self, text: str) -> bool:
         """True when a live issued payload survives outside a valid token.
 
@@ -476,6 +488,16 @@ class PrivacyVault:
             for k in range(len(folded) - n + 1):
                 if folded[k : k + n] in self._issued_bodies:
                     return True
+
+        for m in self._GL_REGION_RE.finditer(text):
+            inner = m.group()[2:-2]
+            if "GL" not in inner.upper():
+                continue
+            compact = inner.translate(self._STRIP_SEPARATORS)
+            # Long enough to be a class name plus a body, short enough not to be
+            # arbitrary bracketed prose.
+            if codec.CODEWORD_SYMBOLS - 2 <= len(compact) <= 60:
+                return True
 
         for m in self._ARTIFACT_RE.finditer(text):
             # Require a real PII class name and a body near codeword length.
@@ -688,14 +710,58 @@ class PrivacyVault:
             cursor = match.end
 
         pieces.append(text[cursor:])
+        content = "".join(pieces)
+
+        # A credential whose extent could not be recovered leaves a prefix
+        # behind: the shortest accepted prefix stops inside the secret, so up
+        # to nineteen characters of a live key stayed model-visible with
+        # allowed=True. A DENY class cannot partially cross.
+        #
+        # Sweep the result and replace only the containing LINE, which is the
+        # bounded local replacement the ingress path needs: it leaves no
+        # fragment without withholding the document, so a content author still
+        # cannot suppress its own retrieval by embedding a split credential.
+        if denied or found.unlocatable_credentials:
+            content, swept = self._sweep_credential_residue(content)
+            if swept:
+                warnings.append(
+                    f"Replaced {swept} line(s) still carrying credential material"
+                )
+
         return DeidentifyResult(
-            content="".join(pieces),
+            content=content,
             findings=findings,
             warnings=warnings,
             denied=denied,
             detection_incomplete=found.detection_incomplete,
             inference_used=bool(cfg.detectors),
         )
+
+    def _sweep_credential_residue(self, content: str) -> tuple[str, int]:
+        """Replace any line still carrying credential material with a marker.
+
+        Runs L3's own scanner over the substituted result, so what counts as
+        residue is exactly what the egress blocker would stop. Line-scoped
+        because that is the smallest unit that reliably contains a wrapped or
+        split value, and because replacing the document was the failure this
+        exists to avoid.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets
+
+        if not _scan_secrets(content):
+            return content, 0
+        swept = 0
+        lines = content.split("\n")
+        for i, line in enumerate(lines):
+            if _scan_secrets(line):
+                lines[i] = marker_for(PIIClass.CREDENTIAL)
+                swept += 1
+        rebuilt = "\n".join(lines)
+        if swept == 0 and _scan_secrets(rebuilt):
+            # Residue spans a line break, so no single line carries it. Fall
+            # back to the whole span between the first and last offending line.
+            return marker_for(PIIClass.CREDENTIAL), 1
+        return rebuilt, swept
 
     # -- diagnostics scrubbing -----------------------------------------
 

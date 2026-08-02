@@ -304,11 +304,14 @@ def test_mcp_tool_surface_fixture(executed_scenarios):
     # "Do not set monitor 4471 to ignored" minted an authorization.
     adapter = scenario["adapter"]
     assert adapter["request_in_record"] is True
-    assert set(adapter["refused"]) >= {
+    # Exact set, not a subset. The page states how many inputs were refused, so
+    # dropping one would make the page false while leaving a subset check green.
+    assert set(adapter["refused"]) == {
         "the record verbatim",
         "a user quoting it",
         "a user negating it",
         "a user asking about it",
+        "a near-miss synonym",
         "the read turn",
     }
     for label, entry in adapter["refused"].items():
@@ -331,7 +334,8 @@ def test_mcp_tool_surface_fixture(executed_scenarios):
     assert injected["finding_layer"] == injected["terminal_layer"] == "session_risk_gate"
     assert authorized["terminal_layer"] == "rate_limit"
 
-    # Control 2: the same unauthorized call before contamination. It is allowed,
+    # Control 2: the same unauthorized call in a session that ingested nothing,
+    # which is a separate pipeline rather than an earlier moment. It is allowed,
     # so the denial above is attributable to session state and not to the tool.
     clean = steps["check_tool_execution:clean_control"]
     assert clean["execution"] == "branch"

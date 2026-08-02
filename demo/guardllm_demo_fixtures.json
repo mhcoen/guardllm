@@ -1246,10 +1246,42 @@
             "authorization": null,
             "binding": null,
             "context": {
-              "contaminated_tool_policy": "require_auth",
-              "escalated_tool_policy": "deny",
+              "content_type": "plaintext",
+              "mode": "client",
+              "policy": {
+                "argument_limits": {},
+                "auto_confirm_destructive": false,
+                "capability_scopes": {
+                  "set_monitor_ignore": {},
+                  "upload_evidence": {}
+                },
+                "client_id": null,
+                "confirm_all_below": null,
+                "contaminated_action": "block",
+                "contaminated_tool_policy": "require_auth",
+                "directive_patterns": {},
+                "dlp_ngram_overlap_min": 0.4,
+                "dlp_sensitive_lcs_min": 12,
+                "dlp_verbatim_lcs_min": 14,
+                "enable_destructive": false,
+                "escalated_tool_policy": "deny",
+                "escalation_gate_enabled": true,
+                "provenance_ngram_overlap_min": 0.3,
+                "provenance_verbatim_lcs_min": 50,
+                "rate_limit_overrides": {},
+                "rate_limits": {},
+                "require_message_binding": "all",
+                "require_source_id_for": [],
+                "server_default_deny": false,
+                "source_gate_overrides": {},
+                "tool_allowlist": null,
+                "untrusted_deny_tools": [],
+                "untrusted_require_auth": false
+              },
+              "principal_trust": "untrusted",
               "source_id": "compliance-mcp.example.com",
-              "source_trust": "untrusted"
+              "source_trust": "untrusted",
+              "source_type": "mcp_server"
             },
             "message_hash": null,
             "tool": "set_monitor_ignore"
@@ -1299,10 +1331,42 @@
             "authorization": null,
             "binding": null,
             "context": {
-              "contaminated_tool_policy": "require_auth",
-              "escalated_tool_policy": "deny",
+              "content_type": "plaintext",
+              "mode": "client",
+              "policy": {
+                "argument_limits": {},
+                "auto_confirm_destructive": false,
+                "capability_scopes": {
+                  "set_monitor_ignore": {},
+                  "upload_evidence": {}
+                },
+                "client_id": null,
+                "confirm_all_below": null,
+                "contaminated_action": "block",
+                "contaminated_tool_policy": "require_auth",
+                "directive_patterns": {},
+                "dlp_ngram_overlap_min": 0.4,
+                "dlp_sensitive_lcs_min": 12,
+                "dlp_verbatim_lcs_min": 14,
+                "enable_destructive": false,
+                "escalated_tool_policy": "deny",
+                "escalation_gate_enabled": true,
+                "provenance_ngram_overlap_min": 0.3,
+                "provenance_verbatim_lcs_min": 50,
+                "rate_limit_overrides": {},
+                "rate_limits": {},
+                "require_message_binding": "all",
+                "require_source_id_for": [],
+                "server_default_deny": false,
+                "source_gate_overrides": {},
+                "tool_allowlist": null,
+                "untrusted_deny_tools": [],
+                "untrusted_require_auth": false
+              },
+              "principal_trust": "untrusted",
               "source_id": "compliance-mcp.example.com",
-              "source_trust": "untrusted"
+              "source_trust": "untrusted",
+              "source_type": "mcp_server"
             },
             "message_hash": null,
             "tool": "set_monitor_ignore"
@@ -1366,10 +1430,42 @@
               "ttl": 120.0
             },
             "context": {
-              "contaminated_tool_policy": "require_auth",
-              "escalated_tool_policy": "deny",
+              "content_type": "plaintext",
+              "mode": "client",
+              "policy": {
+                "argument_limits": {},
+                "auto_confirm_destructive": false,
+                "capability_scopes": {
+                  "set_monitor_ignore": {},
+                  "upload_evidence": {}
+                },
+                "client_id": null,
+                "confirm_all_below": null,
+                "contaminated_action": "block",
+                "contaminated_tool_policy": "require_auth",
+                "directive_patterns": {},
+                "dlp_ngram_overlap_min": 0.4,
+                "dlp_sensitive_lcs_min": 12,
+                "dlp_verbatim_lcs_min": 14,
+                "enable_destructive": false,
+                "escalated_tool_policy": "deny",
+                "escalation_gate_enabled": true,
+                "provenance_ngram_overlap_min": 0.3,
+                "provenance_verbatim_lcs_min": 50,
+                "rate_limit_overrides": {},
+                "rate_limits": {},
+                "require_message_binding": "all",
+                "require_source_id_for": [],
+                "server_default_deny": false,
+                "source_gate_overrides": {},
+                "tool_allowlist": null,
+                "untrusted_deny_tools": [],
+                "untrusted_require_auth": false
+              },
+              "principal_trust": "untrusted",
               "source_id": "compliance-mcp.example.com",
-              "source_trust": "untrusted"
+              "source_trust": "untrusted",
+              "source_type": "mcp_server"
             },
             "message_hash": "21d8fc44ffb53296fe5931afa42607fcf81220c438be8fb6f413f8f3f3281d5e",
             "tool": "set_monitor_ignore"
@@ -1477,10 +1573,42 @@
               "ttl": 120.0
             },
             "context": {
-              "contaminated_tool_policy": "require_auth",
-              "escalated_tool_policy": "deny",
+              "content_type": "plaintext",
+              "mode": "client",
+              "policy": {
+                "argument_limits": {},
+                "auto_confirm_destructive": false,
+                "capability_scopes": {
+                  "set_monitor_ignore": {},
+                  "upload_evidence": {}
+                },
+                "client_id": null,
+                "confirm_all_below": null,
+                "contaminated_action": "block",
+                "contaminated_tool_policy": "require_auth",
+                "directive_patterns": {},
+                "dlp_ngram_overlap_min": 0.4,
+                "dlp_sensitive_lcs_min": 12,
+                "dlp_verbatim_lcs_min": 14,
+                "enable_destructive": false,
+                "escalated_tool_policy": "deny",
+                "escalation_gate_enabled": true,
+                "provenance_ngram_overlap_min": 0.3,
+                "provenance_verbatim_lcs_min": 50,
+                "rate_limit_overrides": {},
+                "rate_limits": {},
+                "require_message_binding": "all",
+                "require_source_id_for": [],
+                "server_default_deny": false,
+                "source_gate_overrides": {},
+                "tool_allowlist": null,
+                "untrusted_deny_tools": [],
+                "untrusted_require_auth": false
+              },
+              "principal_trust": "untrusted",
               "source_id": "compliance-mcp.example.com",
-              "source_trust": "untrusted"
+              "source_trust": "untrusted",
+              "source_type": "mcp_server"
             },
             "message_hash": "641c5a6df93ede9d095eb2c69f4d1e009944616a025b97671a44f17243a9a25c",
             "tool": "set_monitor_ignore"
@@ -1547,10 +1675,42 @@
               "ttl": 120.0
             },
             "context": {
-              "contaminated_tool_policy": "require_auth",
-              "escalated_tool_policy": "deny",
+              "content_type": "plaintext",
+              "mode": "client",
+              "policy": {
+                "argument_limits": {},
+                "auto_confirm_destructive": false,
+                "capability_scopes": {
+                  "set_monitor_ignore": {},
+                  "upload_evidence": {}
+                },
+                "client_id": null,
+                "confirm_all_below": null,
+                "contaminated_action": "block",
+                "contaminated_tool_policy": "require_auth",
+                "directive_patterns": {},
+                "dlp_ngram_overlap_min": 0.4,
+                "dlp_sensitive_lcs_min": 12,
+                "dlp_verbatim_lcs_min": 14,
+                "enable_destructive": false,
+                "escalated_tool_policy": "deny",
+                "escalation_gate_enabled": true,
+                "provenance_ngram_overlap_min": 0.3,
+                "provenance_verbatim_lcs_min": 50,
+                "rate_limit_overrides": {},
+                "rate_limits": {},
+                "require_message_binding": "all",
+                "require_source_id_for": [],
+                "server_default_deny": false,
+                "source_gate_overrides": {},
+                "tool_allowlist": null,
+                "untrusted_deny_tools": [],
+                "untrusted_require_auth": false
+              },
+              "principal_trust": "untrusted",
               "source_id": "compliance-mcp.example.com",
-              "source_trust": "untrusted"
+              "source_trust": "untrusted",
+              "source_type": "mcp_server"
             },
             "message_hash": "641c5a6df93ede9d095eb2c69f4d1e009944616a025b97671a44f17243a9a25c",
             "tool": "set_monitor_ignore"

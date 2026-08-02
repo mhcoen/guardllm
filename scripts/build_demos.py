@@ -400,6 +400,8 @@ def _data(value):
         return value.value
     if isinstance(value, dict):
         return {str(k): _data(v) for k, v in value.items()}
+    if isinstance(value, set | frozenset):
+        return sorted(_data(v) for v in value)
     if isinstance(value, list | tuple):
         return [_data(v) for v in value]
     return value
@@ -1007,22 +1009,63 @@ def build_fixtures() -> dict:
     if mcp_auth is None:
         raise ValueError("the user's directive must authorize")
 
+    def mcp_dispatch(pipe, args: dict, *, auth=None, binding=None, message_hash=None) -> dict:
+        """Dispatch a tool call and record it, from one set of parameters.
+
+        The recording used to be assembled beside the dispatch, which meant the
+        fixture could describe a call other than the one that ran: change what
+        is passed, leave the record alone, and an equality test compares two
+        claims rather than two calls. Everything below flows from these
+        arguments, so that drift is not expressible.
+        """
+        before = pipeline_state(pipe)
+        with (
+            patch("guardllm.security.types.time.time", return_value=1001.0),
+            patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
+        ):
+            result = pipe.check_tool_execution(
+                mcp_tool,
+                args,
+                mcp_write_ctx,
+                auth_event=auth,
+                binding=binding,
+                message_hash=message_hash,
+            )
+        return {
+            "result": _data(result),
+            "call": {
+                "tool": mcp_tool,
+                "args": _data(args),
+                # The whole declared context, not a few fields of it. A policy
+                # field left out of the record is a policy field a future edit
+                # could change without failing an equality assertion.
+                "context": {
+                    "mode": mcp_write_ctx.mode,
+                    "source_type": mcp_write_ctx.source_type,
+                    "source_id": mcp_write_ctx.source_id,
+                    "source_trust": _data(mcp_write_ctx.source_trust),
+                    "principal_trust": _data(mcp_write_ctx.principal_trust),
+                    "content_type": _data(mcp_write_ctx.content_type),
+                    "policy": _data(mcp_write_ctx.policy),
+                },
+                "authorization": _data(auth),
+                "binding": _data(binding),
+                "message_hash": message_hash,
+            },
+            "state_before": before,
+            "state_after": pipeline_state(pipe),
+        }
+
     # The injected instruction proposes the write, carrying whatever the adapter
     # produced for the turn it arrived in, which is nothing.
-    mcp_before_injected = pipeline_state(mcp_session)
-    mcp_injected_write = mcp_session.check_tool_execution(
-        mcp_tool, mcp_args, mcp_write_ctx, auth_event=mcp_auth_during_read
-    )
-    mcp_after_injected = pipeline_state(mcp_session)
+    mcp_injected = mcp_dispatch(mcp_session, mcp_args, auth=mcp_auth_during_read)
 
     # Control: the identical call, identical context, against a session that
     # never ingested anything. Without contamination this write is implicitly
     # allowed, which bounds the claim: contamination is what introduces the
     # authorization requirement, not anything intrinsic to the tool.
-    mcp_clean = SecurityPipeline()
-    mcp_clean_before = pipeline_state(mcp_clean)
-    mcp_clean_write = mcp_clean.check_tool_execution(mcp_tool, mcp_args, mcp_write_ctx)
-    mcp_clean_after = pipeline_state(mcp_clean)
+    mcp_clean_pipe = SecurityPipeline()
+    mcp_clean = mcp_dispatch(mcp_clean_pipe, mcp_args)
 
     # The same tool, the same arguments, the same contaminated session, asked
     # for by the user instead.
@@ -1033,20 +1076,9 @@ def build_fixtures() -> dict:
             authorization=mcp_auth,
             message_hash=mcp_message_hash,
         )
-    mcp_before_authorized = pipeline_state(mcp_session)
-    with (
-        patch("guardllm.security.types.time.time", return_value=1001.0),
-        patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
-    ):
-        mcp_authorized_write = mcp_session.check_tool_execution(
-            mcp_tool,
-            mcp_args,
-            mcp_write_ctx,
-            auth_event=mcp_auth,
-            binding=mcp_binding,
-            message_hash=mcp_message_hash,
-        )
-    mcp_after_authorized = pipeline_state(mcp_session)
+    mcp_authorized = mcp_dispatch(
+        mcp_session, mcp_args, auth=mcp_auth, binding=mcp_binding, message_hash=mcp_message_hash
+    )
 
     # The credential the client authenticates to that server with, on its way
     # out inside an ordinary summary.
@@ -1074,20 +1106,13 @@ def build_fixtures() -> dict:
             authorization=mcp_second_auth,
             message_hash=mcp_second_hash,
         )
-    mcp_before_post_block = pipeline_state(mcp_session)
-    with (
-        patch("guardllm.security.types.time.time", return_value=1001.0),
-        patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
-    ):
-        mcp_post_block_write = mcp_session.check_tool_execution(
-            mcp_tool,
-            mcp_second_args,
-            mcp_write_ctx,
-            auth_event=mcp_second_auth,
-            binding=mcp_second_binding,
-            message_hash=mcp_second_hash,
-        )
-    mcp_after_post_block = pipeline_state(mcp_session)
+    mcp_post_block = mcp_dispatch(
+        mcp_session,
+        mcp_second_args,
+        auth=mcp_second_auth,
+        binding=mcp_second_binding,
+        message_hash=mcp_second_hash,
+    )
 
     # Control: the same second call with the same artifacts, against a session
     # matched on contamination and differing only in the egress block.
@@ -1099,62 +1124,26 @@ def build_fixtures() -> dict:
     # What it does not do is the outbound check, so it is not escalated. It also
     # runs the full path, which is what validates the AuthorizationEvent and
     # verifies the Binding.
-    mcp_unescalated = SecurityPipeline()
-    mcp_unescalated.process_inbound(mcp_evidence, mcp_evidence_ctx)
-    mcp_unescalated.process_inbound(mcp_finding, mcp_finding_ctx)
-    with (
-        patch("guardllm.security.types.time.time", return_value=1001.0),
-        patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
-    ):
-        mcp_unescalated.check_tool_execution(
-            mcp_tool,
-            mcp_args,
-            mcp_write_ctx,
-            auth_event=mcp_auth,
-            binding=mcp_binding,
-            message_hash=mcp_message_hash,
-        )
-    mcp_unescalated_before = pipeline_state(mcp_unescalated)
+    mcp_unescalated_pipe = SecurityPipeline()
+    mcp_unescalated_pipe.process_inbound(mcp_evidence, mcp_evidence_ctx)
+    mcp_unescalated_pipe.process_inbound(mcp_finding, mcp_finding_ctx)
+    mcp_dispatch(
+        mcp_unescalated_pipe,
+        mcp_args,
+        auth=mcp_auth,
+        binding=mcp_binding,
+        message_hash=mcp_message_hash,
+    )
     # Every field of the captured state now matches the escalated session except
-    # the one under test. Asserted below rather than asserted here, so a future
-    # edit that reintroduces a second difference fails a test rather than
-    # quietly weakening the control.
-    with (
-        patch("guardllm.security.types.time.time", return_value=1001.0),
-        patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
-    ):
-        mcp_unescalated_write = mcp_unescalated.check_tool_execution(
-            mcp_tool,
-            mcp_second_args,
-            mcp_write_ctx,
-            auth_event=mcp_second_auth,
-            binding=mcp_second_binding,
-            message_hash=mcp_second_hash,
-        )
-    mcp_unescalated_after = pipeline_state(mcp_unescalated)
-
-    def mcp_call(args: dict, *, auth, binding, message_hash) -> dict:
-        """What a step actually dispatched, so the comparison is data, not prose.
-
-        Records the artifacts in full rather than summarising them. A previous
-        version stored the authorization's action and scope plus booleans for
-        the binding and hash, which two genuinely different artifacts would
-        compare equal under, so a test asserting equality proved less than it
-        appeared to.
-        """
-        return {
-            "tool": mcp_tool,
-            "args": dict(args),
-            "context": {
-                "source_id": mcp_write_ctx.source_id,
-                "source_trust": mcp_write_ctx.source_trust.value,
-                "contaminated_tool_policy": mcp_write_ctx.policy.contaminated_tool_policy,
-                "escalated_tool_policy": mcp_write_ctx.policy.escalated_tool_policy,
-            },
-            "authorization": _data(auth),
-            "binding": _data(binding),
-            "message_hash": message_hash,
-        }
+    # the one under test. Asserted in the test rather than here, so a future edit
+    # reintroducing a second difference fails rather than quietly weakening it.
+    mcp_unescalated = mcp_dispatch(
+        mcp_unescalated_pipe,
+        mcp_second_args,
+        auth=mcp_second_auth,
+        binding=mcp_second_binding,
+        message_hash=mcp_second_hash,
+    )
 
     def scenario(
         *,
@@ -2152,7 +2141,8 @@ def build_fixtures() -> dict:
                         "state_after": mcp_after_finding,
                         # Nothing was removed here. The instruction is legitimate
                         # visible finding text, so the detector reports it and the
-                        # content still reaches the model intact.
+                        # content is returned intact inside an untrusted_content
+                        # wrapper. No model runs, so nothing further is claimed.
                         "primary_finding": {
                             "kind": "prompt_injection_signal",
                             "rules": mcp_injection_signal.matched_rules,
@@ -2167,18 +2157,13 @@ def build_fixtures() -> dict:
                         "execution": "sequential",
                         "compares_with": None,
                         "enclosing_operation": None,
-                        "result": _data(mcp_injected_write),
-                        "call": mcp_call(
-                            mcp_args,
-                            auth=mcp_auth_during_read,
-                            binding=None,
-                            message_hash=None,
-                        ),
-                        "state_before": mcp_before_injected,
-                        "state_after": mcp_after_injected,
+                        "result": mcp_injected["result"],
+                        "call": mcp_injected["call"],
+                        "state_before": mcp_injected["state_before"],
+                        "state_after": mcp_injected["state_after"],
                         "primary_finding": {
                             "kind": "authorization_required",
-                            "reason": mcp_injected_write.reason,
+                            "reason": mcp_injected["result"]["reason"],
                         },
                         # The session-risk gate runs before the policy engine and
                         # returns here, so the policy engine never sees this call.
@@ -2192,10 +2177,10 @@ def build_fixtures() -> dict:
                         "execution": "branch",
                         "compares_with": "mcp-surface-session",
                         "enclosing_operation": None,
-                        "result": _data(mcp_clean_write),
-                        "call": mcp_call(mcp_args, auth=None, binding=None, message_hash=None),
-                        "state_before": mcp_clean_before,
-                        "state_after": mcp_clean_after,
+                        "result": mcp_clean["result"],
+                        "call": mcp_clean["call"],
+                        "state_before": mcp_clean["state_before"],
+                        "state_after": mcp_clean["state_after"],
                         "primary_finding": None,
                         "finding_layer": None,
                         "terminal_layer": "rate_limit",
@@ -2207,15 +2192,10 @@ def build_fixtures() -> dict:
                         "execution": "sequential",
                         "compares_with": None,
                         "enclosing_operation": None,
-                        "result": _data(mcp_authorized_write),
-                        "call": mcp_call(
-                            mcp_args,
-                            auth=mcp_auth,
-                            binding=mcp_binding,
-                            message_hash=mcp_message_hash,
-                        ),
-                        "state_before": mcp_before_authorized,
-                        "state_after": mcp_after_authorized,
+                        "result": mcp_authorized["result"],
+                        "call": mcp_authorized["call"],
+                        "state_before": mcp_authorized["state_before"],
+                        "state_after": mcp_authorized["state_after"],
                         "primary_finding": None,
                         "finding_layer": None,
                         "terminal_layer": "rate_limit",
@@ -2244,15 +2224,10 @@ def build_fixtures() -> dict:
                         "execution": "sequential",
                         "compares_with": None,
                         "enclosing_operation": None,
-                        "result": _data(mcp_post_block_write),
-                        "call": mcp_call(
-                            mcp_second_args,
-                            auth=mcp_second_auth,
-                            binding=mcp_second_binding,
-                            message_hash=mcp_second_hash,
-                        ),
-                        "state_before": mcp_before_post_block,
-                        "state_after": mcp_after_post_block,
+                        "result": mcp_post_block["result"],
+                        "call": mcp_post_block["call"],
+                        "state_before": mcp_post_block["state_before"],
+                        "state_after": mcp_post_block["state_after"],
                         # Both session signals are active and the strictest wins.
                         # The reason names each contributing trigger, so the
                         # deciding one is not left to inference. Note the gate
@@ -2261,7 +2236,7 @@ def build_fixtures() -> dict:
                         # required to establish that those artifacts were valid.
                         "primary_finding": {
                             "kind": "session_risk_denied",
-                            "reason": mcp_post_block_write.reason,
+                            "reason": mcp_post_block["result"]["reason"],
                         },
                         "finding_layer": "session_risk_gate",
                         "terminal_layer": "session_risk_gate",
@@ -2273,15 +2248,10 @@ def build_fixtures() -> dict:
                         "execution": "branch",
                         "compares_with": "mcp-surface-session",
                         "enclosing_operation": None,
-                        "result": _data(mcp_unescalated_write),
-                        "call": mcp_call(
-                            mcp_second_args,
-                            auth=mcp_second_auth,
-                            binding=mcp_second_binding,
-                            message_hash=mcp_second_hash,
-                        ),
-                        "state_before": mcp_unescalated_before,
-                        "state_after": mcp_unescalated_after,
+                        "result": mcp_unescalated["result"],
+                        "call": mcp_unescalated["call"],
+                        "state_before": mcp_unescalated["state_before"],
+                        "state_after": mcp_unescalated["state_after"],
                         "primary_finding": None,
                         "finding_layer": None,
                         "terminal_layer": "rate_limit",
@@ -2301,12 +2271,12 @@ def build_fixtures() -> dict:
                     "processed_finding": _data(mcp_finding_inbound),
                     "injection_signal": _data(mcp_injection_signal),
                     "synthetic_key_display": "service_7f3a9c21_kQ8v...uE2i",
-                    "injected_write": _data(mcp_injected_write),
-                    "authorized_write": _data(mcp_authorized_write),
+                    "injected_write": mcp_injected["result"],
+                    "authorized_write": mcp_authorized["result"],
                     "key_block": _data(mcp_key_block),
-                    "post_block_write": _data(mcp_post_block_write),
-                    "clean_control_write": _data(mcp_clean_write),
-                    "unescalated_control_write": _data(mcp_unescalated_write),
+                    "post_block_write": mcp_post_block["result"],
+                    "clean_control_write": mcp_clean["result"],
+                    "unescalated_control_write": mcp_unescalated["result"],
                     # The controlled comparison for the host adapter. Six prose
                     # inputs, including the record itself and a user quoting,
                     # negating, or asking about it, all produce nothing. Only
@@ -3305,7 +3275,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             ),
             (
                 "The record asks for the write",
-                f"The user's turn here was {mcp['adapter']['read_turn']!r}. Authorization comes from a directive, and six prose inputs were run through the same parser to check that: the record verbatim, a user quoting it, a user negating it, a user asking about it, a near-miss synonym, and this turn. All six produced nothing, so the proposal arrives carrying no authorization event.",
+                f"The user's turn here was {mcp['adapter']['read_turn']!r}. Authorization comes from a directive, and {len(mcp['adapter']['refused'])} prose inputs were run through the same parser to check that: {', '.join(mcp['adapter']['refused'])}. Every one produced nothing, so the proposal arrives carrying no authorization event.",
                 mcp["injected_write"]["reason"],
                 "blocked",
             ),

@@ -600,6 +600,7 @@ def test_every_page_embeds_its_canonical_scenario(executed_scenarios):
         "guardllm_rate_limit_demo.html": "rate_limit",
         "guardllm_request_binding_demo.html": "request_binding",
         "guardllm_security_context_demo.html": "security_context",
+        "guardllm_mcp_demo.html": "mcp_tool_surface",
     }
     assert page_scenarios.keys() | {"guardllm_surface_map.html"} == {
         path.name for path in DEMO.glob("*.html")

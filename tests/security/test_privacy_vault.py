@@ -1202,23 +1202,26 @@ class TestRoundFiveRegressions:
             for i in range(4, len(secret) - 3):
                 assert secret[i : i + 4] not in out.content
 
-    def test_obfuscated_credentials_over_redact_rather_than_leak(self):
-        """After whitespace removal a credential's true end is not recoverable.
+    def test_obfuscated_credential_contract(self):
+        """The extent contract, in three cases, none of which leaks a usable value.
 
-        "Leave no fragment" and "delete no unrelated text" are not jointly
-        satisfiable here: greedy deletes the words that followed, shortest
-        stops inside the secret, and separator density picks wrong on one side
-        or the other depending on the split stride. The contract is therefore
-        stated rather than tuned, and this test pins it:
+        After whitespace removal a credential's true end is not recoverable, so
+        which scanner matched in the RAW text decides what to do:
 
-        - Unrelated text always survives, at every split position.
-        - The document is never withheld.
-        - A residual fragment is possible, and accepted, because this branch
-          only runs when a credential was deliberately split in content: an
-          attacker who did that already holds the value, while deleting prose
-          damages every legitimate document it touches.
+        1. Raw PATTERN match, contiguous. The grammar located start and end, so
+           the extent is exact and surrounding prose is untouched.
+        2. Raw PATTERN match on a prefix, sparsely split. Extends through
+           following tokens while they are alphanumeric and at least ten
+           characters, which is what a credential fragment looks like and what
+           a prose word usually is not. Bounded to adjacent tokens.
+        3. No raw pattern match at all, densely split. Nothing in the original
+           locates the value, so the reconstruction is taken greedily and
+           adjacent text goes with it.
 
-        Contiguous credentials are covered exactly, by the separate test below.
+        Case 3 is the only one that deletes unrelated text, and it only arises
+        when a credential was broken into pieces too small for any scanner to
+        recognise. The loss is visible as a marker; a surviving fragment would
+        be visible to nobody.
         """
         v = _vault()
         secret = "sk-abcdefghijklmnopqrstuvwx"
@@ -1227,11 +1230,37 @@ class TestRoundFiveRegressions:
             out = v.deidentify(f"a {spaced} KEEP END", deny_action="marker")
             assert out.allowed, f"document withheld at stride {stride}"
             assert "redacted:credential" in out.content
-            assert "KEEP END" in out.content, f"unrelated text deleted at stride {stride}"
+            # No usable run of the secret survives at any stride. This oracle
+            # looks for the original value, not for whatever _scan_secrets
+            # happens to recognise, which is what made the previous version of
+            # this test pass while 25 characters were still in the output.
+            for i in range(len(secret)):
+                for j in range(len(secret), i + 9, -1):
+                    assert secret[i:j] not in out.content, f"stride {stride}: {secret[i:j]!r}"
 
-    def test_obfuscated_credentials_never_withhold_or_delete_prose(self):
+    def test_sparse_splits_keep_prose_and_leak_nothing(self):
+        """Case 2 above: a raw pattern match on the prefix, one inserted space."""
+        v = _vault()
+        secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
+        # The pattern needs twenty characters after "sk-", so a raw match only
+        # exists from position 23 onward. Below that it is case 3.
+        for pos in range(23, len(secret) - 2):
+            out = v.deidentify(f"a {secret[:pos]} {secret[pos:]} KEEP END", deny_action="marker")
+            assert "KEEP END" in out.content, f"prose deleted at split {pos}"
+            for i in range(len(secret)):
+                for j in range(len(secret), i + 11, -1):
+                    assert secret[i:j] not in out.content, f"split {pos}: {secret[i:j]!r}"
+
+    def test_obfuscated_credentials_never_withhold_the_document(self):
         """The failure that mattered: three split positions of a Google OAuth
-        token erased a 199-character document down to its first word."""
+        token erased a 199-character document down to its first word.
+
+        The document is never withheld now, at any split. Whether the tail on
+        the *same line* survives depends on which case applies (see
+        test_obfuscated_credential_contract): once a raw pattern match exists,
+        the extent is anchored and the tail survives; below that there is
+        nothing in the original to anchor to.
+        """
         v = _vault()
         token = "ya29." + "A0ARrdaM" * 6
         tail = "the complete support summary follows here END"
@@ -1239,7 +1268,22 @@ class TestRoundFiveRegressions:
             split = f"{token[:pos]} {token[pos:]}"
             out = v.deidentify(f"BEGIN {split} {tail}", deny_action="marker")
             assert out.allowed, f"document withheld at split {pos}"
-            assert tail in out.content, f"unrelated text deleted at split {pos}"
+            assert "redacted:credential" in out.content
+            if pos >= 25:  # a raw "ya29." pattern match exists from here on
+                assert tail in out.content, f"unrelated text deleted at split {pos}"
+
+    def test_a_reconstruction_never_crosses_a_line_boundary(self):
+        """Unanchored reconstructions used to run to the pattern's maximum
+        length, consuming the rest of a multi-line document."""
+        guard = Guard(privacy=PrivacyConfig())
+        out = guard.process_inbound(
+            "L1 header\nL2 sk-abcdefghij klmnopqrstuvwx\nL3 body\nL4 footer",
+            Guard.context_web(),
+        )
+        assert "L1 header" in out.content
+        assert "L3 body" in out.content
+        assert "L4 footer" in out.content
+        assert "redacted:credential" in out.content
 
     @pytest.mark.parametrize("text,fragment,keep", [
         ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "uvwx", "trailing text kept"),
@@ -1569,13 +1613,27 @@ class TestRoundEightRegressions:
         v.deidentify(f"mail {EMAIL}")
         assert v.prepare_args("gmail_send_email", {"subject": text}).allowed
 
-    def test_uatp_range_is_present_and_detected(self):
-        """The table claimed UATP coverage while no prefix-1 entry existed."""
+    def test_uatp_is_covered_by_the_labelled_path(self):
+        """The table once claimed UATP while no prefix-1 entry existed, so an
+        assigned account crossed unchanged. Adding one to the UNLABELLED table
+        was the wrong correction: a one-digit prefix claims any Luhn-valid
+        15-digit run, roughly one in ten, and the letter-adjacency guard needed
+        to contain that then rejected genuine PANs glued to a payment code.
+        UATP is covered where the label supplies the intent."""
         from guardllm.security.pii_detect import card_valid
 
-        assert card_valid("100100000000007")
+        assert not card_valid("100100000000007"), "must not be unlabelled-detected"
         found = detect("UATP account 100100000000007", classes=DEFAULT_TOKENIZE_CLASSES)
         assert PIIClass.CREDIT_CARD in {m.pii_class for m in found.matches}
+
+    def test_embedded_pans_in_payment_records_are_still_found(self):
+        """Real records glue the PAN to a code: "CCCA5490850070001643/1103"."""
+        found = detect("PAYMENT: CCCA5490850070001643/1103", classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD in {m.pii_class for m in found.matches}
+
+    def test_luhn_valid_runs_inside_identifiers_are_not_cards(self):
+        found = detect("asset107977945423854archive", classes=DEFAULT_TOKENIZE_CLASSES)
+        assert PIIClass.CREDIT_CARD not in {m.pii_class for m in found.matches}
 
 
 class TestPrecisionRegressions:
@@ -1673,3 +1731,115 @@ class TestWikiLinkFalsePositive:
             damaged = framings[f].replace(raw, bodies[b])
             p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
             assert not p.allowed, f"{f}+{b} dispatched"
+
+
+class TestRoundNineRegressions:
+    def test_credential_residue_measured_without_the_scanner(self):
+        """The previous test asked _scan_secrets whether the output was clean,
+        which is the same scanner whose miss created the residue. Disabling the
+        sweep entirely left it passing. This oracle looks for runs of the
+        original value instead, and found up to 25 surviving characters."""
+        guard = Guard(privacy=PrivacyConfig())
+        families = [
+            "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh",
+            "ya29.A0ARrdaM9xKfPqZ2LmNbVcXsWqErTyUiOpAsDfGhJkL",
+            "ghp_K7mQ2xVn8pLs4Rt6YwZa1BcDeFgHiJkLmNoP",
+            "xoxb-1234567890-K7mQ2xVn8pLs4Rt6YwZa",
+        ]
+        for secret in families:
+            for pos in range(4, len(secret) - 2):
+                out = guard.process_inbound(
+                    f"BEGIN {secret[:pos]} {secret[pos:]} END", Guard.context_web()
+                )
+                for i in range(len(secret)):
+                    for j in range(len(secret), i + 9, -1):
+                        assert secret[i:j] not in out.content, (
+                            f"{len(secret[i:j])} chars survived at split {pos}"
+                        )
+
+    @pytest.mark.parametrize("text,expected", [
+        ("Routing number 021000021", PIIClass.ROUTING_NUMBER),
+        ("Medical record number A4471902", PIIClass.MEDICAL_RECORD),
+        ("DL no. A1234567", PIIClass.DRIVERS_LICENSE),
+        ("Driver's license number A1234567", PIIClass.DRIVERS_LICENSE),
+        ("SSN number 078051120", PIIClass.SSN),
+        ("National ID number AB12345", PIIClass.NATIONAL_ID),
+        ("Contact number 020 7183 8750", PIIClass.PHONE),
+    ])
+    def test_a_number_noun_separates_on_its_own(self, text, expected):
+        """These accepted the noun and then demanded punctuation after it, so
+        ordinary declared PII crossed unchanged."""
+        found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert expected in found
+
+    @pytest.mark.parametrize("pan", [
+        "4222 2222 2222 2",          # 13-digit Visa, 4-4-4-1
+        "4000 0000 0000 0000 006",   # 19-digit Visa, 4-4-4-4-3
+        "6011 0000 0000 0000 1",     # 17-digit Discover
+        "6011 0000 0000 0000 04",    # 18-digit Discover
+        "3782 822463 10005",         # 15-digit Amex, 4-6-5
+        "3613 490 083 4867",         # 14-digit Diners, 4-3-3-4
+    ])
+    def test_grouped_pan_lengths_the_iin_table_accepts(self, pan):
+        """Enumerating a few layouts produced totals of only 12, 16, and 20
+        digits, so valid grouped lengths were invisible."""
+        found = {m.pii_class for m in detect(pan, classes=DEFAULT_TOKENIZE_CLASSES).matches}
+        assert PIIClass.CREDIT_CARD in found
+
+    def test_embedded_luhn_run_is_not_a_card_but_a_payment_record_pan_is(self):
+        """Both are digits adjacent to letters. What separates them is the
+        prefix: the false positive relied on UATP's one-digit prefix, which is
+        why UATP is labelled-only."""
+        assert PIIClass.CREDIT_CARD not in {
+            m.pii_class
+            for m in detect("asset107977945423854archive", classes=DEFAULT_TOKENIZE_CLASSES).matches
+        }
+        assert PIIClass.CREDIT_CARD in {
+            m.pii_class
+            for m in detect(
+                "PAYMENT: CCCA5490850070001643/1103", classes=DEFAULT_TOKENIZE_CLASSES
+            ).matches
+        }
+
+    def test_damaged_tokens_never_dispatch_literally(self):
+        """Twenty combinations of class damage and body damage. A single body
+        substitution is corrected and resolves, which is by design; what must
+        never happen is the artifact reaching dispatch as the argument."""
+        import itertools
+
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        raw = token.split(":")[2].rstrip("]")
+        classes = {
+            "ok": token,
+            "transpose": token.replace("EMAIL", "EMIAL"),
+            "truncate": token.replace("EMAIL", "EMAI"),
+            "nocolon": token.replace(":" + raw, raw),
+            "both": token.replace("GL:EMAIL:", "GLEMAIL"),
+        }
+        bodies = {
+            "ok": raw,
+            "sub": raw[:5] + ("Z" if raw[5] != "Z" else "Y") + raw[6:],
+            "del": raw[:5] + raw[6:],
+            "ins": raw[:5] + raw[5] + raw[5:],
+        }
+        for c, b in itertools.product(classes, bodies):
+            damaged = classes[c].replace(raw, bodies[b])
+            p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+            if p.allowed:
+                assert p.args["to"][0]["address"] == EMAIL, f"{c}+{b} dispatched literally"
+
+    @pytest.mark.parametrize("text", [
+        "[[GL Email Configuration]]",
+        "[[GL Address Normalization]]",
+        "[[Glossary of terms]]",
+        "[[Global URL settings]]",
+        "[[Guidelines: MAC address policy]]",
+    ])
+    def test_bracketed_prose_is_not_refused(self, text):
+        """Keying refusal on "GL" plus a class name was wrong in both
+        directions. Edit distance to the issued set is not: prose is nowhere
+        near a random 60-bit payload."""
+        v = _vault()
+        v.deidentify(f"mail {EMAIL}")
+        assert v.prepare_args("gmail_send_email", {"subject": text}).allowed

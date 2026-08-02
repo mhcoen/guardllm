@@ -206,6 +206,28 @@ _CLASS_NAMES = frozenset(c.name for c in PIIClass)
 _CROCKFORD_FOLD_TABLE = str.maketrans("ILOilo", "110110")
 
 
+def _within_edits(a: str, b: str, limit: int) -> bool:
+    """Bounded Levenshtein, exiting as soon as every cell exceeds ``limit``."""
+    if abs(len(a) - len(b)) > limit:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        best = cur[0]
+        for j, cb in enumerate(b, 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+            if cur[j] < best:
+                best = cur[j]
+        if best > limit:
+            return False
+        prev = cur
+    return prev[-1] <= limit
+
+
+def _trigrams(text: str) -> set[str]:
+    return {text[i : i + 3] for i in range(len(text) - 2)}
+
+
 def _crockford_fold(body: str) -> str:
     return body.upper().translate(str.maketrans("ILO", "110"))
 
@@ -251,6 +273,7 @@ class PrivacyVault:
         self._lock = threading.RLock()
         self._sources: dict[tuple[str, str], str] = {}
         self._issued_bodies: set[str] = set()
+        self._body_trigrams: dict[str, set[str]] = {}
         self._source_key = secrets.token_bytes(32)
         self._STRIP_SEPARATORS = _STRIP_SEPARATORS_TABLE
         self.seeded = SeededValues()
@@ -263,6 +286,7 @@ class PrivacyVault:
             self._by_value.clear()
             self._by_payload.clear()
             self._issued_bodies.clear()
+            self._body_trigrams.clear()
             self._sources.clear()
             # Seeded values are session state too. A Guard reused between
             # tenants otherwise keeps applying the previous tenant's labels.
@@ -324,7 +348,10 @@ class PrivacyVault:
         # Canonical full codeword bodies, for the O(1) scan in
         # _has_stray_issued_payload. An intact body is an exact lookup and
         # never needs decoding.
-        self._issued_bodies.add(_crockford_fold(body))
+        folded_body = _crockford_fold(body)
+        self._issued_bodies.add(folded_body)
+        for gram in _trigrams(folded_body):
+            self._body_trigrams.setdefault(gram, set()).add(folded_body)
         return entry.token
 
     #: Source handles live outside the value vault. Deriving them from
@@ -490,25 +517,33 @@ class PrivacyVault:
                     return True
 
         for m in self._GL_REGION_RE.finditer(text):
-            # Colons are stripped too: the damage being detected is a missing
-            # or misplaced delimiter, so the check cannot depend on one.
-            compact = (
-                m.group()[2:-2].translate(self._STRIP_SEPARATORS).replace(":", "").upper()
+            # Proximity to an ISSUED payload, not a shape heuristic. Keying on
+            # "GL" plus a known class name was wrong in both directions: a
+            # transposed class ("[[GL:EMIAL:...]]") evaded it, while
+            # "[[GL Email Configuration]]" and "[[GL Address Normalization]]"
+            # were refused. Edit distance to the issued set cannot do either:
+            # prose is nowhere near a random 60-bit payload, and a mistyped
+            # token is.
+            #
+            # Colons are stripped: the damage being detected is a missing or
+            # misplaced delimiter, so the check cannot depend on one.
+            compact = _crockford_fold(
+                m.group()[2:-2].translate(self._STRIP_SEPARATORS).replace(":", "")
             )
-            # A class name, not merely the letters "GL". Testing for the
-            # substring blocked markdown wiki links: "[[Glossary of terms]]"
-            # and "[[Global configuration]]" both contain it.
-            if not compact.startswith("GL"):
-                continue
-            # The class name must sit immediately after "GL", which is the
-            # token's actual structure. Merely containing one still blocked
-            # "[[Global URL settings]]".
-            if not any(compact[2:].startswith(name) for name in _CLASS_NAMES):
-                continue
-            # Long enough to be a class name plus a body, short enough not to be
-            # arbitrary bracketed prose.
-            if codec.CODEWORD_SYMBOLS - 2 <= len(compact) <= 60:
-                return True
+            n = codec.CODEWORD_SYMBOLS
+            for width in (n - 2, n - 1, n, n + 1, n + 2):
+                for k in range(len(compact) - width + 1):
+                    window = compact[k : k + width]
+                    counts: dict[str, int] = {}
+                    for gram in _trigrams(window):
+                        for body in self._body_trigrams.get(gram, ()):
+                            counts[body] = counts.get(body, 0) + 1
+                    for body, shared in counts.items():
+                        # Two edits destroy at most six trigrams, so a genuine
+                        # near miss still shares at least this many. The count
+                        # is only a prefilter; the distance decides.
+                        if shared >= 6 and _within_edits(window, body, 2):
+                            return True
 
         for m in self._ARTIFACT_RE.finditer(text):
             # Require a real PII class name and a body near codeword length.

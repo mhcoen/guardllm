@@ -103,11 +103,12 @@ _IIN_RANGES: tuple[tuple[int, int, int, frozenset[int]], ...] = (
     # they were crossing in plaintext; dropping them in round six under a
     # "restriction" rationale was the error, not their inclusion.
     #
-    # UATP is the 1xxx industry identifier at 15 digits. The comment here once
-    # claimed UATP coverage while no prefix-1 entry existed, so "UATP account
-    # 100100000000007" crossed unchanged. Scoped to 1000-1999 rather than a
-    # bare leading 1, which would claim every Luhn-valid 15-digit number.
-    (1000, 1999, 4, frozenset({15})),
+    # UATP (1xxx, 15 digits) is deliberately NOT here. Its prefix is one digit
+    # wide, so it claimed any Luhn-valid 15-digit run, which is roughly one in
+    # ten: "asset107977945423854archive" became a card token. Excluding
+    # letter-adjacent digits would have fixed that, but it also rejected real
+    # PANs glued to a payment code, which is how records actually carry them.
+    # UATP is covered by the labelled path instead.
     (2200, 2204, 4, frozenset({16, 17, 18, 19})),
     (506699, 506699, 6, frozenset({16, 17, 18, 19})),
     (509000, 509999, 6, frozenset({16, 17, 18, 19})),
@@ -342,6 +343,11 @@ _LC = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)\s*[\"'\u2018\u201c]?)"
 #: requests" and "The service was born 2019-06-12" are not, which is why the
 #: strict closer above is the default and this one is opt-in per label.
 _LC_ACRONYM = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
+#: A number noun ("number", "no.", "#") separates a label from its value on
+#: its own. Requiring punctuation *after* the noun as well is what made
+#: "Routing number 021000021" and "DL no. A1234567" invisible.
+_SEP_NOUN = r"[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"
+_SEP_STRICT = r"[\"'’”]?\s*(?:[:=]|\bis\b)\s*[\"'‘“]?"
 
 
 #: Which closer each label keyword takes, declared once so the choice cannot
@@ -413,6 +419,15 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.CREDIT_CARD,
         "credit_card",
+        # (3) Enumerating layouts missed valid grouped lengths: 4-4-4-1 for a
+        # 13-digit Visa, 4-4-4-4-3 for a 19-digit one, 4-5-6 for UATP. Match
+        # any consistently separated run of digit groups instead and let
+        # card_valid judge the reconstructed digits.
+        #
+        # (5) The left and right guards exclude letters as well as digits and
+        # separators. Excluding only digits let a Luhn-valid 15-digit run
+        # inside a larger identifier match: "asset107977945423854archive"
+        # became a card token.
         r"(?<![.\d\-])(?:"
         r"\d{12,19}"
         # Separators must be consistent within a grouping. Allowing them to mix
@@ -421,14 +436,20 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         # matches in the benign corpus. Written out per separator rather than
         # with a backreference, because a named backreference inside this
         # combined alternation would confuse the lastgroup dispatch in detect().
-        r"|\d{4}(?: \d{4}){2,4}"
-        r"|\d{4}(?:-\d{4}){2,4}"
-        r"|\d{4} \d{6} \d{5}"
-        r"|\d{4}-\d{6}-\d{5}"
-        # Diners 4-3-3-4, the grouping Discover publishes for its own test
-        # value 3613 490 083 4867.
-        r"|\d{4} \d{3} \d{3} \d{4}"
-        r"|\d{4}-\d{3}-\d{3}-\d{4}"
+        # Consistently separated groups, one separator kind per candidate.
+        # Mixing them let "3892 713-853-3989", a street number and a phone
+        # number, merge into one Luhn-valid Diners card 127 times in the
+        # benign corpus.
+        # The first group is always four digits in a real presentation
+        # (4-4-4-4, 4-6-5 Amex, 4-3-3-4 Diners, 4-5-6 UATP, 4-4-4-4-3). Letting
+        # it be any width re-merged "580832 580137 580136", three deal numbers,
+        # into one Luhn-valid 18-digit Maestro.
+        # Groups after the first are three to six digits, with at most a short
+        # trailing group (the 13-digit Visa 4-4-4-1). Allowing one and two
+        # digit groups anywhere merged numeric tables: "1100 1 2 1200 3 1200"
+        # became a Luhn-valid 15-digit UATP account.
+        r"|\d{4}(?: \d{3,6}){1,4}(?: \d{1,2})?"
+        r"|\d{4}(?:-\d{3,6}){1,4}(?:-\d{1,2})?"
         r")(?![.\d\-])",
         card_valid,
     ),
@@ -440,7 +461,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         # one, or "the card is 12 of 52" becomes a candidate.
         rf"(?:{_LO}(?:card|credit[\s_]card)[\s_]*(?:number|no\.?|#)"
         r"[\"'’”]?\s*[:=]?\s*[\"'‘“]?)"
-        rf"|{_LO}(?:cardnumber|credit[\s_]card){_LC_ACRONYM}"
+        rf"|{_LO}(?:cardnumber|credit[\s_]card|uatp(?:[\s_]*account)?){_LC_ACRONYM}"
         rf"|{_LO}(?:card|pan){_LC})"
         r"(?P<credit_card_labelled_v>(?:\d[ -]?){12,18}\d)",
         labelled_card_valid,
@@ -448,7 +469,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.SSN,
         "ssn",
-        rf"(?:{_LO}(?:ssn|ss[#_]?no|social[\s_]*security(?:[\s_]*(?:number|no\.?|#))?){_LC_ACRONYM}"
+        rf"(?:{_LO}(?:ssn|ss[#_]?no|social[\s_]*security)(?:[\s_]*(?:number|no\.?|#))?{_LC_ACRONYM}"
         r"(?P<ssn_v>\d{3}[-\s]?\d{2}[-\s]?\d{4})\b"
         r"|\b\d{3}-\d{2}-\d{4}\b)",
         ssn_valid,
@@ -457,7 +478,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         PIIClass.ROUTING_NUMBER,
         "routing_number",
         rf"(?:{_LO}(?:aba|rtn)(?:[\s_]*(?:number|no\.?|#))?{_LC_ACRONYM}"
-        rf"|{_LO}routing(?:[\s_]*(?:number|no\.?|#))?{_LC})"
+        rf"|{_LO}routing(?:{_SEP_NOUN}|{_SEP_STRICT})))"
         r"(?P<routing_number_v>\d{9})\b",
         routing_valid,
     ),
@@ -496,7 +517,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         # labelled_phone_valid still requires 7 to 15 digits.
         rf"(?:{_LO}(?:tel|telephone|phone|mobile|cell[\s_]?phone|fax)"
         rf"(?:[\s_]*(?:number|no\.?|#))?{_LC_ACRONYM}"
-        rf"|{_LO}contact(?:[\s_]*(?:number|no\.?|#))?{_LC})"
+        rf"|{_LO}contact(?:{_SEP_NOUN}|{_SEP_STRICT})))"
         r"(?P<phone_labelled_v>\+?[\d][\d .()\-]{5,19}\d)",
         labelled_phone_valid,
     ),
@@ -516,7 +537,7 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
         # "medical record" is an ordinary phrase and needs a real separator,
         # or "The medical record contains allergies" becomes a finding.
         rf"(?:{_LO}mrn{_LC_ACRONYM}"
-        rf"|{_LO}medical[\s_]*record(?:[\s_]*(?:number|no\.?|#))?{_LC})"
+        rf"|{_LO}medical[\s_]*record(?:{_SEP_NOUN}|{_SEP_STRICT})))"
         r"(?P<medical_record_v>[A-Za-z0-9][A-Za-z0-9\-_]{3,19})",
         opaque_id_valid,
     ),
@@ -534,15 +555,15 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.DRIVERS_LICENSE,
         "drivers_license",
-        rf"(?:{_LO}dl(?:[\s_]*(?:number|no\.?|#))?{_LC}"
-        rf"|{_LO}driver'?s?[\s_]*licen[cs]e(?:[\s_]*(?:number|no\.?|#))?{_LC})"
+        rf"(?:{_LO}dl(?:{_SEP_NOUN}|{_SEP_STRICT}))"
+        rf"|{_LO}driver'?s?[\s_]*licen[cs]e(?:{_SEP_NOUN}|{_SEP_STRICT})))"
         r"(?P<drivers_license_v>[A-Za-z0-9][A-Za-z0-9\-_]{4,19})\b",
         opaque_id_valid,
     ),
     DetectorSpec(
         PIIClass.NATIONAL_ID,
         "national_id",
-        rf"{_LO}national[\s_]*id(?:entity)?(?:[\s_]*(?:number|no\.?|#))?{_LC}"
+        rf"{_LO}national[\s_]*id(?:entity)?(?:{_SEP_NOUN}|{_SEP_STRICT}))"
         r"(?P<national_id_v>[A-Za-z0-9][A-Za-z0-9\-_]{4,19})\b",
         opaque_id_valid,
     ),

@@ -28,15 +28,15 @@ from guardllm.security.types import OutboundResult, SecurityContext
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"sk[-_][A-Za-z0-9]{20,64}"), "OpenAI API key"),
-    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,80}"), "OpenAI project key"),
+    (re.compile(r"sk[-_][A-Za-z0-9]{20,80}"), "OpenAI API key"),
+    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,220}"), "OpenAI project key"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key"),
-    (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,200}"), "Google OAuth token"),
-    (re.compile(r"gho_[A-Za-z0-9]{36,80}"), "GitHub OAuth token"),
-    (re.compile(r"ghp_[A-Za-z0-9]{36,80}"), "GitHub personal access token"),
-    (re.compile(r"ghs_[A-Za-z0-9]{36,80}"), "GitHub app token"),
-    (re.compile(r"ghr_[A-Za-z0-9]{36,80}"), "GitHub refresh token"),
-    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,80}"), "Slack token"),
+    (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,600}"), "Google OAuth token"),
+    (re.compile(r"gho_[A-Za-z0-9]{36,60}"), "GitHub OAuth token"),
+    (re.compile(r"ghp_[A-Za-z0-9]{36,60}"), "GitHub personal access token"),
+    (re.compile(r"ghs_[A-Za-z0-9]{36,60}"), "GitHub app token"),
+    (re.compile(r"ghr_[A-Za-z0-9]{36,60}"), "GitHub refresh token"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,100}"), "Slack token"),
     (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "Private key header"),
     (
         re.compile(r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"),
@@ -99,132 +99,177 @@ def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
     return "".join(out), idx
 
 
+def _pattern_and_entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]:
+    """Every credential span in one representation of the text."""
+    out: list[tuple[int, int]] = []
+    for pattern, _label in _SECRET_PATTERNS:
+        out.extend((m.start(), m.end()) for m in pattern.finditer(form))
+    for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
+        token = m.group()
+        # On a whitespace-merged form, only tokens containing a digit are
+        # candidates: a natural-language sentence merges into one long
+        # alphabetic run that clears the entropy threshold. _scan_secrets
+        # applies the same guard for the same reason.
+        if merged and not any(c.isdigit() for c in token):
+            continue
+        entropy = _shannon_entropy(token)
+        threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
+        if entropy >= threshold:
+            out.append((m.start(), m.end()))
+            continue
+        if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
+            try:
+                if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
+                    out.append((m.start(), m.end()))
+            except ValueError:
+                pass
+    return out
+
+
 def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     """Locate credentials in ``text``, returning spans into the ORIGINAL text.
 
     Shared with L13 so the model-boundary denier and the egress blocker cannot
-    disagree about what a credential is. The full scan, not just the regex
-    table: unprefixed high-entropy tokens and hex-encoded secrets count, and so
-    do values obfuscated with inserted whitespace or invisible characters.
+    disagree about what a credential is.
 
-    Obfuscated findings are mapped back through the strip to a conservative
-    span running from the first participating character to the last. Without
-    that mapping they had no span, de-identification refused the whole
-    document, and an untrusted content author could suppress any retrieved page
-    by embedding one spaced credential-shaped string.
+    The extent question, settled. For four rounds this alternated between the
+    greedy reconstruction, which ran through the words after the credential and
+    deleted them, and the shortest accepted prefix, which stopped inside the
+    secret. Measured with an oracle that looks for runs of the original value
+    rather than asking the same scanner again, the shortest prefix left up to
+    25 recoverable characters of a live key at 63 of 145 split positions.
+
+    What distinguishes the two cases is which scanner matched in the RAW text:
+
+    * A **pattern** match in the raw text located the credential using its own
+      grammar, start and end. That extent is authoritative, so no
+      reconstruction may extend it, and a contiguous credential leaves the
+      surrounding prose untouched.
+    * When only the **merged** form matches, the value is split, no exact
+      extent exists in the original, and the greedy token-aligned span is used.
+      That over-redacts adjacent words, which is the correct direction for a
+      class whose definition is that the value must not cross: the loss is
+      visible as a marker, a surviving fragment is visible to nobody.
+
+    An entropy hit is deliberately not treated as authoritative. It fires on
+    one token of a split credential, and letting it suppress the reconstruction
+    is exactly how half of a key stayed in the text.
     """
-    spans: list[tuple[int, int]] = []
-    raw_spans: list[tuple[int, int]] = []
+    pattern_spans: list[tuple[int, int]] = []
+    for pattern, _label in _SECRET_PATTERNS:
+        pattern_spans.extend((m.start(), m.end()) for m in pattern.finditer(text))
 
-    def _collect(form: str, idx: list[int] | None, merged: bool = False) -> None:
-        def _record(start: int, end: int) -> None:
-            if idx is None:
-                spans.append((start, end))
-                return
-            if not (start < len(idx) and end - 1 < len(idx)):
-                return
-            lo, hi = idx[start], idx[end - 1] + 1
-            # In merged text the credential's true end is unknowable: the
-            # greedy match runs through following words, and the shortest
-            # accepted prefix stops inside the secret, leaving a fragment
-            # visible. Neither extent is right, so widen to the whitespace
-            # delimited tokens the match participates in. A split credential is
-            # covered exactly, and the prose on either side is untouched.
-            while lo > 0 and not text[lo - 1].isspace():
-                lo -= 1
-            while hi < len(text) and not text[hi].isspace():
-                hi += 1
-            # A raw match is exact. A deobfuscated one is a reconstruction, so
-            # it must not displace or truncate a raw span covering the same
-            # text: minimizing a reconstruction to its shortest accepted prefix
-            # is right when it would otherwise run through following words, and
-            # wrong when the raw match already had the true extent.
-            if any(a < hi and lo < b for a, b in raw_spans):
-                return
-            # sk[-_][A-Za-z0-9]{20,} is greedy, and on a whitespace-merged form
-            # it runs straight through the words that followed the credential.
-            # Mapping that back to a bounding range made marker substitution
-            # delete the rest of the sentence. A real obfuscated credential
-            # carries a few inserted separators, not fifty.
-            spans.append((lo, hi))
+    spans: list[tuple[int, int]] = list(pattern_spans)
 
-        for pattern, _label in _SECRET_PATTERNS:
-            for m in pattern.finditer(form):
-                # After whitespace removal the credential's true end is not
-                # recoverable, and no rule tried so far recovers it: greedy
-                # deletes the words that followed, shortest stops inside the
-                # secret, and separator density picks wrong on one side or the
-                # other depending on the split stride. The pair "leave no
-                # fragment" and "delete no unrelated text" is not jointly
-                # satisfiable here, so the choice is stated rather than tuned.
-                #
-                # Shortest accepted prefix, token-aligned by _record below.
-                # Rationale: this branch only runs when a credential was
-                # deliberately split in the content. If an attacker did that
-                # they already hold the value, so a residual fragment tells
-                # them nothing; if line wrapping did it, the fragment is
-                # partial. Deleting unrelated prose, by contrast, damages every
-                # legitimate document it touches. Contiguous credentials are
-                # unaffected: their exact raw match takes precedence.
-                end = m.end()
-                if idx is not None:
-                    # Reconstructions only. A raw match is exact and must never
-                    # be shortened, or a contiguous credential is truncated and
-                    # its tail stays visible.
-                    for candidate in range(m.start() + 1, m.end() + 1):
-                        if pattern.fullmatch(form, m.start(), candidate):
-                            end = candidate
-                            break
-                _record(m.start(), end)
+    def _entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]:
+        out: list[tuple[int, int]] = []
         for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
             token = m.group()
-            # On a whitespace-merged form, only tokens containing a digit are
-            # candidates. Without this a natural-language sentence, whose words
-            # merge into one long alphabetic run, exceeds the entropy threshold.
-            # _scan_secrets applies the same guard for the same reason.
+            # On a whitespace-merged form only tokens containing a digit count:
+            # an English sentence merges into one long alphabetic run that
+            # clears the entropy threshold. _scan_secrets guards the same way.
             if merged and not any(c.isdigit() for c in token):
                 continue
             entropy = _shannon_entropy(token)
             threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
             if entropy >= threshold:
-                _record(m.start(), m.end())
+                out.append((m.start(), m.end()))
                 continue
             if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
                 try:
                     if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                        _record(m.start(), m.end())
+                        out.append((m.start(), m.end()))
                 except ValueError:
                     pass
+        return out
 
-    _collect(text, None)
-    raw_spans = list(spans)
+    spans.extend(_entropy_spans(text, merged=False))
+
     stripped, stripped_idx = _strip_with_offsets(text, "\u200b\u200c\u200d\u2060\ufeff")
-    if stripped != text:
-        _collect(stripped, stripped_idx)
     ws_removed, ws_idx = _strip_with_offsets(stripped, None)
-    if ws_removed != stripped:
-        _collect(ws_removed, [stripped_idx[i] for i in ws_idx], merged=True)
+    ws_map = [stripped_idx[i] for i in ws_idx]
 
-    # Mask what we located and rerun the full scanner. Anything it still finds
-    # has no faithful span even after the offset mapping, so the caller must
-    # refuse rather than emit content still carrying it.
-    # Prefer the narrowest span covering each credential. A greedy pattern on
-    # a whitespace-merged form matches straight through the words that followed
-    # the credential, so its mapped-back span is a superset of the raw match,
-    # and substituting it deleted the rest of the sentence. Dropping any span
-    # that strictly contains another keeps the tight one regardless of which
-    # pass produced it.
-    unique = sorted(set(spans))
-    minimal = [
-        (a, b)
-        for a, b in unique
-        if not any((c, d) != (a, b) and a <= c and d <= b for c, d in unique)
-    ]
+    for form, idx, merged in ((stripped, stripped_idx, False), (ws_removed, ws_map, True)):
+        if form == text:
+            continue
+        # Patterns only. An entropy hit on a merged form says nothing about
+        # extent: with the whitespace removed, unrelated lines join into one
+        # high-entropy run, and mapping that back produced spans covering a
+        # whole document. Entropy still contributes on the raw text above,
+        # where token boundaries are intact.
+        found: list[tuple[int, int]] = []
+        for pattern, _label in _SECRET_PATTERNS:
+            found.extend((m.start(), m.end()) for m in pattern.finditer(form))
+        for lo_f, hi_f in found:
+            if not (lo_f < len(idx) and hi_f - 1 < len(idx)):
+                continue
+            lo, hi = idx[lo_f], idx[hi_f - 1] + 1
+            # A reconstruction has no exact extent, so widen to the whitespace
+            # delimited tokens it participates in.
+            while lo > 0 and not text[lo - 1].isspace():
+                lo -= 1
+            while hi < len(text) and not text[hi].isspace():
+                hi += 1
+            # Clamp to the line the match starts on. A reconstruction allowed
+            # to cross line breaks consumed the remainder of a multi-line
+            # document, which is the destruction this area exists to avoid. A
+            # credential genuinely wrapped onto the next line leaves its
+            # continuation as a separate token there, which the raw scan on
+            # that line handles on its own terms.
+            line_end = text.find("\n", lo)
+            if line_end != -1:
+                hi = min(hi, line_end)
+                if hi <= lo:
+                    continue
+            # A raw PATTERN match already fixed the extent here, so the
+            # reconstruction must not widen it into the following prose. Note
+            # this is checked against pattern spans only, never entropy spans:
+            # an entropy hit fires on one token of a split credential, and
+            # letting it suppress the reconstruction left half a key in place.
+            overlapping = [(a, b) for a, b in pattern_spans if a < hi and lo < b]
+            if overlapping:
+                # The raw match can still be a PREFIX of a split credential,
+                # which is how 19 characters survived at 33 of 145 splits.
+                # Extend through following tokens while they look like more of
+                # the same value: alphanumeric and long. A prose word rarely
+                # reaches ten characters, a credential fragment usually does,
+                # and the extension stops at the first token that fails, so the
+                # over-redaction is bounded to adjacent tokens rather than
+                # running to the pattern's maximum length.
+                end = max(b for _, b in overlapping)
+                while end < len(text):
+                    nxt = end
+                    while nxt < len(text) and text[nxt].isspace():
+                        nxt += 1
+                    stop = nxt
+                    while stop < len(text) and not text[stop].isspace():
+                        stop += 1
+                    token = text[nxt:stop]
+                    if len(token) >= 10 and token.isalnum():
+                        end = stop
+                        continue
+                    break
+                if end > max(b for _, b in overlapping):
+                    spans.append((min(a for a, _ in overlapping), end))
+                continue
+            spans.append((lo, hi))
+
+    # Merge overlapping spans. They are all one class, so two that overlap are
+    # one finding, and leaving them separate made partially overlapping
+    # credential spans trip the ambiguous-identifier rule and refuse the
+    # document.
+    merged_spans: list[tuple[int, int]] = []
+    for lo, hi in sorted(set(spans)):
+        if merged_spans and lo <= merged_spans[-1][1]:
+            prev_lo, prev_hi = merged_spans[-1]
+            merged_spans[-1] = (prev_lo, max(prev_hi, hi))
+        else:
+            merged_spans.append((lo, hi))
 
     masked = text
-    for start, end in sorted(minimal, reverse=True):
-        masked = masked[:start] + " " * (end - start) + masked[end:]
-    return minimal, _scan_secrets(masked)
+    for lo, hi in sorted(merged_spans, reverse=True):
+        masked = masked[:lo] + " " * (hi - lo) + masked[hi:]
+    return merged_spans, _scan_secrets(masked)
 
 
 def _scan_secrets(text: str) -> list[str]:

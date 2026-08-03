@@ -2237,3 +2237,144 @@ class TestRoundTenRegressions:
                 p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
                 assert not p.allowed, f"all-letter payload dispatched: {damaged}"
                 assert EMAIL not in str(p.args)
+
+
+# ---------------------------------------------------------------------------
+# Round eleven
+# ---------------------------------------------------------------------------
+
+
+class TestRoundElevenRegressions:
+    def test_a_framing_free_damaged_body_never_reaches_dispatch(self):
+        """Finding 1. Losing the framing entirely defeated everything: the
+        exact payload scan wants 15 symbols so a deleted one misses, and the
+        proximity scan wanted a GL prefix or doubled brackets. A body one
+        symbol short reached tool dispatch as a literal recipient."""
+        v = _vault()
+        out = v.deidentify(f"mail {EMAIL}")
+        body = re.search(r"\[\[GL:[A-Z_]+:([0-9A-Z]+)\]\]", out.content).group(1)
+        for label, damaged in (
+            ("delete", body[:5] + body[6:]),
+            ("substitute", body[:5] + ("Z" if body[5] != "Z" else "Y") + body[6:]),
+            ("insert", body[:5] + body[5] + body[5:]),
+        ):
+            assert v._has_stray_issued_payload(damaged), label
+            p = v.prepare_args("gmail_send_email", {"to": [{"address": damaged}]})
+            assert not p.allowed, f"{label} dispatched: {damaged}"
+            assert EMAIL not in str(p.args)
+
+    @pytest.mark.parametrize("text", [
+        "documentation", "configuration", "authentication",
+        "abcdefghijklmno", "internationaliz", "SGVsbG8gV29ybGQ",
+    ])
+    def test_ordinary_codeword_length_runs_are_not_refused(self, text):
+        """Finding 1's cost, bounded. Nearness to a random 60-bit payload is
+        specific enough that dropping the marker requirement costs nothing."""
+        v = _vault()
+        v.deidentify(f"mail {EMAIL}")
+        assert not v._has_stray_issued_payload(text)
+
+    @pytest.mark.parametrize("text", [
+        "Use Bearer authorization. Header values are case sensitive.",
+        "The Bearer token. Refresh is automatic.",
+        "Bearer authentication. Configuration follows.",
+    ])
+    def test_bearer_prose_is_not_a_jwt(self, text):
+        """Finding 2, the worst of the round: it changed behaviour with the
+        vault switched off. Making the mandatory separator optional let the
+        grammar cross a sentence boundary it could never cross raw, because a
+        JWT payload and two English words either side of a full stop are the
+        same shape. The space after the stop is what keeps the raw scan safe.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets
+
+        assert _scan_secrets(text) == []
+        guard = Guard()  # no privacy config: the vault is not involved at all
+        assert guard.check_outbound(text, Guard.context_web()).allowed
+        # And the span scanner, which is a separate path: with L13 ingress the
+        # first of these was rewritten to "Use [redacted:credential]".
+        assert _vault().deidentify(text, deny_action="marker").content == text
+
+    def test_a_real_jwt_is_still_caught_split_or_whole(self):
+        """And finding 2's fix must not cost the detection it was added for."""
+        from guardllm.security.outbound_dlp import _scan_secrets
+
+        jwt = (
+            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9."
+            "dBjftJeZ4CVPmB92K27uhbUJU1p1rwW1gFWFOEjXk"
+        )
+        assert "Bearer/JWT token" in _scan_secrets(jwt)
+        for pos in range(8, len(jwt) - 2, 3):
+            split = jwt[:pos] + " " + jwt[pos:]
+            assert "Bearer/JWT token" in _scan_secrets(split), f"split {pos}"
+
+    def test_a_credential_wrapped_over_many_short_lines_leaks_nothing(self):
+        """Finding 3. The minimum was satisfied three lines up and one further
+        token did not reach the end, so 19 characters crossed the boundary. The
+        oracle missed it because it splits into two pieces, never three."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
+        for parts in (5, 4, 3):
+            size = len(secret) // parts
+            chunks = [secret[i : i + size] for i in range(0, len(secret), size)]
+            text = "\n".join(chunks)
+            spans, _ = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            run = _longest_surviving_run(out, secret)
+            assert run == 0, f"{parts} lines: {run} chars survived"
+
+    def test_an_unrelated_credential_does_not_disable_wrap_protection(self):
+        """Finding 4. may_wrap consulted every raw span on the line, so an AWS
+        key in front of a wrapped Slack token silenced the wrap logic for its
+        neighbour and the whole Slack tail stayed visible."""
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        slack = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
+        text = f"AKIAIOSFODNN7EXAMPLE {slack[:31]}\n{slack[31:]}"
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, slack) == 0
+        assert "AKIAIOSFODNN7EXAMPLE" not in out
+
+    @pytest.mark.parametrize("text,value", [
+        ('Patient medical record number "abcdefg"', "abcdefg"),
+        ("Patient national ID number 'alphaone'", "alphaone"),
+        ('Patient driver license number "abcdxyz"', "abcdxyz"),
+    ])
+    def test_a_quoted_lowercase_identifier_is_covered(self, text, value):
+        """Finding 5. Hospitals and host applications do issue opaque
+        identifiers with arbitrary casing. A quote is structural delimiting and
+        is evidence enough, so these no longer need to look like codes."""
+        classes = frozenset({
+            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD, PIIClass.NATIONAL_ID,
+        })
+        assert [m.value for m in detect(text, classes=classes).matches] == [value]
+
+    @pytest.mark.parametrize("text,value", [
+        ("Patient medical record number abcdefg", "abcdefg"),
+        ("Patient national ID number alphaone", "alphaone"),
+    ])
+    def test_a_bare_lowercase_identifier_needs_seeding_and_says_so(self, text, value):
+        """Finding 5's remaining limit, asserted rather than implied.
+
+        Undelimited, all-lowercase and alphabetic, the value is
+        indistinguishable from the next word of a sentence, which is how
+        "Medical record number required" tokenized "required". That form is NOT
+        covered by the labelled path, and this test exists so the gap is
+        recorded rather than assumed closed. A host that issues such
+        identifiers declares them, and then they are caught.
+        """
+        classes = frozenset({
+            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD, PIIClass.NATIONAL_ID,
+        })
+        assert detect(text, classes=classes).matches == []
+
+        seeded = SeededValues()
+        seeded.add({value: PIIClass.MEDICAL_RECORD})
+        found = detect(text, classes=classes, seeded=seeded).matches
+        assert [m.value for m in found] == [value]

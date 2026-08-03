@@ -491,6 +491,20 @@ class PrivacyVault:
     #: resolved to nothing, passed as ordinary text and dispatched literally.
     _GL_SIGNATURE_RE = re.compile(r"(?i)GL[0-9A-Za-z\s\-./\\_,:]{10,60}")
 
+    #: A bare run of roughly codeword length, carrying no marker at all.
+    #:
+    #: Losing the framing entirely is a plausible model transformation, and it
+    #: defeated everything else here: the exact payload scan wants 15 symbols
+    #: so a deleted one misses, and the proximity scan wanted a GL prefix or
+    #: doubled brackets. A body one symbol short then reached tool dispatch as
+    #: a literal recipient. Nearness to an issued payload is specific enough on
+    #: its own, so the marker is no longer required.
+    #:
+    #: Bounded to codeword length plus or minus two, and maximal, so a long
+    #: base64 argument is one enormous run that matches nothing here rather
+    #: than a million overlapping candidates.
+    _BARE_RUN_RE = re.compile(r"(?<![0-9A-Za-z])[0-9A-Za-z]{13,17}(?![0-9A-Za-z])")
+
     #: Windows the proximity scan may examine per call. Every candidate region
     #: yields five widths at every offset, so a megabyte of payload-shaped
     #: content took 7.4 seconds, which is a worker occupied by one argument.
@@ -508,7 +522,11 @@ class PrivacyVault:
         overlap below is the prefilter, and it is not a guess.
         """
         seen: set[str] = set()
-        for pattern, trim in ((self._GL_REGION_RE, 2), (self._GL_SIGNATURE_RE, 0)):
+        for pattern, trim in (
+            (self._GL_REGION_RE, 2),
+            (self._GL_SIGNATURE_RE, 0),
+            (self._BARE_RUN_RE, 0),
+        ):
             for m in pattern.finditer(text):
                 raw = m.group()[trim : len(m.group()) - trim] if trim else m.group()
                 # Colons are stripped: the damage being detected is a missing

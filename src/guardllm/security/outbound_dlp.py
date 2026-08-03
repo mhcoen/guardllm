@@ -69,6 +69,22 @@ _MERGED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(_merged_variant(p.pattern)), label) for p, label in _SECRET_PATTERNS
 ]
 
+#: Grammars whose merged form must additionally look random.
+#:
+#: Only the JWT one qualifies and the reason is specific to it. Its payload is
+#: two or three base64url segments separated by dots, which as a pattern is
+#: indistinguishable from two English words separated by a full stop. In the
+#: raw text a sentence is safe because the space after the stop breaks the
+#: match. Merged, that space is gone, and "Use Bearer authorization. Header
+#: values are case sensitive." became a JWT and blocked outbound content with
+#: the vault switched off. A real payload is base64 and clears the bar; a
+#: sentence does not.
+#:
+#: Not applied to the others. They are anchored by a literal prefix that
+#: English does not produce, and their bodies are not always maximally random:
+#: AKIAIOSFODNN7EXAMPLE is a real key that sits below this threshold.
+_MERGED_NEEDS_RANDOM = frozenset({"Bearer/JWT token"})
+
 # Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
@@ -146,9 +162,11 @@ def _looks_random(s: str) -> bool:
     """Does this clear the same randomness bar the entropy scanner applies?
 
     Same threshold and same length allowance, so "random" means one thing in
-    this module rather than two.
+    this module rather than two. No minimum length here, unlike the standalone
+    entropy scan: this is asked about text a grammar has already claimed, and
+    the shortest thing a grammar accepts is a 15 character Slack token.
     """
-    if len(s) < _ENTROPY_MIN_LENGTH:
+    if not s:
         return False
     return _shannon_entropy(s) >= min(
         _ENTROPY_THRESHOLD, math.log2(len(s)) - _ENTROPY_LENGTH_MARGIN
@@ -211,6 +229,24 @@ def _extend_ambiguous(
         nxt, stop = _next_token(text, end)
         if nxt >= len(text):
             break
+        end = stop
+
+    # A value broken across several short lines leaves each continuation alone
+    # on its own line. That is the shape, and it is what separates a wrap from
+    # prose: a wrapped fragment is the only thing on its line, an English line
+    # has several words on it. Take those whole lines while they last. Bounded
+    # twice over, by the merged match's reach and so by the grammar's maximum
+    # length, and by the first line that turns out to be a sentence.
+    #
+    # Without this a Slack token split across five lines kept its last 19
+    # characters: the minimum was satisfied three lines up, and one further
+    # token did not reach the end.
+    while end < reach:
+        nxt, stop = _next_token(text, end)
+        if nxt >= reach or text.find("\n", end, nxt) == -1:
+            break  # same line, so not a wrap; the single-token rule handles it
+        if stop > reach or stop != _line_end(text, nxt):
+            break  # something else shares the line, so it is not a bare wrap
         end = stop
 
     # One token more, for the remainder of a value the break split after its
@@ -327,11 +363,11 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
         # high-entropy run, and mapping that back produced spans covering a
         # whole document. Entropy still contributes on the raw text above,
         # where token boundaries are intact.
-        found: list[tuple[int, int, re.Pattern[str]]] = []
+        found: list[tuple[int, int, re.Pattern[str], str]] = []
         table = _MERGED_PATTERNS if merged else _SECRET_PATTERNS
-        for pattern, _label in table:
-            found.extend((m.start(), m.end(), pattern) for m in pattern.finditer(form))
-        for lo_f, hi_f, pattern in found:
+        for pattern, label in table:
+            found.extend((m.start(), m.end(), pattern, label) for m in pattern.finditer(form))
+        for lo_f, hi_f, pattern, label in found:
             if not (lo_f < len(idx) and hi_f - 1 < len(idx)):
                 continue
             lo, hi = idx[lo_f], idx[hi_f - 1] + 1
@@ -357,8 +393,12 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             # merge joins the words and the sentence supplies the digit. The
             # bodies differ where it counts: joined English words repeat
             # letters and a key does not.
+            #
+            merged_body = _WHITESPACE_RE.sub("", text[lo:hi])
+            if label in _MERGED_NEEDS_RANDOM and not _looks_random(merged_body):
+                continue
             at_boundary = lo == 0 or not (text[lo - 1].isalnum() or text[lo - 1] in "_-")
-            if not at_boundary and not _looks_random(_WHITESPACE_RE.sub("", text[lo:hi])):
+            if not at_boundary and not _looks_random(merged_body):
                 continue
             # How far the merged match reaches in original coordinates, kept
             # before the clamps below so the wrap case can consult it.
@@ -384,8 +424,14 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             # nothing below continues it. Without this the walk crossed break
             # after break through ordinary prose and took the rest of a
             # document with it, which is the failure this area exists to avoid.
+            #
+            # Only spans belonging to THIS candidate may answer that question.
+            # Consulting every raw span on the line let an unrelated credential
+            # silence the wrap logic for its neighbour: an AWS key sitting in
+            # front of a wrapped Slack token made may_wrap false, and the whole
+            # 19 character Slack tail stayed in the text.
             may_wrap = not any(
-                a >= _line_start(text, lo) and b < line_e and text[b].isspace()
+                a < reach and lo < b and b < line_e and text[b].isspace()
                 for a, b in pattern_spans
             )
             spans.append((lo, _extend_ambiguous(text, lo, hi, pattern, reach, may_wrap)))
@@ -434,10 +480,19 @@ def _scan_secrets(text: str) -> list[str]:
     for (pattern, label), (merged_pattern, _) in zip(_SECRET_PATTERNS, _MERGED_PATTERNS):
         if label in found:
             continue
-        if any(pattern.search(form) for form in forms) or any(
-            merged_pattern.search(form) for form in merged_only
-        ):
+        if any(pattern.search(form) for form in forms):
             found.append(label)
+            continue
+        # A hit that exists only once whitespace is gone has to look random.
+        # Making the mandatory separator optional is what lets a grammar cross
+        # a sentence boundary it could never cross in the original: "Use Bearer
+        # authorization. Header values are case sensitive." became a JWT, and
+        # blocked outbound content with the vault switched off entirely.
+        for form in merged_only:
+            m = merged_pattern.search(form)
+            if m is not None and _looks_random(m.group()):
+                found.append(label)
+                break
 
     # High-entropy token detection: look for long hex/base64-like tokens.
     # Scan the invisible-stripped form (all tokens) AND the whitespace-removed

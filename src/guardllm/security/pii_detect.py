@@ -358,9 +358,19 @@ _LC_ACRONYM = r"[\"'\u2019\u201d]?\s*(?:[:=]|\bis\b)?\s*[\"'\u2018\u201c]?)"
 #: _LO opens, so an uppercase class here matches lowercase too, and "required"
 #: satisfied the uppercase-code alternative exactly as before the guard existed.
 _CODE_SHAPED = r"(?=\S*\d|(?-i:[A-Z][A-Z0-9]{2,})(?![A-Za-z]))"
+#: Three ways past a number noun, in decreasing order of evidence. An explicit
+#: ``:`` or ``=`` takes the value as written. A quote is structural delimiting
+#: and does the same, which is what carries the lowercase opaque identifiers
+#: that hospitals and host applications really do issue: "Patient medical
+#: record number 'abcdefg'". With neither, the value must at least be shaped
+#: like an identifier, or the word after the noun in "Medical record number
+#: required" becomes the value. The bare lowercase alphabetic form is NOT
+#: covered and is not claimed to be; see SeededValues for declaring those.
 _SEP_NOUN = (
     r"[\s_]*(?:number|no\.?|#)[\"'’”]?\s*"
-    r"(?:[:=]\s*[\"'‘“]?|[\"'‘“]?" + _CODE_SHAPED + r")"
+    r"(?:[:=]\s*[\"'‘“]?"
+    r"|[\"'‘“]"
+    r"|" + _CODE_SHAPED + r")"
 )
 _SEP_STRICT = r"[\"'’”]?\s*(?:[:=]|\bis\b)\s*[\"'‘“]?"
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
+from collections.abc import Callable
 
 from guardllm.security.normalization import (
     MAX_OVERLAP_CHARS,
@@ -85,6 +86,88 @@ _MERGED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 #: AKIAIOSFODNN7EXAMPLE is a real key that sits below this threshold.
 _MERGED_NEEDS_RANDOM = frozenset({"Bearer/JWT token"})
 
+#: The grammars again with every separator gone, for text where the value was
+#: split with punctuation rather than whitespace.
+#:
+#: Removing whitespace alone left this open: a comma, a full stop, a pipe, a
+#: semicolon, a bracket, in fact anything but ``+`` and ``/``, split a key into
+#: two fragments that no form reassembled, and 32 characters stayed in the
+#: text at most split positions of most grammars. ``+`` and ``/`` were the
+#: exceptions only because they are inside the entropy scanner's own character
+#: class, so both halves stayed in one token it could see.
+#:
+#: These are written out rather than derived from the table above. Deriving one
+#: by rewriting required separators to optional ones is what turned
+#: ``Bearer\s+`` into ``Bearer\s*`` and made a sentence a JWT, and a
+#: transformation that cannot be read is a transformation nobody checks.
+#: test_every_grammar_has_a_separator_free_twin pins each of these to a real
+#: credential of its grammar, so the table cannot drift from the one above.
+#:
+#: `sk` and `Bearer` are deliberately absent, and that omission is the whole
+#: reason this table is small. They are the two prefixes ordinary text produces
+#: on its own: `sk` sits inside `disk`, `task` and `ask`. Applied to a form
+#: with underscores removed, `disk_usage` becomes `diskusage` and every such
+#: identifier in a source file starts an OpenAI key. That cost 492,745
+#: characters of the standard library, against 3,051 before, and took 33
+#: seconds. Those two grammars are served by the punctuation-stripped form
+#: below, which keeps `-` and `_` and so never joins an identifier to its
+#: neighbour. What is left here are prefixes English does not write, and they
+#: are what a value split with a hyphen or an underscore needs, since those two
+#: characters are inside several of the grammars themselves.
+#:
+#: The third element, whether a match must also look random, is false for every
+#: entry: a token boundary is required outright on this form, which is the
+#: stronger constraint, and it was randomness rather than the boundary that
+#: build-config text kept clearing. The column stays because the merged form
+#: shares this loop and does need it for the JWT grammar.
+#:
+#: The PEM header is listed but a hyphen driven into it still evades this form,
+#: because the alnum form preserves whitespace runs and the header contains
+#: them. That is left alone on purpose. The header is public boilerplate
+#: carrying no secret, and a real key block is still caught by the entropy scan
+#: on the key material beneath it; closing it would mean loosening the grammar
+#: further, which is the move that made a sentence a JWT.
+_SEPARATOR_FREE_PATTERNS: list[tuple[re.Pattern[str], str, bool]] = [
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key", False),
+    (re.compile(r"skproj[A-Za-z0-9]{20,220}"), "OpenAI project key", False),
+    (re.compile(r"ya29[A-Za-z0-9]{20,600}"), "Google OAuth token", False),
+    (re.compile(r"gh[oprs][A-Za-z0-9]{36,60}"), "GitHub token", False),
+    (re.compile(r"xox[baprs][A-Za-z0-9]{10,100}"), "Slack token", False),
+    (re.compile(r"BEGIN(?:RSA|EC|DSA|OPENSSH)?PRIVATEKEY"), "Private key header", False),
+]
+
+#: Grammars whose prefix ordinary text does not produce.
+#:
+#: These are exempt from the mid-token randomness rule. That rule exists for
+#: the two prefixes English writes on its own: `sk` inside `netmask_cache`,
+#: `Bearer` starting a sentence. Applied to the rest it only cost detection,
+#: because their bodies are not always random enough to clear the bar, so
+#: prefixing one character in front of a split value hid it: "XAKIA,IOSF..."
+#: kept 19 of 20 characters, and the same trick worked on the project key and
+#: the Google token with a plain space.
+_DISTINCTIVE_PREFIXES = frozenset({
+    "AWS access key",
+    "OpenAI project key",
+    "Google OAuth token",
+    "GitHub token",
+    "GitHub OAuth token",
+    "GitHub personal access token",
+    "GitHub app token",
+    "GitHub refresh token",
+    "Slack token",
+    "Private key header",
+})
+
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]")
+_PUNCT_FREE_RE = re.compile(r"[^A-Za-z0-9\-_+/]")
+
+#: Punctuation only: everything that is not alphanumeric and not one of the
+#: four characters the grammars and the entropy scanner actually contain.
+#: Stripping this catches a value split with a comma, full stop, pipe, colon,
+#: bracket or any other punctuation, which leaked 32 characters at nearly every
+#: split position, while leaving `disk_usage` and `x-request-id` intact.
+_PUNCT_KEEP = frozenset("-_+/")
+
 # Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
@@ -128,6 +211,65 @@ def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
             continue
         out.append(ch)
         idx.append(i)
+    return "".join(out), idx
+
+
+def _strip_intra_token(
+    text: str, base: list[int], keep: frozenset[str]
+) -> tuple[str, list[int]]:
+    """Remove separator runs that sit BETWEEN two alphanumerics, and no others.
+
+    This is what makes a punctuation-stripped form usable at all. Stripping
+    every separator joined each credential to whatever followed it, so
+    ``sk-...uvwx, trailing`` and ``{"key": "sk-...uvwx", "other": "value"}``
+    both became ambiguous and cost their whole line, undoing the precision that
+    quoting and punctuation are supposed to buy.
+
+    The asymmetry that fixes it: splitting a value with punctuation means
+    writing ``sk-abc,def``, with nothing either side of the comma, because
+    adding a space would make it the whitespace case instead. Ordinary text
+    writes ``key, next word``, with a space after. So a separator run counts
+    only when alphanumerics close it on both sides.
+    """
+    out: list[str] = []
+    idx: list[int] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if (ch.isascii() and ch.isalnum()) or ch in keep:
+            out.append(ch)
+            idx.append(base[i])
+            i += 1
+            continue
+        j = i
+        while j < n and not ((text[j].isascii() and text[j].isalnum()) or text[j] in keep):
+            j += 1
+        def _content(ch: str) -> bool:
+            # Kept separators count as content on either side, or a comma
+            # placed against the grammar's own punctuation is not recognised
+            # as intra-token: "sk,-proj-..." and "ghp,_A1b2..." both survived,
+            # which is where the remaining leaks were, all of them inside a
+            # prefix rather than in the body.
+            return (ch.isascii() and ch.isalnum()) or ch in keep
+
+        flanked = (
+            i > 0
+            and j < n
+            and _content(text[i - 1])
+            and _content(text[j])
+            # A run holding any whitespace is the ordinary-text case, not a
+            # split: "key, next word" has a space after the comma and
+            # "sk-abc,def" does not. Whitespace joins are the merged form's
+            # job, and letting them be joined here as well made every
+            # delimited credential ambiguous again.
+            and not any(c.isspace() for c in text[i:j])
+        )
+        if not flanked:
+            # Keep the run's own characters out of the form but do not let the
+            # two sides join: emit a space so the grammars still see a break.
+            out.append(" ")
+            idx.append(base[i])
+        i = j
     return "".join(out), idx
 
 
@@ -196,7 +338,13 @@ def _next_token(text: str, pos: int) -> tuple[int, int]:
 
 
 def _extend_ambiguous(
-    text: str, lo: int, hi: int, pattern: re.Pattern[str], reach: int, may_wrap: bool
+    text: str,
+    lo: int,
+    hi: int,
+    pattern: re.Pattern[str],
+    reach: int,
+    may_wrap: bool,
+    normalize: Callable[[str], str],
 ) -> int:
     """Widen a span whose true extent cannot be recovered from the text.
 
@@ -219,7 +367,9 @@ def _extend_ambiguous(
         return end
 
     def merged_to(stop: int) -> str:
-        return _WHITESPACE_RE.sub("", text[lo:stop])
+        # Normalized the same way the form that produced this match was, or the
+        # grammar cannot be asked whether it is satisfied yet.
+        return normalize(text[lo:stop])
 
     # The value may be cut short of its own grammar by the break, so take
     # whatever tokens the minimum still requires. ``match``, not ``fullmatch``:
@@ -355,19 +505,46 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     ws_removed, ws_idx = _strip_with_offsets(stripped, None)
     ws_map = [stripped_idx[i] for i in ws_idx]
 
-    for form, idx, merged in ((stripped, stripped_idx, False), (ws_removed, ws_map, True)):
+    # Two further forms, for values split with something other than whitespace.
+    # Offsets map back through each strip.
+    #
+    #  - punctuation removed but `-_+/` kept, matched with the ordinary
+    #    grammars, since those four characters are the ones the grammars and
+    #    the entropy scanner contain. This is the general case.
+    #  - everything non-alphanumeric removed, matched with the small table of
+    #    distinctive prefixes only. This is what a value split on a hyphen or
+    #    an underscore needs, and it is restricted precisely because removing
+    #    those two joins ordinary identifiers to their neighbours.
+    punct_free, punct_free_map = _strip_intra_token(stripped, stripped_idx, _PUNCT_KEEP)
+    alnum_only, alnum_map = _strip_intra_token(stripped, stripped_idx, frozenset())
+
+    forms: list[tuple[str, list[int], str]] = [
+        (stripped, stripped_idx, "raw"),
+        (ws_removed, ws_map, "merged"),
+        (punct_free, punct_free_map, "punct_free"),
+        (alnum_only, alnum_map, "separator_free"),
+    ]
+    for form, idx, kind in forms:
         if form == text:
             continue
+        merged = kind != "raw"
         # Patterns only. An entropy hit on a merged form says nothing about
         # extent: with the whitespace removed, unrelated lines join into one
         # high-entropy run, and mapping that back produced spans covering a
         # whole document. Entropy still contributes on the raw text above,
         # where token boundaries are intact.
-        found: list[tuple[int, int, re.Pattern[str], str]] = []
-        table = _MERGED_PATTERNS if merged else _SECRET_PATTERNS
-        for pattern, label in table:
-            found.extend((m.start(), m.end(), pattern, label) for m in pattern.finditer(form))
-        for lo_f, hi_f, pattern, label in found:
+        found: list[tuple[int, int, re.Pattern[str], str, bool]] = []
+        if kind == "separator_free":
+            table = [(p, lbl, rnd) for p, lbl, rnd in _SEPARATOR_FREE_PATTERNS]
+        else:
+            base = _MERGED_PATTERNS if kind == "merged" else _SECRET_PATTERNS
+            table = [(p, lbl, lbl in _MERGED_NEEDS_RANDOM and merged) for p, lbl in base]
+        for pattern, label, needs_random in table:
+            found.extend(
+                (m.start(), m.end(), pattern, label, needs_random)
+                for m in pattern.finditer(form)
+            )
+        for lo_f, hi_f, pattern, label, needs_random in found:
             if not (lo_f < len(idx) and hi_f - 1 < len(idx)):
                 continue
             lo, hi = idx[lo_f], idx[hi_f - 1] + 1
@@ -394,11 +571,31 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
             # bodies differ where it counts: joined English words repeat
             # letters and a key does not.
             #
-            merged_body = _WHITESPACE_RE.sub("", text[lo:hi])
-            if label in _MERGED_NEEDS_RANDOM and not _looks_random(merged_body):
+            merged_body = _NON_ALNUM_RE.sub("", text[lo:hi])
+            if needs_random and not _looks_random(merged_body):
                 continue
+            # A mid-token match has to earn itself by looking random, because
+            # joining words is what invents prefixes that were never written.
+            #
+            # That rule is not applied to the separator-free form. Every
+            # grammar in that table is anchored by something English does not
+            # produce, and the intra-token rule above already stops two words
+            # being joined across a space, so the shape it guards against
+            # cannot arise there. Applying it anyway cost the AWS grammar,
+            # whose keys are not random enough to clear the bar:
+            # "XAKIA,IOSFODNN7EXAMPLE" kept 19 of its 20 characters.
+            #
+            # A separate boundary test for that form used to sit here. It
+            # became dead the moment separator runs stopped being stripped
+            # across whitespace, and removing it changed neither the standard
+            # library measurement nor any test, so it is gone rather than kept
+            # as untested weight.
             at_boundary = lo == 0 or not (text[lo - 1].isalnum() or text[lo - 1] in "_-")
-            if not at_boundary and not _looks_random(merged_body):
+            if (
+                label not in _DISTINCTIVE_PREFIXES
+                and not at_boundary
+                and not _looks_random(merged_body)
+            ):
                 continue
             # How far the merged match reaches in original coordinates, kept
             # before the clamps below so the wrap case can consult it.
@@ -434,7 +631,22 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
                 a < reach and lo < b and b < line_e and text[b].isspace()
                 for a, b in pattern_spans
             )
-            spans.append((lo, _extend_ambiguous(text, lo, hi, pattern, reach, may_wrap)))
+            normalize = (
+                _NON_ALNUM_RE.sub
+                if kind == "separator_free"
+                else _PUNCT_FREE_RE.sub
+                if kind == "punct_free"
+                else _WHITESPACE_RE.sub
+            )
+            spans.append(
+                (
+                    lo,
+                    _extend_ambiguous(
+                        text, lo, hi, pattern, reach, may_wrap,
+                        lambda t, _n=normalize: _n("", t),
+                    ),
+                )
+            )
 
     # Merge overlapping spans. They are all one class, so two that overlap are
     # one finding, and leaving them separate made partially overlapping

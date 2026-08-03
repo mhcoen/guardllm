@@ -2378,3 +2378,175 @@ class TestRoundElevenRegressions:
         seeded.add({value: PIIClass.MEDICAL_RECORD})
         found = detect(text, classes=classes, seeded=seeded).matches
         assert [m.value for m in found] == [value]
+
+
+# ---------------------------------------------------------------------------
+# Punctuation splits
+# ---------------------------------------------------------------------------
+
+
+_PUNCT_SEPARATORS = list(",.|;:*=#-_()\"'!?<>~%&+/@\\[]{}$^`")
+
+_SPLIT_FIXTURES = {
+    "openai": "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh",
+    "openai_project": "sk-proj-Ab3Cd4Ef5Ab3Cd4Ef5Ab3Cd4Ef5Ab3Cd4Ef5",
+    "slack": "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M",
+    "aws": "AKIAIOSFODNN7EXAMPLE",
+    "github": "ghp_A1b2C3d4E5f6G7h8I9j0A1b2C3d4E5f6G7h8I9j0",
+    "google": "ya29.A0ARrdaM-x_9KpQA0ARrdaM-x_9KpQA0ARrdaM",
+}
+
+
+class TestPunctuationSplits:
+    """A value split with punctuation rather than whitespace.
+
+    The merged form removed whitespace and nothing else, so a comma, full stop,
+    pipe, semicolon or bracket driven into a key produced two fragments that no
+    form reassembled and 32 characters stayed in the text. This predates the
+    extent work entirely: it measured the same before any of it.
+    """
+
+    @pytest.mark.parametrize("name", sorted(_SPLIT_FIXTURES))
+    def test_no_separator_splits_a_credential_undetected(self, name):
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = _SPLIT_FIXTURES[name]
+        for sep in _PUNCT_SEPARATORS:
+            for pos in range(1, len(secret)):
+                text = f"BEGIN {secret[:pos]}{sep}{secret[pos:]} END"
+                spans, _ = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                run = _longest_surviving_run(out, secret)
+                assert run == 0, f"{name} {sep!r} at {pos}: {run} chars survived"
+
+    @pytest.mark.parametrize("text,keep", [
+        ("lead sk-abcdefghijklmnopqrstuvwx, trailing text kept", "trailing text kept"),
+        ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
+        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', "then continue"),
+        ("The key is sk-ABCDEFGHIJKLMNOPQRSTUV. Please use it today", "Please use it today"),
+    ])
+    def test_delimited_credentials_stay_exact(self, text, keep):
+        """And the precision that punctuation buys must survive it.
+
+        Stripping every separator joined each credential to whatever followed,
+        so a quoted key in JSON became ambiguous and cost its whole line. Only
+        separators with alphanumerics closing them on BOTH sides are removed:
+        splitting a value means writing "sk-abc,def" with nothing either side,
+        while ordinary text writes "key, next word" with a space after.
+        """
+        v = _vault()
+        out = v.deidentify(text, deny_action="marker")
+        assert keep in out.content
+        assert "redacted:credential" in out.content
+
+    def test_every_grammar_has_a_separator_free_twin(self):
+        """The two tables must not drift apart.
+
+        The separator-free grammars are written out rather than derived,
+        because deriving one by rewriting required separators to optional ones
+        is what turned Bearer\\s+ into Bearer\\s* and made a sentence a JWT. The
+        cost of writing them out is that nothing keeps them in step with the
+        originals, so this pins each to a real credential of its grammar.
+        """
+        from guardllm.security.outbound_dlp import (
+            _NON_ALNUM_RE,
+            _SEPARATOR_FREE_PATTERNS,
+        )
+
+        by_label = {label: pattern for pattern, label, _ in _SEPARATOR_FREE_PATTERNS}
+        samples = {
+            "AWS access key": _SPLIT_FIXTURES["aws"],
+            "OpenAI project key": _SPLIT_FIXTURES["openai_project"],
+            "Google OAuth token": _SPLIT_FIXTURES["google"],
+            "GitHub token": _SPLIT_FIXTURES["github"],
+            "Slack token": _SPLIT_FIXTURES["slack"],
+        }
+        for label, sample in samples.items():
+            assert label in by_label, f"{label} lost its separator-free twin"
+            stripped = _NON_ALNUM_RE.sub("", sample)
+            assert by_label[label].match(stripped), f"{label} twin no longer matches"
+
+    def test_the_pem_header_gap_is_recorded_not_closed(self):
+        """A hyphen driven into the PEM header still evades the split forms.
+
+        Recorded rather than fixed. The header is public boilerplate carrying
+        no secret, and what matters is that a real key block is still caught,
+        which it is, by the entropy scan on the key material beneath it.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets
+
+        header = "-----BEGIN RSA PRIVATE KEY-----"
+        assert not _scan_secrets(header[:12] + "-" + header[12:])
+
+        body = "MIIEowIBAAKCAQEA7bXQ9vK2mNzYpR4tLwJhF8sVcXe1DqUgHiOaZbNmPkTrWyEx"
+        block = f"{header[:12]}-{header[12:]}\n{body}\n{body}\n-----END RSA PRIVATE KEY-----"
+        assert _scan_secrets(block), "a real key block must still be caught"
+
+    def test_a_separator_against_the_grammars_own_punctuation(self):
+        """The flanking test counts `-` and `_` as content on either side.
+
+        Without that, a comma placed directly against a grammar's own
+        punctuation is not intra-token: "sk,-aab2..." keeps its comma, no form
+        reassembles the value, and 25 characters survive. The body here is
+        deliberately repetitive so the entropy scan cannot rescue the fragment,
+        which is what hid this behind the other fixtures.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = "sk-aab2aab2aab2aab2aab2aab2"
+        for pos in (2, 3):
+            text = f"BEGIN {secret[:pos]},{secret[pos:]} END"
+            spans, _ = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            run = _longest_surviving_run(out, secret)
+            assert run == 0, f"split {pos}: {run} chars survived"
+
+    @pytest.mark.parametrize("text", [
+        # Shapes from _sysconfigdata__darwin_darwin.py, where dropping the
+        # boundary requirement redacted 50,683 characters of one file. No
+        # random path in either: those trip the entropy scan on their own
+        # merits, which is pre-existing and correct.
+        '"CONFIG_ARGS": "--enable-framework --with-pydebug pyconfig.h '
+        'pyconfig.h in Makefile preinstall CONFIGURE_CFLAGS arch arm64"',
+        '"LLVM_PROF_MERGER": "tools/llvm/bin/llvm-profdata merge '
+        '-output=code.profclangd -sparse=true pyconfig.h in Makefile"',
+    ])
+    def test_build_config_text_is_not_a_credential(self, text):
+        """With every separator gone a grammar can start wherever two unrelated
+        words meet, so the separator-free form requires a token boundary
+        outright rather than accepting randomness instead, which build-config
+        strings were clearing. This cost 492,745 characters of the standard
+        library against 3,051 before, and 33 seconds against one.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        assert scan_secret_spans(text)[0] == []
+
+    @pytest.mark.parametrize("name", ["aws", "openai_project", "google", "github", "slack"])
+    def test_a_prefix_does_not_hide_a_split_distinctive_credential(self, name):
+        """One character in front of a value used to hide it.
+
+        A mid-token match must normally look random, which is what stops `sk`
+        inside `netmask_cache`. Applied to grammars whose prefix English never
+        writes, it only cost detection: their bodies are not always random
+        enough to clear the bar, so "XAKIA,IOSFODNN7EXAMPLE" kept 19 of its 20
+        characters and the same trick worked on the project key and the Google
+        token with a plain space.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = _SPLIT_FIXTURES[name]
+        for prefix in ("X", "key", "9"):
+            for sep in (" ", ",", ".", "-", "_"):
+                for pos in range(1, len(secret)):
+                    text = f"BEGIN {prefix}{secret[:pos]}{sep}{secret[pos:]} END"
+                    spans, _ = scan_secret_spans(text)
+                    out = text
+                    for lo, hi in sorted(spans, reverse=True):
+                        out = out[:lo] + " " * (hi - lo) + out[hi:]
+                    run = _longest_surviving_run(out, secret)
+                    assert run == 0, f"{name} {prefix!r}{sep!r}@{pos}: {run} survived"

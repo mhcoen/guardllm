@@ -1037,31 +1037,35 @@ class TestRoundFourRegressions:
         assert any("Smith" in p for p in person)
 
     @pytest.mark.parametrize("text,tail", [
-        ('The key is sk-ABCDEFGHIJKLMNOPQRSTUV, please use it today', "please use it today"),
-        ('The key is sk-ABCDEFGHIJKLMNOPQRSTUV. Please use it today', "Please use it today"),
-        ('use sk-abcdefghijklmnopqrstuvwx; then restart the service', "then restart the service"),
-        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', "then continue"),
+        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
         ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
+        ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
+        ("{'a': 'sk-abcdefghijklmnopqrstuvwx', 'b': 'x'}", "'b': 'x'"),
     ])
-    def test_a_delimited_credential_preserves_surrounding_text(self, text, tail):
-        """Where the extent is KNOWN, nothing around the credential is touched.
+    def test_a_quoted_credential_leaves_its_structure_intact(self, text, tail):
+        """A quote closing a value is a boundary, and the value stops there.
 
-        Punctuation ends the character class in the raw and the merged form
-        alike, so both scans agree on the span and no reconstruction widens it.
-        This is the precision that survives the line rule below, and it covers
-        the shapes credentials actually appear in: quoted, in JSON, in a
-        sentence, in a call.
+        This is the precision that matters, because it is the shape credentials
+        actually appear in: JSON, a dict, an argument to a call. It holds
+        because a quote arrives with company when it closes something, ``","``
+        or ``", `` or ``") ``, while a quote driven INTO a value arrives alone.
+        Refusing to read across any quote at all made ``"`` the one separator
+        that still smuggled 32 characters out; reading across a pair swallowed
+        the ``")`` that closes a call.
         """
         v = _vault()
         result = v.deidentify(text, deny_action="marker")
         assert tail in result.content
         assert "redacted:credential" in result.content
 
-    @pytest.mark.parametrize("text,gone", [
-        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence", "ordinary"),
-        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing"),
+    @pytest.mark.parametrize("text,gone,kept", [
+        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence",
+         "in this", "ordinary sentence"),
+        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing", "text kept"),
+        ("The key is sk-ABCDEFGHIJKLMNOPQRSTUV, please use it today",
+         "please", "use it today"),
     ])
-    def test_an_undelimited_credential_costs_the_rest_of_its_line(self, text, gone):
+    def test_an_undelimited_credential_costs_one_following_fragment(self, text, gone, kept):
         """And where the extent is UNKNOWN, the line is the unit of redaction.
 
         This is a deliberate loss, recorded so it is not mistaken for a bug.
@@ -1075,13 +1079,16 @@ class TestRoundFourRegressions:
         v = _vault()
         result = v.deidentify(text, deny_action="marker")
         assert gone not in result.content
+        assert kept in result.content, "the cost is one fragment, not the line"
         assert "redacted:credential" in result.content
         assert result.allowed
 
     def test_a_contiguous_credential_is_not_truncated(self):
         """Minimizing a reconstruction must not displace an exact raw match."""
         v = _vault()
-        out = v.deidentify("lead sk-abcdefghijklmnopqrstuvwx, trailing", deny_action="marker")
+        out = v.deidentify(
+            'lead "sk-abcdefghijklmnopqrstuvwx", trailing', deny_action="marker"
+        )
         assert "uvwx" not in out.content
         assert "trailing" in out.content
 
@@ -1335,8 +1342,8 @@ class TestRoundFiveRegressions:
         assert "redacted:credential" in out.content
 
     @pytest.mark.parametrize("text,fragment,keep", [
-        ("lead sk-abcdefghijklmnopqrstuvwx, trailing text kept", "uvwx", "trailing text kept"),
-        ("Please preserve ya29.A0ARrdaMA0ARrdaMA0ARrdaM. In this sentence", "rdaM", "In this sentence"),
+        ('lead "sk-abcdefghijklmnopqrstuvwx", trailing text kept', "uvwx", "trailing text kept"),
+        ('key "ya29.A0ARrdaMA0ARrdaMA0ARrdaM". In this sentence', "rdaM", "In this sentence"),
     ])
     def test_contiguous_credentials_are_exact(self, text, fragment, keep):
         """A raw match is exact, so it must never be shortened by the
@@ -2392,7 +2399,12 @@ _SPLIT_FIXTURES = {
     "openai_project": "sk-proj-Ab3Cd4Ef5Ab3Cd4Ef5Ab3Cd4Ef5Ab3Cd4Ef5",
     "slack": "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M",
     "aws": "AKIAIOSFODNN7EXAMPLE",
-    "github": "ghp_A1b2C3d4E5f6G7h8I9j0A1b2C3d4E5f6G7h8I9j0",
+    # Random rather than a repeated block: a GitHub anchor requires
+    # randomness when it starts mid-token, because `laughs_`, `weighs_` and
+    # `highp_` all supply `gh[oprs]` followed by the separator the grammar
+    # wants. A repeating fixture is not what the grammar issues and made
+    # that rule look like a defect.
+    "github": "ghp_R7kQm2XvB9nZtL4wHc6JyE1sPaGdUf3oIbNr",
     "google": "ya29.A0ARrdaM-x_9KpQA0ARrdaM-x_9KpQA0ARrdaM",
 }
 
@@ -2422,10 +2434,10 @@ class TestPunctuationSplits:
                 assert run == 0, f"{name} {sep!r} at {pos}: {run} chars survived"
 
     @pytest.mark.parametrize("text,keep", [
-        ("lead sk-abcdefghijklmnopqrstuvwx, trailing text kept", "trailing text kept"),
         ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
-        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', "then continue"),
-        ("The key is sk-ABCDEFGHIJKLMNOPQRSTUV. Please use it today", "Please use it today"),
+        ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
+        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
+        ("7,alice,sk-abcdefghijklmnopqrstuvwx,ok,next", "next"),
     ])
     def test_delimited_credentials_stay_exact(self, text, keep):
         """And the precision that punctuation buys must survive it.
@@ -2441,32 +2453,61 @@ class TestPunctuationSplits:
         assert keep in out.content
         assert "redacted:credential" in out.content
 
-    def test_every_grammar_has_a_separator_free_twin(self):
-        """The two tables must not drift apart.
+    def test_every_grammar_is_reachable_from_its_own_anchor(self):
+        """The registry must stay consistent with what it claims to detect.
 
-        The separator-free grammars are written out rather than derived,
-        because deriving one by rewriting required separators to optional ones
-        is what turned Bearer\\s+ into Bearer\\s* and made a sentence a JWT. The
-        cost of writing them out is that nothing keeps them in step with the
-        originals, so this pins each to a real credential of its grammar.
+        There is one table now rather than three, so the drift this used to
+        guard against cannot happen the same way. What can still happen is an
+        entry whose anchor, separator flag or body class does not describe the
+        credential it names, which is silent: a Slack token whose body class
+        omitted ``-`` read as three fragments and left 35 characters behind.
+        Each grammar is pinned to a real credential of its kind, contiguous and
+        split, so a wrong field shows up here rather than in a leak.
         """
-        from guardllm.security.outbound_dlp import (
-            _NON_ALNUM_RE,
-            _SEPARATOR_FREE_PATTERNS,
-        )
+        from guardllm.security.outbound_dlp import _GRAMMARS, _findings
 
-        by_label = {label: pattern for pattern, label, _ in _SEPARATOR_FREE_PATTERNS}
         samples = {
             "AWS access key": _SPLIT_FIXTURES["aws"],
             "OpenAI project key": _SPLIT_FIXTURES["openai_project"],
+            "OpenAI API key": _SPLIT_FIXTURES["openai"],
             "Google OAuth token": _SPLIT_FIXTURES["google"],
-            "GitHub token": _SPLIT_FIXTURES["github"],
+            "GitHub personal access token": _SPLIT_FIXTURES["github"],
             "Slack token": _SPLIT_FIXTURES["slack"],
         }
+        labels = {g.label for g in _GRAMMARS}
         for label, sample in samples.items():
-            assert label in by_label, f"{label} lost its separator-free twin"
-            stripped = _NON_ALNUM_RE.sub("", sample)
-            assert by_label[label].match(stripped), f"{label} twin no longer matches"
+            assert label in labels, f"{label} left the registry"
+            whole = [f for f in _findings(f"value {sample} end") if f[2] == label]
+            assert whole, f"{label} not found intact"
+            lo, hi = whole[0][0], whole[0][1]
+            assert f"value {sample} end"[lo:hi].startswith(sample[:8])
+            # And split in the middle, which exercises the body class and the
+            # gap walk rather than the anchor alone.
+            mid = len(sample) // 2
+            split = f"value {sample[:mid]},{sample[mid:]} end"
+            assert [f for f in _findings(split) if f[2] == label], f"{label} split missed"
+
+    def test_an_anchor_needs_its_own_separator_present(self):
+        """The rule that removed the need for an exemption list.
+
+        ``ghp_`` is ``ghp`` and a required separator. Ordinary identifiers
+        supply the letters and not the separator, so they are not candidates,
+        and a separator genuinely driven in still is one.
+        """
+        from guardllm.security.outbound_dlp import _findings
+
+        for benign in (
+            "the through_put_measurement_helper_function_name_value returns",
+            "borough_path_resolver_configuration_manager_instance_lookup_value",
+            # These DO supply the separator, so the anchor rule passes them and
+            # the mid-token randomness rule is what rejects them.
+            "laughs_count_of_the_things_in_this_collection_object_here",
+            "weighs_total_of_every_shipment_in_the_warehouse_inventory_now",
+            "a highp_recision_number_formatter_helper_instance_for_report",
+        ):
+            assert _findings(benign) == [], benign
+        real = "token ghp,_A1b2C3d4E5f6G7h8I9j0A1b2C3d4E5f6G7h8I9j0 end"
+        assert [f for f in _findings(real) if "GitHub" in f[2]]
 
     def test_the_pem_header_gap_is_recorded_not_closed(self):
         """A hyphen driven into the PEM header still evades the split forms.
@@ -2550,3 +2591,63 @@ class TestPunctuationSplits:
                         out = out[:lo] + " " * (hi - lo) + out[hi:]
                     run = _longest_surviving_run(out, secret)
                     assert run == 0, f"{name} {prefix!r}{sep!r}@{pos}: {run} survived"
+
+    def test_the_gap_ceiling_is_needed_and_is_not_the_structural_test(self):
+        """Both halves of _joinable_gap, and what each is actually for.
+
+        The ceiling looked redundant when it was ten, because the quote rule
+        does the work of keeping structure intact and raising the ceiling never
+        moved the standard library figure. It is not redundant: with no ceiling
+        at all a credential and an unrelated token 400 characters apart join
+        into one finding covering everything between them. It was simply set
+        too low, and a value split with a wide run of separators leaked 25
+        characters until it was raised.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
+        for gap in ("  |  ", " " * 8, "\n\n\n", " " * 15, " " * 30):
+            text = f"BEGIN {secret[:20]}{gap}{secret[20:]} END"
+            spans, _ = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            assert _longest_surviving_run(out, secret) == 0, f"gap {gap!r}"
+
+        # And the ceiling still refuses to reach across an unrelated distance.
+        far = "sk-abcdefghijklmnopqrstuvwx" + " " * 400 + "Zq7Xp2Lm9Kd4Nv6Bc1Tf8Rj3Ws5Yh0Ge"
+        assert len(scan_secret_spans(far)[0]) == 2, "distant tokens must stay separate"
+
+    def test_fragments_are_taken_through_the_last_that_scans(self):
+        """A fragment whose entropy dips below the bar must not end the walk.
+
+        The shape that needs this is specific, and a fixture without it makes
+        the rule look redundant: the fragments have to scan in the pattern
+        no, no, YES, no, YES, so that reaching the fifth means passing over
+        the fourth. Stopping at the first fragment that does not scan leaves
+        the tail sitting between pieces that were redacted either side.
+
+        The value below is kept as a literal because that pattern is what
+        makes the test discriminating; generating one at random reproduces it
+        only by luck, and the version of this test that did so passed with the
+        rule disabled.
+        """
+        from guardllm.security.outbound_dlp import _entropy_spans, scan_secret_spans
+
+        secret = (
+            "Bearer dDD-dvVEda1UdDuxg1R0.MeqMT-9JWU4QWfjhJK6IdPgUx5Fc7RHM"
+            "_QsFcSfN.ifvA7FtfqTBEbTp1NfhP_hgOP1eoFtzN6q7XLbiYvTS"
+        )
+        size = len(secret) // 5
+        chunks = [secret[i : i + size] for i in range(0, len(secret), size)]
+        scans = [bool(_entropy_spans(c)) for c in chunks]
+        assert scans[:5] == [False, False, True, False, True], (
+            f"fixture no longer has the shape this pins: {scans}"
+        )
+
+        text = "BEGIN " + " ".join(chunks) + " END"
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, secret) == 0

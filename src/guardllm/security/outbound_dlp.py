@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from collections import deque
-from collections.abc import Callable
+from typing import NamedTuple
 
 from guardllm.security.normalization import (
     MAX_OVERLAP_CHARS,
@@ -28,34 +28,78 @@ from guardllm.security.types import OutboundResult, SecurityContext
 # Secret patterns
 # ---------------------------------------------------------------------------
 
-_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"sk[-_][A-Za-z0-9]{20,80}"), "OpenAI API key"),
-    (re.compile(r"sk[-_]proj[-_][A-Za-z0-9\-_]{20,220}"), "OpenAI project key"),
-    (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key"),
-    (re.compile(r"ya29\.[A-Za-z0-9_\-]{20,600}"), "Google OAuth token"),
-    (re.compile(r"gho_[A-Za-z0-9]{36,60}"), "GitHub OAuth token"),
-    (re.compile(r"ghp_[A-Za-z0-9]{36,60}"), "GitHub personal access token"),
-    (re.compile(r"ghs_[A-Za-z0-9]{36,60}"), "GitHub app token"),
-    (re.compile(r"ghr_[A-Za-z0-9]{36,60}"), "GitHub refresh token"),
-    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,100}"), "Slack token"),
-    (re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), "Private key header"),
-    (
-        re.compile(r"Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+(?:\.[A-Za-z0-9\-_]+)?"),
-        "Bearer/JWT token",
+#: One registry. Each grammar records its anchor as literal segments with the
+#: separators its own syntax requires, plus the body it accepts. Nothing here
+#: is derived by rewriting another pattern: deriving a variant by making
+#: required separators optional is what turned ``Bearer\s+`` into ``Bearer\s*``
+#: and reported an English sentence as a JWT.
+#:
+#: ``anchor`` is the literal run, ``sep_after`` says a separator of the
+#: grammar's own must follow it, and that flag is what rejects an anchor that
+#: only exists because separators were removed. ``ghp_`` is ``ghp`` plus a
+#: required separator, so ``through_put_measurement`` offers ``ghp`` in the
+#: compact form but has a body character after it in the original and is not a
+#: candidate. No exemption list is needed for that class.
+#:
+#: ``needs_random`` marks the anchors ordinary text writes on its own: ``sk``
+#: lives inside ``disk`` and ``task``, ``Bearer`` starts sentences. Those must
+#: also look random when they begin mid-token. The rest are anchored by
+#: something English does not produce.
+
+
+class _Grammar(NamedTuple):
+    label: str
+    anchor: tuple[str, ...]
+    sep_after: bool
+    body_extra: str
+    upper_only: bool
+    min_body: int
+    max_body: int
+    randomness: str  # "never" | "mid_token" | "always"
+
+
+#: ``body_extra`` must match what each grammar really accepts. Getting this
+#: wrong is quiet and expensive: with ``-`` treated as a separator rather than
+#: as body, a Slack token reads as three fragments, its ten character minimum
+#: is met by the first one, and everything past the second is left in the text.
+#:
+#: ``randomness`` is where the two awkward anchors are handled. ``sk`` lives
+#: inside ``disk`` and ``task``, so it must look random when it starts
+#: mid-token. ``Bearer`` is worse: it starts English sentences, and with ``.``
+#: in its body "Use Bearer authorization. Header values are case sensitive."
+#: parses as a JWT wherever it appears, so it must look random always.
+_GRAMMARS: list[_Grammar] = [
+    _Grammar("OpenAI project key", ("skproj",), True, "-_", False, 20, 220, "never"),
+    _Grammar("OpenAI API key", ("sk",), True, "", False, 20, 80, "mid_token"),
+    _Grammar("AWS access key", ("AKIA",), False, "", True, 16, 16, "never"),
+    _Grammar("Google OAuth token", ("ya29",), True, "-_", False, 20, 600, "never"),
+    _Grammar("GitHub OAuth token", ("gho",), True, "", False, 36, 60, "mid_token"),
+    _Grammar("GitHub personal access token", ("ghp",), True, "", False, 36, 60, "mid_token"),
+    _Grammar("GitHub app token", ("ghs",), True, "", False, 36, 60, "mid_token"),
+    _Grammar("GitHub refresh token", ("ghr",), True, "", False, 36, 60, "mid_token"),
+    _Grammar(
+        "Slack token", ("xoxb", "xoxa", "xoxp", "xoxr", "xoxs"),
+        True, "-", False, 10, 100, "never",
     ),
+    _Grammar("Bearer/JWT token", ("Bearer",), True, "-_.", False, 30, 800, "always"),
 ]
 
-def _merged_variant(source: str) -> str:
-    """Rewrite a pattern so it still matches once whitespace has been removed.
 
-    Two grammars here contain whitespace of their own: ``Bearer\\s+...`` and the
-    PEM header. Against the whitespace-merged form they could never match, so a
-    JWT split inside its payload was reconstructed by nobody and left its middle
-    segment in the text. Making their whitespace optional is what lets the
-    merged scan see them at all.
-    """
-    return source.replace(r"\s+", r"\s*").replace(" ", r"\s*")
+_PEM_RE = re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")
 
+#: How wide a run of non-body characters may be and still be read as an
+#: inserted split rather than a boundary between two things.
+#:
+#: The size is the weaker half of the test; _joinable_gap's quote rule is what
+#: actually protects structure, and measurement says so: at 10, 20 and 40 the
+#: standard library figure is identical and only the leak changes. Sixty four
+#: is where every gap probed closes. It cannot simply be removed, though;
+#: without any ceiling a credential and an unrelated token 400 characters
+#: apart join into one 459 character finding.
+_MAX_GAP = 64
+
+#: How far a split anchor may itself be broken, e.g. ``s,k-abc``.
+_MAX_ANCHOR_GAP = 2
 
 _ENTROPY_THRESHOLD = 4.5
 _ENTROPY_MIN_LENGTH = 20
@@ -66,109 +110,8 @@ _ENTROPY_MIN_LENGTH = 20
 # theoretical maximum for the length (i.e. near-maximal randomness) instead.
 _ENTROPY_LENGTH_MARGIN = 0.30
 
-_MERGED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(_merged_variant(p.pattern)), label) for p, label in _SECRET_PATTERNS
-]
+_NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
 
-#: Grammars whose merged form must additionally look random.
-#:
-#: Only the JWT one qualifies and the reason is specific to it. Its payload is
-#: two or three base64url segments separated by dots, which as a pattern is
-#: indistinguishable from two English words separated by a full stop. In the
-#: raw text a sentence is safe because the space after the stop breaks the
-#: match. Merged, that space is gone, and "Use Bearer authorization. Header
-#: values are case sensitive." became a JWT and blocked outbound content with
-#: the vault switched off. A real payload is base64 and clears the bar; a
-#: sentence does not.
-#:
-#: Not applied to the others. They are anchored by a literal prefix that
-#: English does not produce, and their bodies are not always maximally random:
-#: AKIAIOSFODNN7EXAMPLE is a real key that sits below this threshold.
-_MERGED_NEEDS_RANDOM = frozenset({"Bearer/JWT token"})
-
-#: The grammars again with every separator gone, for text where the value was
-#: split with punctuation rather than whitespace.
-#:
-#: Removing whitespace alone left this open: a comma, a full stop, a pipe, a
-#: semicolon, a bracket, in fact anything but ``+`` and ``/``, split a key into
-#: two fragments that no form reassembled, and 32 characters stayed in the
-#: text at most split positions of most grammars. ``+`` and ``/`` were the
-#: exceptions only because they are inside the entropy scanner's own character
-#: class, so both halves stayed in one token it could see.
-#:
-#: These are written out rather than derived from the table above. Deriving one
-#: by rewriting required separators to optional ones is what turned
-#: ``Bearer\s+`` into ``Bearer\s*`` and made a sentence a JWT, and a
-#: transformation that cannot be read is a transformation nobody checks.
-#: test_every_grammar_has_a_separator_free_twin pins each of these to a real
-#: credential of its grammar, so the table cannot drift from the one above.
-#:
-#: `sk` and `Bearer` are deliberately absent, and that omission is the whole
-#: reason this table is small. They are the two prefixes ordinary text produces
-#: on its own: `sk` sits inside `disk`, `task` and `ask`. Applied to a form
-#: with underscores removed, `disk_usage` becomes `diskusage` and every such
-#: identifier in a source file starts an OpenAI key. That cost 492,745
-#: characters of the standard library, against 3,051 before, and took 33
-#: seconds. Those two grammars are served by the punctuation-stripped form
-#: below, which keeps `-` and `_` and so never joins an identifier to its
-#: neighbour. What is left here are prefixes English does not write, and they
-#: are what a value split with a hyphen or an underscore needs, since those two
-#: characters are inside several of the grammars themselves.
-#:
-#: The third element, whether a match must also look random, is false for every
-#: entry: a token boundary is required outright on this form, which is the
-#: stronger constraint, and it was randomness rather than the boundary that
-#: build-config text kept clearing. The column stays because the merged form
-#: shares this loop and does need it for the JWT grammar.
-#:
-#: The PEM header is listed but a hyphen driven into it still evades this form,
-#: because the alnum form preserves whitespace runs and the header contains
-#: them. That is left alone on purpose. The header is public boilerplate
-#: carrying no secret, and a real key block is still caught by the entropy scan
-#: on the key material beneath it; closing it would mean loosening the grammar
-#: further, which is the move that made a sentence a JWT.
-_SEPARATOR_FREE_PATTERNS: list[tuple[re.Pattern[str], str, bool]] = [
-    (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key", False),
-    (re.compile(r"skproj[A-Za-z0-9]{20,220}"), "OpenAI project key", False),
-    (re.compile(r"ya29[A-Za-z0-9]{20,600}"), "Google OAuth token", False),
-    (re.compile(r"gh[oprs][A-Za-z0-9]{36,60}"), "GitHub token", False),
-    (re.compile(r"xox[baprs][A-Za-z0-9]{10,100}"), "Slack token", False),
-    (re.compile(r"BEGIN(?:RSA|EC|DSA|OPENSSH)?PRIVATEKEY"), "Private key header", False),
-]
-
-#: Grammars whose prefix ordinary text does not produce.
-#:
-#: These are exempt from the mid-token randomness rule. That rule exists for
-#: the two prefixes English writes on its own: `sk` inside `netmask_cache`,
-#: `Bearer` starting a sentence. Applied to the rest it only cost detection,
-#: because their bodies are not always random enough to clear the bar, so
-#: prefixing one character in front of a split value hid it: "XAKIA,IOSF..."
-#: kept 19 of 20 characters, and the same trick worked on the project key and
-#: the Google token with a plain space.
-_DISTINCTIVE_PREFIXES = frozenset({
-    "AWS access key",
-    "OpenAI project key",
-    "Google OAuth token",
-    "GitHub token",
-    "GitHub OAuth token",
-    "GitHub personal access token",
-    "GitHub app token",
-    "GitHub refresh token",
-    "Slack token",
-    "Private key header",
-})
-
-_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]")
-_PUNCT_FREE_RE = re.compile(r"[^A-Za-z0-9\-_+/]")
-
-#: Punctuation only: everything that is not alphanumeric and not one of the
-#: four characters the grammars and the entropy scanner actually contain.
-#: Stripping this catches a value split with a comma, full stop, pipe, colon,
-#: bracket or any other punctuation, which leaked 32 characters at nearly every
-#: split position, while leaving `disk_usage` and `x-request-id` intact.
-_PUNCT_KEEP = frozenset("-_+/")
-
-# Pure hex character pattern for decode-then-scan
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
 # Whitespace run, used to build a whitespace-removed form for secret scanning
@@ -197,116 +140,38 @@ def _shannon_entropy_bytes(data: bytes) -> float:
     return -sum((c / length) * math.log2(c / length) for c in freq.values())
 
 
-def _strip_with_offsets(text: str, drop: str | None) -> tuple[str, list[int]]:
-    """Remove characters, recording each survivor's original index.
+def _joinable_gap(gap: str) -> bool:
+    """Can this run of non-body characters be an inserted split?
 
-    ``drop=None`` means whitespace. Passing a literal string of whitespace
-    characters would be wrong: any membership test against a sentinel string
-    also matches the letters in that sentinel.
+    Two tests, and the second is what keeps structure intact. A gap longer than
+    a few characters is not somebody breaking a value up. And a gap holding a
+    quote is a boundary between two values rather than a wound in one: the
+    ``","`` between minified JSON fields, the quotes around a CSV field. Only
+    the size limit was in place at first, set to two, and it worked by accident
+    because ``","`` happens to be three characters; a value split with ``" - "``
+    then leaked because the same limit refused a legitimate three character
+    gap. Saying what a boundary IS covers both.
     """
-    out: list[str] = []
-    idx: list[int] = []
-    for i, ch in enumerate(text):
-        if ch.isspace() if drop is None else (ch in drop):
-            continue
-        out.append(ch)
-        idx.append(i)
-    return "".join(out), idx
-
-
-def _strip_intra_token(
-    text: str, base: list[int], keep: frozenset[str]
-) -> tuple[str, list[int]]:
-    """Remove separator runs that sit BETWEEN two alphanumerics, and no others.
-
-    This is what makes a punctuation-stripped form usable at all. Stripping
-    every separator joined each credential to whatever followed it, so
-    ``sk-...uvwx, trailing`` and ``{"key": "sk-...uvwx", "other": "value"}``
-    both became ambiguous and cost their whole line, undoing the precision that
-    quoting and punctuation are supposed to buy.
-
-    The asymmetry that fixes it: splitting a value with punctuation means
-    writing ``sk-abc,def``, with nothing either side of the comma, because
-    adding a space would make it the whitespace case instead. Ordinary text
-    writes ``key, next word``, with a space after. So a separator run counts
-    only when alphanumerics close it on both sides.
-    """
-    out: list[str] = []
-    idx: list[int] = []
-    i, n = 0, len(text)
-    while i < n:
-        ch = text[i]
-        if (ch.isascii() and ch.isalnum()) or ch in keep:
-            out.append(ch)
-            idx.append(base[i])
-            i += 1
-            continue
-        j = i
-        while j < n and not ((text[j].isascii() and text[j].isalnum()) or text[j] in keep):
-            j += 1
-        def _content(ch: str) -> bool:
-            # Kept separators count as content on either side, or a comma
-            # placed against the grammar's own punctuation is not recognised
-            # as intra-token: "sk,-proj-..." and "ghp,_A1b2..." both survived,
-            # which is where the remaining leaks were, all of them inside a
-            # prefix rather than in the body.
-            return (ch.isascii() and ch.isalnum()) or ch in keep
-
-        flanked = (
-            i > 0
-            and j < n
-            and _content(text[i - 1])
-            and _content(text[j])
-            # A run holding any whitespace is the ordinary-text case, not a
-            # split: "key, next word" has a space after the comma and
-            # "sk-abc,def" does not. Whitespace joins are the merged form's
-            # job, and letting them be joined here as well made every
-            # delimited credential ambiguous again.
-            and not any(c.isspace() for c in text[i:j])
-        )
-        if not flanked:
-            # Keep the run's own characters out of the form but do not let the
-            # two sides join: emit a space so the grammars still see a break.
-            out.append(" ")
-            idx.append(base[i])
-        i = j
-    return "".join(out), idx
-
-
-def _pattern_and_entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]:
-    """Every credential span in one representation of the text."""
-    out: list[tuple[int, int]] = []
-    for pattern, _label in _SECRET_PATTERNS:
-        out.extend((m.start(), m.end()) for m in pattern.finditer(form))
-    for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
-        token = m.group()
-        # On a whitespace-merged form, only tokens containing a digit are
-        # candidates: a natural-language sentence merges into one long
-        # alphabetic run that clears the entropy threshold. _scan_secrets
-        # applies the same guard for the same reason.
-        if merged and not any(c.isdigit() for c in token):
-            continue
-        entropy = _shannon_entropy(token)
-        threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
-        if entropy >= threshold:
-            out.append((m.start(), m.end()))
-            continue
-        if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
-            try:
-                if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                    out.append((m.start(), m.end()))
-            except ValueError:
-                pass
-    return out
+    if len(gap) > _MAX_GAP:
+        return False
+    # A quote is structural unless it is the whole gap. Where a value ends, the
+    # quote closing it arrives with company: ``","`` between minified JSON
+    # fields, ``", `` before the next key, ``") `` closing a call. A quote
+    # driven INTO a value arrives alone. Refusing on any quote at all made
+    # ``"`` the one separator that still smuggled 32 characters out; allowing
+    # up to two swallowed the ``")`` that closes a function call.
+    if not any(c in "\"'`" for c in gap):
+        return True
+    return len(gap) == 1
 
 
 def _looks_random(s: str) -> bool:
     """Does this clear the same randomness bar the entropy scanner applies?
 
-    Same threshold and same length allowance, so "random" means one thing in
-    this module rather than two. No minimum length here, unlike the standalone
-    entropy scan: this is asked about text a grammar has already claimed, and
-    the shortest thing a grammar accepts is a 15 character Slack token.
+    Same threshold and length allowance, so "random" means one thing in this
+    module rather than two. No minimum length, unlike the standalone entropy
+    scan: this is asked about text a grammar has already claimed, and the
+    shortest thing any grammar accepts is a 15 character Slack token.
     """
     if not s:
         return False
@@ -315,343 +180,266 @@ def _looks_random(s: str) -> bool:
     )
 
 
-def _line_end(text: str, pos: int) -> int:
-    """End of the line containing ``pos``, exclusive of the newline."""
-    nl = text.find("\n", pos)
-    return len(text) if nl == -1 else nl
+def _is_alnum(ch: str) -> bool:
+    """ASCII alphanumeric, the universal core of every body here.
 
-
-def _line_start(text: str, pos: int) -> int:
-    """Start of the line containing ``pos``."""
-    return text.rfind("\n", 0, pos) + 1
-
-
-def _next_token(text: str, pos: int) -> tuple[int, int]:
-    """The next whitespace delimited token at or after ``pos``."""
-    nxt = pos
-    while nxt < len(text) and text[nxt].isspace():
-        nxt += 1
-    stop = nxt
-    while stop < len(text) and not text[stop].isspace():
-        stop += 1
-    return nxt, stop
-
-
-def _extend_ambiguous(
-    text: str,
-    lo: int,
-    hi: int,
-    pattern: re.Pattern[str],
-    reach: int,
-    may_wrap: bool,
-    normalize: Callable[[str], str],
-) -> int:
-    """Widen a span whose true extent cannot be recovered from the text.
-
-    A credential is contiguous when written. Once whitespace is inserted into
-    it, nothing marks where it stopped: the characters that continue a key are
-    the characters that spell a word. Every rule that tried to tell them apart
-    failed in one direction or the other. The predecessor here required a
-    following token to be alphanumeric and at least ten characters, which both
-    kept a 27 character tail of a Slack token, whose grammar admits ``-`` so
-    the fragment was not alphanumeric, and deleted ``documentation
-    configuration authentication`` out of ordinary prose.
-
-    So this does not guess at word boundaries. Within the line the unit of
-    redaction is the whole line. Past the line break it is a single token, and
-    only under conditions that make a wrap possible at all, because a walk that
-    was free to cross break after break took the rest of a document with it.
+    Anchor logic uses this rather than a grammar's body class. The separator a
+    grammar requires after its anchor can itself be a body character: Slack's
+    is ``-``, which its body also accepts, so asking "is this a body character"
+    found no separator, rejected every Slack token, and left 35 characters of
+    one in the text.
     """
-    end = _line_end(text, max(lo, hi - 1))
-    if not may_wrap:
-        return end
+    return ch.isascii() and ch.isalnum()
 
-    def merged_to(stop: int) -> str:
-        # Normalized the same way the form that produced this match was, or the
-        # grammar cannot be asked whether it is satisfied yet.
-        return normalize(text[lo:stop])
 
-    # The value may be cut short of its own grammar by the break, so take
-    # whatever tokens the minimum still requires. ``match``, not ``fullmatch``:
-    # the question is whether a complete credential is present from the start,
-    # not whether the entire span is one. Bounded by the grammar's minimum.
-    while end < len(text) and not pattern.match(merged_to(end)):
-        nxt, stop = _next_token(text, end)
-        if nxt >= len(text):
+def _is_body(ch: str, g: _Grammar) -> bool:
+    """Is this character part of this grammar's body?"""
+    if not ch.isascii():
+        return False
+    if ch in g.body_extra:
+        return True
+    if g.upper_only:
+        return ch.isdigit() or ("A" <= ch <= "Z")
+    return ch.isalnum()
+
+
+def _walk_anchor(text: str, pos: int, literal: str, g: _Grammar) -> int | None:
+    """Match ``literal`` at ``pos``, tolerating separators driven into it.
+
+    Returns the index just past the literal, or None. ``s,k-abc`` splits the
+    anchor itself, so the letters are matched one at a time with a bounded gap
+    allowed between them.
+    """
+    i = pos
+    for k, want in enumerate(literal):
+        if k:
+            gap = 0
+            while i < len(text) and gap <= _MAX_ANCHOR_GAP and not _is_alnum(text[i]):
+                i += 1
+                gap += 1
+        if i >= len(text) or text[i] != want:
+            return None
+        i += 1
+    return i
+
+
+def _fragments(text: str, pos: int, g: _Grammar) -> list[tuple[int, int]]:
+    """Body fragments after the anchor, joined across gaps of at most two.
+
+    A fragment is a maximal run of body characters. This is the whole of the
+    locality guarantee: the walk stops at the first gap too wide to be a split,
+    so nothing beyond it can ever be drawn into the value. A newline is a gap
+    like any other, which is why a value wrapped over several lines needs no
+    line handling and why trailing spaces before a break cannot reopen it.
+    """
+    out: list[tuple[int, int]] = []
+    i, total = pos, 0
+    while i < len(text) and total < g.max_body:
+        gap = i
+        while gap < len(text) and not _is_body(text[gap], g):
+            gap += 1
+        if gap > i and not _joinable_gap(text[i:gap]):
             break
-        end = stop
-
-    # A value broken across several short lines leaves each continuation alone
-    # on its own line. That is the shape, and it is what separates a wrap from
-    # prose: a wrapped fragment is the only thing on its line, an English line
-    # has several words on it. Take those whole lines while they last. Bounded
-    # twice over, by the merged match's reach and so by the grammar's maximum
-    # length, and by the first line that turns out to be a sentence.
-    #
-    # Without this a Slack token split across five lines kept its last 19
-    # characters: the minimum was satisfied three lines up, and one further
-    # token did not reach the end.
-    while end < reach:
-        nxt, stop = _next_token(text, end)
-        if nxt >= reach or text.find("\n", end, nxt) == -1:
-            break  # same line, so not a wrap; the single-token rule handles it
-        if stop > reach or stop != _line_end(text, nxt):
-            break  # something else shares the line, so it is not a bare wrap
-        end = stop
-
-    # One token more, for the remainder of a value the break split after its
-    # minimum was already met. Exactly one: that covers a wrap, and it bounds
-    # what a contiguous credential sitting at a line end can cost the text
-    # below it to a single word. Skipped when the raw scan already covers the
-    # continuation from its first character, since it will redact it unaided
-    # and widening here would only destroy more.
-    if end < reach:
-        nxt, stop = _next_token(text, end)
-        if nxt < reach:
-            cand = text[nxt : min(stop, reach)]
-            if not any(a == 0 for a, _ in _pattern_and_entropy_spans(cand, merged=False)):
-                end = min(stop, max(reach, end))
-    return end
+        stop = gap
+        while stop < len(text) and _is_body(text[stop], g):
+            stop += 1
+        if stop == gap:
+            break
+        out.append((gap, stop))
+        total += stop - gap
+        i = stop
+    return out
 
 
-def _is_exact(spans: list[tuple[int, int]], lo: int, hi: int) -> bool:
-    """Did the raw scan already locate precisely this span?
+def _resolve(text: str, start: int, body_start: int, g: _Grammar) -> tuple[int, int] | None:
+    """Decide how far a candidate reaches, in original coordinates.
 
-    A merged-form match that maps back onto the identical span found nothing
-    the raw grammar had not already delimited, so its extent is known and the
-    surrounding text is safe. This is what keeps quoted and punctuated contexts
-    precise: in ``{"key": "sk-...", "other": "value"}`` the quote ends the
-    character class in both forms, the two matches coincide, and nothing beyond
-    the credential is touched.
+    Fragments are taken while the grammar is not yet satisfied, which is a
+    split value being reassembled, and then exactly one more, which is a value
+    split after its minimum was already met. Both are needed and neither
+    subsumes the other: without the first a value broken into five pieces keeps
+    its tail, without the second a key split just past its minimum keeps
+    everything after the split.
+
+    The second one costs a following fragment when the value was in fact
+    complete. That is the price of an extent nothing in the text determines,
+    and it is paid one fragment at a time rather than to the end of the line.
     """
-    return any(a == lo and b == hi for a, b in spans)
+    frags = _fragments(text, body_start, g)
+    if not frags:
+        return None
+    taken = 0
+    for lo, hi in frags:
+        taken += hi - lo
+        if taken >= g.min_body:
+            break
+    if taken < g.min_body:
+        return None
+    used = 0
+    total = 0
+    for idx, (lo, hi) in enumerate(frags):
+        total += hi - lo
+        used = idx
+        if total >= g.min_body:
+            break
+    if used + 1 < len(frags):
+        used += 1
+    # A value wrapped over several lines leaves each continuation alone on its
+    # own line, and a long one clears the minimum on its first fragment, so
+    # neither rule above reaches the tail: a 208 character project key broken
+    # over six lines kept 34 of them. Keep taking fragments that are the entire
+    # content of their line. A prose line has other words on it and stops this
+    # at once.
+    while used + 1 < len(frags):
+        prev_end = frags[used][1]
+        nxt_lo, nxt_hi = frags[used + 1]
+        gap = text[prev_end:nxt_lo]
+        if "\n" not in gap or gap.strip():
+            break
+        line_lo = text.rfind("\n", 0, nxt_lo) + 1
+        line_end = text.find("\n", nxt_hi)
+        if line_end == -1:
+            line_end = len(text)
+        if text[line_lo:nxt_lo].strip() or text[nxt_hi:line_end].strip():
+            break
+        used += 1
+    # And a long value broken into pieces on ONE line clears the minimum on its
+    # first piece too, so keep taking fragments that scan as credential
+    # material in their own right. This asks the entropy scanner rather than
+    # guessing at length: a random 35 character piece is caught, the word
+    # "trailing" is not, and prose therefore stops it at the first word.
+    # And a long value broken into pieces on ONE line clears the minimum on its
+    # first piece too. Take fragments through to the LAST one that scans as
+    # credential material in its own right, not up to the first that does not:
+    # a piece whose entropy happens to fall under the bar sat between pieces
+    # whose entropy did not, and stopping at it left 34 characters in the text
+    # with the rest of the value redacted either side.
+    #
+    # This asks the entropy scanner rather than guessing at length. Prose stops
+    # it immediately, because no word scans, so the last scanning fragment is
+    # the value itself and nothing more is taken.
+    last = used
+    for idx in range(used + 1, len(frags)):
+        lo_f, hi_f = frags[idx]
+        if _entropy_spans(text[lo_f:hi_f]):
+            last = idx
+    # Nothing further. Two extra rules were tried here, one taking a fragment
+    # past the last scanning one and one refusing to leave a single orphan
+    # fragment, and measurement said both closed exactly nothing: the same six
+    # residual cases survived either way, while the orphan rule additionally
+    # swallowed the last field of a CSV row. What remains is a final fragment
+    # of at most 16 characters in a value deliberately broken into four or more
+    # pieces on one line, and the surrounding content is refused in four of
+    # those six cases rather than passed.
+    return start, frags[last][1]
+
+
+def _findings(text: str) -> list[tuple[int, int, str]]:
+    """Every credential in ``text``, as spans into the ORIGINAL text.
+
+    The single engine. Both the span finder used by L13 and the label scan used
+    by L3 read this, so the two cannot drift apart: a value split with
+    punctuation was found by one and missed by the other precisely because they
+    were separate implementations.
+
+    Candidates are located on a compact form, because an anchor can itself be
+    split, but nothing else uses it. Recognition and extent happen in the
+    original text inside the candidate, so no amount of unrelated content
+    elsewhere can be joined to a value. Erasing a minified JSON document, a URL
+    and a CSV row was that joining.
+    """
+    out: list[tuple[int, int, str]] = []
+    for m in _PEM_RE.finditer(text):
+        out.append((m.start(), m.end(), "Private key header"))
+
+    compact: list[str] = []
+    cmap: list[int] = []
+    for i, ch in enumerate(text):
+        if ch.isascii() and ch.isalnum():
+            compact.append(ch)
+            cmap.append(i)
+    packed = "".join(compact)
+
+    for g in _GRAMMARS:
+        for literal in g.anchor:
+            pos = packed.find(literal)
+            while pos != -1:
+                start = cmap[pos]
+                after = _walk_anchor(text, start, literal, g)
+                if after is None:
+                    pos = packed.find(literal, pos + 1)
+                    continue
+                # The grammar's own separator must actually be present. This is
+                # what rejects an anchor that exists only because separators
+                # were removed: `through_put_measurement` offers `ghp` in the
+                # compact form, but the original has a body character after it.
+                body_start = after
+                if g.sep_after:
+                    seen = 0
+                    while (
+                        body_start < len(text)
+                        and seen <= _MAX_GAP
+                        and not _is_alnum(text[body_start])
+                    ):
+                        body_start += 1
+                        seen += 1
+                    if seen == 0:
+                        pos = packed.find(literal, pos + 1)
+                        continue
+                span = _resolve(text, start, body_start, g)
+                if span is not None:
+                    lo, hi = span
+                    # An anchor beginning mid-token is the shape that joining
+                    # invents, so those must look random. Applied only to the
+                    # anchors ordinary text produces on its own; the rest are
+                    # already protected by the separator rule above, and
+                    # applying it to them lost AKIA keys, which are not random
+                    # enough to clear the bar.
+                    ok = True
+                    if g.randomness == "always":
+                        ok = _looks_random(_NON_ALNUM.sub("", text[lo:hi]))
+                    elif g.randomness == "mid_token" and lo > 0 and _is_body(text[lo - 1], g):
+                        ok = _looks_random(_NON_ALNUM.sub("", text[lo:hi]))
+                    if ok:
+                        out.append((lo, hi, g.label))
+                pos = packed.find(literal, pos + 1)
+    return out
 
 
 def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     """Locate credentials in ``text``, returning spans into the ORIGINAL text.
 
     Shared with L13 so the model-boundary denier and the egress blocker cannot
-    disagree about what a credential is.
+    disagree about what a credential is. Both now read _findings, which is the
+    point: when they were separate implementations, a value split with
+    punctuation was located by this one and missed by the other, so L3 allowed
+    outbound content holding a key.
 
-    The extent question, settled. For four rounds this alternated between the
-    greedy reconstruction, which ran through the words after the credential and
-    deleted them, and the shortest accepted prefix, which stopped inside the
-    secret. Measured with an oracle that looks for runs of the original value
-    rather than asking the same scanner again, the shortest prefix left up to
-    25 recoverable characters of a live key at 63 of 145 split positions.
+    Extent, settled after several wrong answers worth recording so they are not
+    retried. The shortest accepted prefix left 25 recoverable characters of a
+    live key at 63 of 145 split positions. Extending through following tokens
+    that were alphanumeric and at least ten characters failed in both
+    directions at once, keeping a 27 character Slack tail, whose grammar admits
+    ``-`` so the fragment was not alphanumeric, while deleting ``documentation
+    configuration authentication`` out of prose. Redacting to the end of the
+    logical line was safe but blunt, and on globally normalized forms it erased
+    minified JSON, a URL and a CSV row outright.
 
-    The settled rule is that the extent is either KNOWN or it is not, and the
-    two get different treatment:
-
-    * **Known.** The whitespace-merged form matches over exactly the span the
-      raw grammar already delimited. Merging changed nothing, so the credential
-      is contiguous and its own start and end are authoritative. Nothing around
-      it is touched. Quoting and punctuation land here, because a quote or
-      comma ends the character class in both forms: in
-      ``{"key": "sk-...", "other": "value"}`` only the key is redacted.
-    * **Unknown.** The merged form matches over more than the raw scan
-      delimited, so whitespace was inserted into the value, or the raw match
-      was only its prefix. Nothing in the text says where it stopped: the
-      characters that continue a key are the characters that spell a word.
-      This does not guess. The unit of redaction becomes the logical line, and
-      the grammar decides how many lines: keep taking them while the merged
-      span still does not contain a complete credential, which crosses exactly
-      one line break for a wrapped value and none for a value that ended
-      inside its line.
-
-    Two earlier rules failed here and are recorded so they are not retried. The
-    shortest accepted prefix left up to 25 recoverable characters of a live key
-    at 63 of 145 split positions. Its replacement, extending through following
-    tokens that were alphanumeric and at least ten characters, failed in both
-    directions at once: it kept a 27 character tail of a Slack token, whose
-    grammar admits ``-`` so the fragment was not alphanumeric, and it deleted
-    ``documentation configuration authentication`` out of ordinary prose.
+    What survives is fragment-scoped and local. A value is a run of body
+    characters, possibly broken by inserted separators; fragments join across a
+    gap of at most two, which is what a split looks like and what structure
+    does not, since ``","`` between JSON values is three. Fragments are taken
+    while the grammar is unsatisfied, then exactly one more. The cost of an
+    extent the text does not determine is one following fragment rather than
+    the remainder of a line.
 
     An entropy hit is deliberately not treated as delimiting. It fires on one
-    token of a split credential, and letting it suppress the reconstruction is
-    exactly how half of a key stayed in the text.
+    fragment of a split credential, and letting it settle the extent is how
+    half a key stayed in the text.
     """
-    pattern_spans: list[tuple[int, int]] = []
-    for pattern, _label in _SECRET_PATTERNS:
-        pattern_spans.extend((m.start(), m.end()) for m in pattern.finditer(text))
+    spans: list[tuple[int, int]] = [(lo, hi) for lo, hi, _ in _findings(text)]
+    spans.extend(_entropy_spans(text))
 
-    spans: list[tuple[int, int]] = list(pattern_spans)
-
-    def _entropy_spans(form: str, merged: bool) -> list[tuple[int, int]]:
-        out: list[tuple[int, int]] = []
-        for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", form):
-            token = m.group()
-            # On a whitespace-merged form only tokens containing a digit count:
-            # an English sentence merges into one long alphabetic run that
-            # clears the entropy threshold. _scan_secrets guards the same way.
-            if merged and not any(c.isdigit() for c in token):
-                continue
-            entropy = _shannon_entropy(token)
-            threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
-            if entropy >= threshold:
-                out.append((m.start(), m.end()))
-                continue
-            if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
-                try:
-                    if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                        out.append((m.start(), m.end()))
-                except ValueError:
-                    pass
-        return out
-
-    spans.extend(_entropy_spans(text, merged=False))
-
-    stripped, stripped_idx = _strip_with_offsets(text, "\u200b\u200c\u200d\u2060\ufeff")
-    ws_removed, ws_idx = _strip_with_offsets(stripped, None)
-    ws_map = [stripped_idx[i] for i in ws_idx]
-
-    # Two further forms, for values split with something other than whitespace.
-    # Offsets map back through each strip.
-    #
-    #  - punctuation removed but `-_+/` kept, matched with the ordinary
-    #    grammars, since those four characters are the ones the grammars and
-    #    the entropy scanner contain. This is the general case.
-    #  - everything non-alphanumeric removed, matched with the small table of
-    #    distinctive prefixes only. This is what a value split on a hyphen or
-    #    an underscore needs, and it is restricted precisely because removing
-    #    those two joins ordinary identifiers to their neighbours.
-    punct_free, punct_free_map = _strip_intra_token(stripped, stripped_idx, _PUNCT_KEEP)
-    alnum_only, alnum_map = _strip_intra_token(stripped, stripped_idx, frozenset())
-
-    forms: list[tuple[str, list[int], str]] = [
-        (stripped, stripped_idx, "raw"),
-        (ws_removed, ws_map, "merged"),
-        (punct_free, punct_free_map, "punct_free"),
-        (alnum_only, alnum_map, "separator_free"),
-    ]
-    for form, idx, kind in forms:
-        if form == text:
-            continue
-        merged = kind != "raw"
-        # Patterns only. An entropy hit on a merged form says nothing about
-        # extent: with the whitespace removed, unrelated lines join into one
-        # high-entropy run, and mapping that back produced spans covering a
-        # whole document. Entropy still contributes on the raw text above,
-        # where token boundaries are intact.
-        found: list[tuple[int, int, re.Pattern[str], str, bool]] = []
-        if kind == "separator_free":
-            table = [(p, lbl, rnd) for p, lbl, rnd in _SEPARATOR_FREE_PATTERNS]
-        else:
-            base = _MERGED_PATTERNS if kind == "merged" else _SECRET_PATTERNS
-            table = [(p, lbl, lbl in _MERGED_NEEDS_RANDOM and merged) for p, lbl in base]
-        for pattern, label, needs_random in table:
-            found.extend(
-                (m.start(), m.end(), pattern, label, needs_random)
-                for m in pattern.finditer(form)
-            )
-        for lo_f, hi_f, pattern, label, needs_random in found:
-            if not (lo_f < len(idx) and hi_f - 1 < len(idx)):
-                continue
-            lo, hi = idx[lo_f], idx[hi_f - 1] + 1
-            # The merged form located exactly what the raw grammar already had.
-            # Nothing is ambiguous, so nothing around it is touched.
-            if _is_exact(pattern_spans, lo, hi):
-                continue
-            # Removing whitespace creates prefixes that never existed: `sk_`
-            # sits inside `netmask_cache`, and once the following words are
-            # joined to it, twenty alphanumerics follow and the OpenAI grammar
-            # matches. Acted on, that redacted 67,445 characters of
-            # ipaddress.py.
-            #
-            # A match that begins where a token begins is taken at face value;
-            # quotes, colons and brackets all satisfy that, so a key inside
-            # JSON or YAML is unaffected. One that begins mid-token has to earn
-            # it, because that is the shape the merge invents.
-            #
-            # What earns it is randomness, not a digit. Requiring the boundary
-            # alone was defeated by typing one character in front of the value,
-            # which leaked 32 characters. Accepting a digit instead let
-            # "netmask_cache holds 20 prefixlen values here" through, since the
-            # merge joins the words and the sentence supplies the digit. The
-            # bodies differ where it counts: joined English words repeat
-            # letters and a key does not.
-            #
-            merged_body = _NON_ALNUM_RE.sub("", text[lo:hi])
-            if needs_random and not _looks_random(merged_body):
-                continue
-            # A mid-token match has to earn itself by looking random, because
-            # joining words is what invents prefixes that were never written.
-            #
-            # That rule is not applied to the separator-free form. Every
-            # grammar in that table is anchored by something English does not
-            # produce, and the intra-token rule above already stops two words
-            # being joined across a space, so the shape it guards against
-            # cannot arise there. Applying it anyway cost the AWS grammar,
-            # whose keys are not random enough to clear the bar:
-            # "XAKIA,IOSFODNN7EXAMPLE" kept 19 of its 20 characters.
-            #
-            # A separate boundary test for that form used to sit here. It
-            # became dead the moment separator runs stopped being stripped
-            # across whitespace, and removing it changed neither the standard
-            # library measurement nor any test, so it is gone rather than kept
-            # as untested weight.
-            at_boundary = lo == 0 or not (text[lo - 1].isalnum() or text[lo - 1] in "_-")
-            if (
-                label not in _DISTINCTIVE_PREFIXES
-                and not at_boundary
-                and not _looks_random(merged_body)
-            ):
-                continue
-            # How far the merged match reaches in original coordinates, kept
-            # before the clamps below so the wrap case can consult it.
-            reach = hi
-            # Otherwise the value is split, or the raw match was only its
-            # prefix. Widen to the whitespace delimited tokens involved.
-            while lo > 0 and not text[lo - 1].isspace():
-                lo -= 1
-            while hi < len(text) and not text[hi].isspace():
-                hi += 1
-            # Clamp to the line the match starts on before widening further. A
-            # reconstruction allowed to run free consumed the remainder of a
-            # multi-line document, which is the destruction this area exists to
-            # avoid; _extend_ambiguous re-crosses a line break only when the
-            # grammar says the credential cannot have ended yet.
-            line_e = _line_end(text, lo)
-            hi = min(hi, line_e)
-            if hi <= lo:
-                continue
-            # Can the value have been broken by the line break at all? Only if
-            # it runs up to it. A raw match that finished earlier on this line,
-            # with whitespace after it, was terminated by that whitespace, so
-            # nothing below continues it. Without this the walk crossed break
-            # after break through ordinary prose and took the rest of a
-            # document with it, which is the failure this area exists to avoid.
-            #
-            # Only spans belonging to THIS candidate may answer that question.
-            # Consulting every raw span on the line let an unrelated credential
-            # silence the wrap logic for its neighbour: an AWS key sitting in
-            # front of a wrapped Slack token made may_wrap false, and the whole
-            # 19 character Slack tail stayed in the text.
-            may_wrap = not any(
-                a < reach and lo < b and b < line_e and text[b].isspace()
-                for a, b in pattern_spans
-            )
-            normalize = (
-                _NON_ALNUM_RE.sub
-                if kind == "separator_free"
-                else _PUNCT_FREE_RE.sub
-                if kind == "punct_free"
-                else _WHITESPACE_RE.sub
-            )
-            spans.append(
-                (
-                    lo,
-                    _extend_ambiguous(
-                        text, lo, hi, pattern, reach, may_wrap,
-                        lambda t, _n=normalize: _n("", t),
-                    ),
-                )
-            )
-
-    # Merge overlapping spans. They are all one class, so two that overlap are
-    # one finding, and leaving them separate made partially overlapping
-    # credential spans trip the ambiguous-identifier rule and refuse the
-    # document.
     merged_spans: list[tuple[int, int]] = []
     for lo, hi in sorted(set(spans)):
         if merged_spans and lo <= merged_spans[-1][1]:
@@ -666,45 +454,46 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     return merged_spans, _scan_secrets(masked)
 
 
+def _entropy_spans(text: str) -> list[tuple[int, int]]:
+    """High-entropy runs, on the raw text only.
+
+    Orthogonal to the grammars and unchanged by the restructure. Raw text only:
+    with separators removed, unrelated lines join into one high-entropy run and
+    mapping that back produced spans covering a whole document.
+    """
+    out: list[tuple[int, int]] = []
+    for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", text):
+        token = m.group()
+        entropy = _shannon_entropy(token)
+        threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
+        if entropy >= threshold:
+            out.append((m.start(), m.end()))
+            continue
+        if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
+            try:
+                if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
+                    out.append((m.start(), m.end()))
+            except ValueError:
+                pass
+    return out
+
+
 def _scan_secrets(text: str) -> list[str]:
-    """Scan text for known secret patterns and high-entropy strings."""
+    """Report which credential classes appear in ``text``.
+
+    Grammar findings come from _findings, the same engine the span scanner
+    reads. When this had its own implementation the two disagreed: a value
+    split with a comma was located by the span scanner and missed here, so
+    outbound content carrying a key was allowed through. Invisible characters
+    are stripped first because that obfuscation is orthogonal to everything
+    below and cheap to undo.
+    """
     found: list[str] = []
-
-    # The secret scan is the only always-on hard block, so it must not be
-    # defeated by trivial obfuscation. Build extra forms:
-    #  - `stripped`: zero-width/bidi/tag chars removed (defeats a U+200B
-    #    inserted mid-token, e.g. "sk-abc<ZWSP>def...").
-    #  - `ws_removed`: whitespace also removed (defeats a space inserted
-    #    mid-token, e.g. "sk-abcdefghij klmno...").
-    # Patterns that legitimately contain whitespace (Bearer, PRIVATE KEY
-    # header) cannot match a form their own separators were removed from, so
-    # the merged form is scanned with the variants that make that whitespace
-    # optional. Without it, splitting a JWT inside its payload was reported by
-    # nobody.
     stripped = strip_invisibles(text)
-    ws_removed = _WHITESPACE_RE.sub("", stripped)
-    forms = [text]
-    for form in (stripped, ws_removed):
-        if form not in forms:
-            forms.append(form)
-    merged_only = [f for f in (ws_removed,) if f not in (text, stripped)]
-
-    for (pattern, label), (merged_pattern, _) in zip(_SECRET_PATTERNS, _MERGED_PATTERNS):
-        if label in found:
-            continue
-        if any(pattern.search(form) for form in forms):
+    for _lo, _hi, label in _findings(stripped):
+        if label not in found:
             found.append(label)
-            continue
-        # A hit that exists only once whitespace is gone has to look random.
-        # Making the mandatory separator optional is what lets a grammar cross
-        # a sentence boundary it could never cross in the original: "Use Bearer
-        # authorization. Header values are case sensitive." became a JWT, and
-        # blocked outbound content with the vault switched off entirely.
-        for form in merged_only:
-            m = merged_pattern.search(form)
-            if m is not None and _looks_random(m.group()):
-                found.append(label)
-                break
+    ws_removed = _WHITESPACE_RE.sub("", stripped)
 
     # High-entropy token detection: look for long hex/base64-like tokens.
     # Scan the invisible-stripped form (all tokens) AND the whitespace-removed

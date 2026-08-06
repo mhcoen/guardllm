@@ -441,7 +441,7 @@ REDACT = "REDACT"
 #: Credential classes never cross the model boundary in any form. Tokenizing a
 #: credential implies it can come back, which is the wrong affordance: a model
 #: has no legitimate use for an API key. Driven by the same patterns L3 already
-#: scans for at egress (outbound_dlp._SECRET_PATTERNS) rather than a second
+#: scans for at egress (outbound_dlp._GRAMMARS) rather than a second
 #: list that drifts from it.
 DEFAULT_DENY_CLASSES: frozenset[PIIClass] = frozenset({PIIClass.CREDENTIAL})
 

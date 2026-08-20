@@ -36,12 +36,14 @@ from __future__ import annotations
 import math
 import re
 import unicodedata
+from array import array
 from bisect import bisect_left
 from collections import deque
 from functools import cache
 from typing import NamedTuple
 
 from guardllm.security.normalization import (
+    _CONFUSABLE_TABLE,
     MAX_OVERLAP_CHARS,
     compute_lcs_length,
     compute_ngram_overlap,
@@ -193,6 +195,20 @@ def _ascii_equivalent(ch: str) -> str:
     folded = unicodedata.normalize("NFKC", ch)
     if len(folded) == 1 and folded.isascii():
         return folded
+    # Compatibility forms are not the only way to write a Latin letter without
+    # using one. Greek capital alpha and Cyrillic capital A look exactly like
+    # `A` and NFKC leaves both alone, so folding compatibility forms closed one
+    # door and left the one beside it open: 697 of 1,000 AWS keys whose first
+    # character was swapped that way passed both scanners silently and the
+    # vault returned them unchanged.
+    #
+    # The confusable table is shared with strip_invisibles, and it maps to
+    # lowercase, which is why that path could not see the anchor either: an
+    # AWS body is upper-only, so `aKIA` satisfies nothing. Case is taken from
+    # the character actually written.
+    confused = _CONFUSABLE_TABLE.get(ord(ch))
+    if confused and len(confused) == 1 and confused.isascii() and confused.isalpha():
+        return confused.upper() if ch.isupper() else confused
     return ch
 
 
@@ -446,7 +462,7 @@ def _admissible(text: str, start: int, lo: int, hi: int, g: _Grammar) -> bool:
     return True
 
 
-def _packed(text: str) -> tuple[str, list[int]]:
+def _packed(text: str) -> tuple[str, array[int]]:
     """The document with every non-alphanumeric removed, and where each came from.
 
     Both halves are built by the regular expression engine rather than a loop
@@ -454,7 +470,11 @@ def _packed(text: str) -> tuple[str, list[int]]:
     twice on the masked copy, and as a Python loop it was nine tenths of the
     cost of scanning the standard library.
     """
-    cmap: list[int] = []
+    # The index map is an array of machine integers, not a list of Python
+    # ones. It has an entry per alphanumeric character and there are several
+    # packed forms alive at once, and as a list a one megabyte document cost
+    # 82 megabytes of traced allocation.
+    cmap = array("i")
     for m in _ALNUM_RUN.finditer(text):
         cmap.extend(range(m.start(), m.end()))
     return _NON_ALNUM.sub("", text), cmap
@@ -586,7 +606,7 @@ def _exact_findings(
 def _normalized_labels(
     text: str,
     covered: list[tuple[int, int]],
-    pack: tuple[str, list[int]] | None = None,
+    pack: tuple[str, array[int]] | None = None,
 ) -> list[str]:
     """Credentials that exist once every separator is removed, without spans.
 
@@ -635,7 +655,7 @@ def _normalized_labels(
     return found
 
 
-def _covered_flags(cmap: list[int], covered: list[tuple[int, int]]) -> bytearray:
+def _covered_flags(cmap: array[int], covered: list[tuple[int, int]]) -> bytearray:
     """Which compacted characters lie inside an exact span."""
     flags = bytearray(len(cmap))
     for lo, hi in covered:
@@ -649,7 +669,7 @@ def _covered_flags(cmap: list[int], covered: list[tuple[int, int]]) -> bytearray
 def _normalized_hit(
     text: str,
     joined: str,
-    cmap: list[int],
+    cmap: array[int],
     inside: bytearray,
     g: _Grammar,
     literal: str,
@@ -848,6 +868,8 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
         if m.start() < reached:
             continue
         token = m.group()
+        if _monotonic(token):
+            continue
         entropy = _shannon_entropy(token)
         threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
         if entropy >= threshold:
@@ -866,24 +888,33 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
     return out
 
 
+def _monotonic(token: str) -> bool:
+    """Is this run just the characters of some alphabet in order?
+
+    A chart of an alphabet has maximal entropy by construction and is not a
+    secret. Folding compatibility forms made three more styles of chart look
+    like one, on top of the plain and mathematical rows that already did.
+    A random value is sorted with probability that rounds to nothing at these
+    lengths, so this costs no detection and is not a length or entropy guess.
+    """
+    # Case-insensitively, because the confusable table maps some letters to
+    # lowercase and leaves others alone, so a folded chart arrives as
+    # ``abcDeFghi...`` and is not sorted by code point at all.
+    plain = token.lower()
+    pairs = list(zip(plain, plain[1:], strict=False))
+    ups = sum(a < b for a, b in pairs)
+    downs = sum(a > b for a, b in pairs)
+    return ups == len(plain) - 1 or downs == len(plain) - 1
+
+
 def _entropy_body(ch: str) -> bool:
     """The character class the entropy scan's own pattern accepts."""
     return ch.isascii() and (ch.isalnum() or ch in "+/-_")
 
 
-def _inserted_split(gap: str) -> bool:
-    """A gap this walk may cross: joinable, and holding no structure at all.
-
-    Stricter than _joinable_gap, which lets a single structural character
-    through on the grounds that a quote driven INTO a value arrives alone.
-    That exemption cannot be taken here, because ``/`` is a base64 character
-    and so belongs to this scan's own class: ``</token>`` therefore reads as
-    the one character gap ``<`` followed by the fragment ``/token``, and the
-    span swallowed the closing tag it was supposed to stop at. Nothing is lost
-    by refusing it, since a value driven apart is split with separators that
-    are not markup.
-    """
-    return _joinable_gap(gap) and not any(c in "\"'`<>{}[]" for c in gap)
+def _structural(gap: str) -> bool:
+    """Does this gap hold a character that ends one value and starts another?"""
+    return any(c in "\"'`<>{}[]" for c in gap)
 
 
 def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
@@ -893,18 +924,30 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
     fragments at least ``_ENTROPY_MIN_LENGTH`` long. Written as two plain
     walks rather than one parameterised by direction, because the version that
     was clever about it could not be read.
+
+    The gap itself is bounded only by ``_MAX_GAP``; _joinable_gap is not asked,
+    because its quote rule refuses a two character gap outright and that is
+    precisely the split being followed. Structure does not end the walk here,
+    it raises the price of crossing. Refusing
+    to cross it outright is what made the residue unbounded: a value split with
+    a pair of quotes, backticks or brackets stopped the walk at the gap, and
+    1,024 characters of one survived with nothing reported. Requiring the
+    fragment beyond a structural gap to be too long to be a tag name keeps the
+    XML case exact -- ``</token>`` offers ``/token``, which is six -- while a
+    real continuation, which is long, is followed.
     """
     first = True
     while lo > 0:
         gap = lo
         while gap > 0 and not _entropy_body(text[gap - 1]):
             gap -= 1
-        if gap == lo or not _inserted_split(text[gap:lo]):
+        if gap == lo or lo - gap > _MAX_GAP:
             break
         frag = gap
         while frag > 0 and _entropy_body(text[frag - 1]):
             frag -= 1
-        if frag == gap or (not first and gap - frag < _ENTROPY_MIN_LENGTH):
+        free = first and not _structural(text[gap:lo])
+        if frag == gap or (not free and gap - frag < _ENTROPY_MIN_LENGTH):
             break
         lo, first = frag, False
 
@@ -913,12 +956,13 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
         gap = hi
         while gap < len(text) and not _entropy_body(text[gap]):
             gap += 1
-        if gap == hi or not _inserted_split(text[hi:gap]):
+        if gap == hi or gap - hi > _MAX_GAP:
             break
         frag = gap
         while frag < len(text) and _entropy_body(text[frag]):
             frag += 1
-        if frag == gap or (not first and frag - gap < _ENTROPY_MIN_LENGTH):
+        free = first and not _structural(text[hi:gap])
+        if frag == gap or (not free and frag - gap < _ENTROPY_MIN_LENGTH):
             break
         hi, first = frag, False
     return lo, hi
@@ -975,6 +1019,8 @@ def _scan_secrets(text: str) -> list[str]:
             if len(token) < _ENTROPY_MIN_LENGTH:
                 continue
             if merged and not any(c.isdigit() for c in token):
+                continue
+            if _monotonic(token):
                 continue
             entropy = _shannon_entropy(token)
             # Length-aware threshold: never require more entropy than the

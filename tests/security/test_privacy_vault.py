@@ -2839,6 +2839,11 @@ class TestRecognitionAndAttribution:
         from guardllm.security.outbound_dlp import scan_secret_spans
 
         cut = 20
+        # The gaps that still put the value past a span, and the assertion
+        # below pins that at least one of them does. Paired shell quotes no
+        # longer belong to that set: the entropy walk crosses them and covers
+        # the value outright, which is better than reporting it.
+        beyond = 0
         for name, gap in (
             ("65 separators", "," * 65),
             ("paired shell quotes", "''" * 8),
@@ -2849,8 +2854,10 @@ class TestRecognitionAndAttribution:
             out = text
             for lo, hi in sorted(spans, reverse=True):
                 out = out[:lo] + " " * (hi - lo) + out[hi:]
-            assert _longest_surviving_run(out, self._SECRET), f"{name}: nothing left to report"
-            assert any("OpenAI" in label for label in labels), name
+            run = _longest_surviving_run(out, self._SECRET)
+            beyond += bool(run)
+            assert not run or any("OpenAI" in label for label in labels), name
+        assert beyond, "no gap leaves a tail any more, so this pins nothing"
 
     def test_coverage_is_what_a_span_did_not_cover(self):
         """Not whether the anchor happens to sit inside one.
@@ -3231,6 +3238,122 @@ class TestRecognitionAndAttribution:
         # Four times the input. Quadratic would be about sixteen times the
         # work; the bound is loose so the test measures shape, not a machine.
         assert large < small * 9, f"{small:.4f}s for 200, {large:.4f}s for 800"
+
+    def test_a_latin_letter_written_in_another_script_still_counts(self):
+        """Folding compatibility forms closed one door beside another.
+
+        Greek capital alpha and Cyrillic capital A look exactly like `A` and
+        NFKC leaves both alone, so 697 of 1,000 AWS keys whose first character
+        was swapped that way passed both scanners silently and the vault
+        returned them unchanged. The confusable table is shared with
+        strip_invisibles, which maps to lowercase; an AWS body is upper-only,
+        so `aKIA` satisfies nothing and that path could not see it either.
+        Case comes from the character actually written.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+
+        for homoglyph in ("\u0391", "\u0410"):  # GREEK and CYRILLIC capital A
+            text = homoglyph + "KIAIOSFODNN7EXAMPLE"
+            assert scan_secret_spans(text)[0], f"{homoglyph!r}: not located"
+            assert _scan_secrets(text) == ["AWS access key"], f"{homoglyph!r}: egress"
+        assert _fold("\u0391\u0410") == "AA"
+        assert _fold("\u03b1") == "a", "case must come from what was written"
+
+    def test_the_entropy_walk_crosses_structure_only_for_a_long_fragment(self):
+        """Refusing to cross it outright made the residue unbounded.
+
+        A value split with a pair of quotes, backticks or brackets stopped the
+        walk at the gap, and 1,024 characters of one survived with nothing
+        reported. Crossing is allowed, but only to a fragment too long to be a
+        tag name, which is what keeps the XML case exact: ``</token>`` offers
+        ``/token``, and that is six characters.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        token = "PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52ZkBtJqrys4WKrg"
+        for gap in ('""', "``", "<>", "[]", '","', "''"):
+            text = token[:30] + gap + token[30:]
+            spans, labels = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            run = _longest_surviving_run(out, token)
+            assert not run or labels, f"gap {gap!r}: {run} chars left, not reported"
+        text = (
+            "<record><token>ghp_HgiKXSjjarvO0oeFGPRMbw60yPcKiRvgq1GZbyb5</token>"
+            "<env>production</env></record>"
+        )
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert "<record><token>" in out and "</token><env>" in out
+
+    def test_an_alphabet_in_order_is_not_a_secret(self):
+        """It has maximal entropy by construction and carries nothing.
+
+        Folding made three more styles of alphabet chart look like the plain
+        and mathematical rows that already tripped this. A random value is
+        sorted with a probability that rounds to nothing at these lengths, so
+        refusing a monotonic run costs no detection.
+        """
+        for chart in (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "abcdefghijklmnopqrstuvwxyz",
+            "\uff21\uff22\uff23\uff24\uff25\uff26\uff27\uff28\uff29\uff2a"
+            "\uff2b\uff2c\uff2d\uff2e\uff2f\uff30\uff31\uff32\uff33\uff34"
+            "\uff35\uff36\uff37\uff38\uff39\uff3a",
+            "ZYXWVUTSRQPONMLKJIHGFEDCBA",
+        ):
+            assert not _scan_secrets(chart), f"{chart[:12]!r} read as a secret"
+        # And a real high-entropy token is still one.
+        assert _scan_secrets("PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52Zk")
+
+    def test_the_cross_line_sweep_costs_what_it_replaces(self):
+        """Not what it scans past, and not the document, once per block.
+
+        Narrowing from the end of the document for every block was quadratic
+        in the block count: 256 of them cost 2.4 seconds. The window grows from
+        the cursor instead, so a block costs work in proportion to its own
+        size. Narrowing the BACK first is what makes the cursor safe to
+        advance, because it isolates the earliest run rather than the last.
+        """
+        import time
+
+        block = (
+            "      3. Current Quarter\n"
+            "      4. New Business\n"
+            "        - Upcoming Product Launch\n"
+            "        - Marketing Campaign Plans\n"
+            "        - Customer Feedback and Improvements\n"
+            "      5. Action Items and Next Steps\n"
+        )
+
+        def sweep(blocks: int) -> tuple[float, str]:
+            document = "agenda:\n" + ("  spacer: value\n" + block) * blocks
+            start = time.perf_counter()
+            out = _vault().deidentify(document, deny_action="marker")
+            return time.perf_counter() - start, out.content
+
+        small, small_out = sweep(16)
+        large, large_out = sweep(64)
+        for content in (small_out, large_out):
+            assert content != marker_for(PIIClass.CREDENTIAL), "whole document replaced"
+            assert "spacer: value" in content, "every block replaced, not just residue"
+        # Four times the blocks. Quadratic would be about sixteen times the
+        # work; the bound is loose so this measures shape, not a machine.
+        assert large < small * 9, f"{small:.4f}s for 16, {large:.4f}s for 64"
+
+    def test_the_index_map_is_not_a_list_of_python_integers(self):
+        """One entry per alphanumeric character, several packed forms alive at
+        once, and as a list a one megabyte document cost 82 megabytes of
+        traced allocation against ten for the array."""
+        from array import array
+
+        from guardllm.security.outbound_dlp import _packed
+
+        _joined, cmap = _packed("token abc123 value")
+        assert isinstance(cmap, array), type(cmap)
 
     def test_a_document_no_line_carries_is_not_replaced_wholesale(self):
         """The comment said one thing and the code did another.

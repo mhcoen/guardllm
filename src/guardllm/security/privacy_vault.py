@@ -897,28 +897,51 @@ class PrivacyVault:
 
         lines = list(lines)
         swept = 0
-        for _ in range(len(lines)):
-            if not _scan_secrets("\n".join(lines)):
-                break
+        start = 0
 
-            def scans(a: int, b: int) -> bool:
-                return bool(_scan_secrets("\n".join(lines[a:b])))
+        def scans(a: int, b: int) -> bool:
+            return bool(_scan_secrets("\n".join(lines[a:b])))
 
-            lo, hi = 0, len(lines)
+        while start < len(lines):
+            # Only the part after the last block is rescanned. Everything
+            # before it was narrowed past and a marker does not scan, so
+            # rescanning the whole document each pass was work that could only
+            # come back clean: 256 disjoint blocks cost 2.4 seconds that way.
+            # The window is grown from the cursor by doubling until it scans,
+            # so a block costs work in proportion to its own size rather than
+            # to the distance from it to the end of the document. Narrowing
+            # from the end each time was still quadratic in the number of
+            # blocks: 256 of them cost 0.75 seconds.
+            width = 1
+            while start + width < len(lines) and not scans(start, start + width):
+                width *= 2
+            lo, hi = start, min(start + width, len(lines))
             if not scans(lo, hi):
+                # The window reached the end of the document without scanning,
+                # so nothing is left. Checking that here rather than before
+                # growing the window is what removes the last whole-document
+                # scan per block, and with it the last quadratic term.
                 break
-            step = hi - lo
-            while step > 1:
-                step = max(1, step // 2)
-                while lo + step < hi and scans(lo + step, hi):
-                    lo += step
+            # The back end is narrowed first, which isolates the earliest run
+            # that scans rather than the last. That mattered when the window
+            # was the whole rest of the document: narrowing the front first
+            # walked past every block but the last, and advancing the cursor
+            # beyond it skipped the earlier ones. Growing the window from the
+            # cursor made the ordering redundant, measurably so, and it is
+            # kept only because it is the order that reads correctly.
             step = hi - lo
             while step > 1:
                 step = max(1, step // 2)
                 while hi - step > lo and scans(lo, hi - step):
                     hi -= step
+            step = hi - lo
+            while step > 1:
+                step = max(1, step // 2)
+                while lo + step < hi and scans(lo + step, hi):
+                    lo += step
             lines[lo:hi] = [marker_for(PIIClass.CREDENTIAL)]
             swept += hi - lo
+            start = lo + 1
         rebuilt = "\n".join(lines)
         if _scan_secrets(rebuilt):
             return marker_for(PIIClass.CREDENTIAL), 1

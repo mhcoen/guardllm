@@ -833,6 +833,10 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     for label in _normalized_labels(text, [(lo, hi) for lo, hi, _ in exact], pack):
         if label not in labels:
             labels.append(label)
+    if _split_by_structure(text, merged_spans):
+        boundary = "High-entropy token (split across a boundary)"
+        if boundary not in labels:
+            labels.append(boundary)
     return merged_spans, labels
 
 
@@ -939,14 +943,15 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
 
     The gap itself is bounded only by ``_MAX_GAP``; _joinable_gap is not asked,
     because its quote rule refuses a two character gap outright and that is
-    precisely the split being followed. Structure does not end the walk here,
-    it raises the price of crossing. Refusing
-    to cross it outright is what made the residue unbounded: a value split with
-    a pair of quotes, backticks or brackets stopped the walk at the gap, and
-    1,024 characters of one survived with nothing reported. Requiring the
-    fragment beyond a structural gap to be too long to be a tag name keeps the
-    XML case exact -- ``</token>`` offers ``/token``, which is six -- while a
-    real continuation, which is long, is followed.
+    precisely the split being followed. Structure ends the walk, and no price buys a
+    crossing. Charging one -- a fragment of at least twenty characters -- was
+    tried and broke every document whose next key, tag or attribute name was
+    that long: a span ran from a JSON value through ``", "`` and into a twenty
+    character key, 100 times in 100, and the record came out unparseable. There
+    is no safe length, because a name may be any length. A value split across
+    structure gets a label instead, from _split_by_structure below, so it is
+    refused rather than either leaked or replaced by a span that eats the
+    document.
     """
     first = True
     while lo > 0:
@@ -958,8 +963,9 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
         frag = gap
         while frag > 0 and _entropy_body(text[frag - 1]):
             frag -= 1
-        free = first and not _structural(text[gap:lo])
-        if frag == gap or (not free and gap - frag < _ENTROPY_MIN_LENGTH):
+        if _structural(text[gap:lo]):
+            break
+        if frag == gap or (not first and gap - frag < _ENTROPY_MIN_LENGTH):
             break
         lo, first = frag, False
 
@@ -973,11 +979,70 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
         frag = gap
         while frag < len(text) and _entropy_body(text[frag]):
             frag += 1
-        free = first and not _structural(text[hi:gap])
-        if frag == gap or (not free and frag - gap < _ENTROPY_MIN_LENGTH):
+        if _structural(text[hi:gap]):
+            break
+        if frag == gap or (not first and frag - gap < _ENTROPY_MIN_LENGTH):
             break
         hi, first = frag, False
     return lo, hi
+
+
+def _split_by_structure(text: str, spans: list[tuple[int, int]]) -> bool:
+    """Is a high-entropy run continued past a structural break?
+
+    The walk above will not cross one, because a span that does corrupts the
+    document it is protecting. But a value driven apart with a pair of quotes,
+    backticks or brackets is still a value driven apart, and saying nothing
+    left 897 of 900 of them in the text with 1,024 characters of one readable.
+
+    So the extent stays where it is and the finding is reported without one.
+    What is on the other side has to look like more of a value rather than the
+    next thing along, because a key, a tag and an attribute name are all on the
+    other side of a structural break too.
+    """
+
+    def continues(piece: str) -> bool:
+        if _monotonic(piece):
+            return False
+        if len(piece) >= 4 * _ENTROPY_MIN_LENGTH:
+            # Longer than any key, tag or attribute name, whatever it is made
+            # of. This is what bounds the damage when a continuation is all
+            # letters and so cannot be told from a name by anything else.
+            return True
+        # What a value has and a name does not: digits and both cases in one
+        # run. ``isalpha`` alone is not enough, because ``/`` belongs to this
+        # scan's own class, so a closing tag arrives as ``/tokenname``.
+        return (
+            len(piece) >= 8
+            and any(c.isdigit() for c in piece)
+            and any(c.isupper() for c in piece)
+            and any(c.islower() for c in piece)
+        )
+
+    for lo, hi in spans:
+        # Behind the span as well as ahead of it. The halves of a split value
+        # do not score alike, and it is routinely the SECOND half that clears
+        # the bar and takes the span, leaving the first one behind it.
+        gap = lo
+        while gap > 0 and not _entropy_body(text[gap - 1]):
+            gap -= 1
+        if gap != lo and lo - gap <= _MAX_GAP and _structural(text[gap:lo]):
+            frag = gap
+            while frag > 0 and _entropy_body(text[frag - 1]):
+                frag -= 1
+            if continues(text[frag:gap]):
+                return True
+        gap = hi
+        while gap < len(text) and not _entropy_body(text[gap]):
+            gap += 1
+        if gap == hi or gap - hi > _MAX_GAP or not _structural(text[hi:gap]):
+            continue
+        frag = gap
+        while frag < len(text) and _entropy_body(text[frag]):
+            frag += 1
+        if continues(text[gap:frag]):
+            return True
+    return False
 
 
 def _scan_secrets(text: str) -> list[str]:

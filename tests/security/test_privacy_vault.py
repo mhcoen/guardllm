@@ -3259,14 +3259,45 @@ class TestRecognitionAndAttribution:
         assert _fold("\u0391\u0410") == "AA"
         assert _fold("\u03b1") == "a", "case must come from what was written"
 
-    def test_the_entropy_walk_crosses_structure_only_for_a_long_fragment(self):
-        """Refusing to cross it outright made the residue unbounded.
+    def test_a_span_never_crosses_a_record_boundary(self):
+        """No length buys a crossing, because a name may be any length.
 
-        A value split with a pair of quotes, backticks or brackets stopped the
-        walk at the gap, and 1,024 characters of one survived with nothing
-        reported. Crossing is allowed, but only to a fragment too long to be a
-        tag name, which is what keeps the XML case exact: ``</token>`` offers
-        ``/token``, and that is six characters.
+        Charging one -- a fragment of at least twenty characters -- was tried
+        and broke every document whose next key, tag or attribute name was that
+        long: a span ran from a JSON value through ``", "`` into a twenty
+        character key, 100 times in 100, and the record came out unparseable.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        rng = random.Random(7)
+        value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
+        for size in (8, 18, 19, 20, 21, 40, 80):
+            name = "k" * size
+            for text in (
+                f'{{"a": "{value}", "{name}": "next"}}',
+                f"<{name}>{value}</{name}><e>n</e>",
+                f'<n a="{value}" {name}="next"/>',
+            ):
+                spans, _ = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                for delimiter in ('"', "<", ">"):
+                    assert out.count(delimiter) == text.count(delimiter), (
+                        f"name of {size}: {delimiter!r} consumed from {text!r}"
+                    )
+
+    def test_a_value_split_across_a_boundary_is_reported_instead(self):
+        """The extent stays put and the finding is reported without one.
+
+        Refusing to cross structure is what keeps a record intact, and saying
+        nothing about it is what left 897 of 900 split values in the text with
+        1,024 characters of one readable. What is on the other side has to look
+        like more of a value rather than the next thing along, so a key, a tag
+        and an attribute name stay silent and a random continuation does not.
         """
         from guardllm.security.outbound_dlp import scan_secret_spans
 
@@ -3278,16 +3309,13 @@ class TestRecognitionAndAttribution:
             for lo, hi in sorted(spans, reverse=True):
                 out = out[:lo] + " " * (hi - lo) + out[hi:]
             run = _longest_surviving_run(out, token)
-            assert not run or labels, f"gap {gap!r}: {run} chars left, not reported"
-        text = (
-            "<record><token>ghp_HgiKXSjjarvO0oeFGPRMbw60yPcKiRvgq1GZbyb5</token>"
-            "<env>production</env></record>"
-        )
-        spans, _ = scan_secret_spans(text)
-        out = text
-        for lo, hi in sorted(spans, reverse=True):
-            out = out[:lo] + " " * (hi - lo) + out[hi:]
-        assert "<record><token>" in out and "</token><env>" in out
+            assert run, "fixture no longer leaves a tail, so it pins nothing"
+            assert labels, f"gap {gap!r}: left in the text and not reported"
+        # And a continuation too long to be any name at all, whatever it is
+        # made of, is reported on length alone.
+        long_tail = "ab" * 40
+        text = token + '"' + long_tail
+        assert scan_secret_spans(text)[1], "an 80 character tail went unreported"
 
     def test_an_alphabet_in_order_is_not_a_secret(self):
         """It has maximal entropy by construction and carries nothing.

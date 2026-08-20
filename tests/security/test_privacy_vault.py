@@ -3344,6 +3344,32 @@ class TestRecognitionAndAttribution:
         # work; the bound is loose so this measures shape, not a machine.
         assert large < small * 9, f"{small:.4f}s for 16, {large:.4f}s for 64"
 
+    def test_a_long_run_is_judged_without_being_copied(self):
+        """The sorted-run test walks; it does not pair.
+
+        Written with zip and a list of pairs it allocated a tuple per character
+        of every token it looked at, so a one megabyte run of alphanumerics
+        cost 70 megabytes on its own. The pairing was introduced by a lint fix,
+        not by a design decision, which is exactly the kind of change no leak
+        corpus would ever notice.
+        """
+        import random
+        import string
+        import tracemalloc
+
+        rng = random.Random(11)
+        size = 200_000
+        text = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(size))
+        tracemalloc.start()
+        try:
+            _scan_secrets(text)
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        # Generous: the packed forms and the index map are several times the
+        # input on their own. Pairing every character was twenty times it.
+        assert peak < size * 12, f"{peak} bytes peak for {size} characters"
+
     def test_the_index_map_is_not_a_list_of_python_integers(self):
         """One entry per alphanumeric character, several packed forms alive at
         once, and as a list a one megabyte document cost 82 megabytes of

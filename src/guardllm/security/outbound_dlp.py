@@ -900,11 +900,23 @@ def _monotonic(token: str) -> bool:
     # Case-insensitively, because the confusable table maps some letters to
     # lowercase and leaves others alone, so a folded chart arrives as
     # ``abcDeFghi...`` and is not sorted by code point at all.
+    #
+    # One pass, no pairing, and it stops the moment both directions are ruled
+    # out, which for a random token is within a few characters. Written with
+    # zip and a list of pairs it allocated a tuple per character of every token
+    # it looked at, and a one megabyte run cost 70 megabytes of that alone.
     plain = token.lower()
-    pairs = list(zip(plain, plain[1:], strict=False))
-    ups = sum(a < b for a, b in pairs)
-    downs = sum(a > b for a, b in pairs)
-    return ups == len(plain) - 1 or downs == len(plain) - 1
+    rising = falling = True
+    previous = plain[0]
+    for char in plain[1:]:
+        if previous >= char:
+            rising = False
+        if previous <= char:
+            falling = False
+        if not rising and not falling:
+            return False
+        previous = char
+    return rising or falling
 
 
 def _entropy_body(ch: str) -> bool:

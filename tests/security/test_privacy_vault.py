@@ -2651,3 +2651,257 @@ class TestPunctuationSplits:
         for lo, hi in sorted(spans, reverse=True):
             out = out[:lo] + " " * (hi - lo) + out[hi:]
         assert _longest_surviving_run(out, secret) == 0
+
+
+class TestRecognitionAndAttribution:
+    """The two passes, and what each is allowed to decide.
+
+    Attribution answers "which characters can safely be replaced" and is
+    bounded everywhere: a gap ceiling, an anchor gap, a fragment walk that
+    stops at the first structural break. Recognition answers "is a credential
+    present" and is bounded nowhere, because every bound in the first list is a
+    number an attacker can simply exceed.
+
+    Conflating the two is what this round separated. Answering both at once
+    reached across whatever lay between fragments and deleted XML elements;
+    answering only the second lost the spans and left 481 of 6,290 split
+    positions reported by nothing at all.
+    """
+
+    _SECRET = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
+
+    def test_a_value_beyond_attributions_reach_is_still_reported(self):
+        """Recognition is the reason attribution is allowed to have bounds.
+
+        Sixty five separators, adjacent empty shell quotes and thirty three
+        POSIX line continuations all step over the gap ceiling, and ``/bin/sh``
+        reassembles the key from every one of them. The span stops; the report
+        must not, or the ceiling becomes a bypass rather than a bound.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        cut = 20
+        for name, gap in (
+            ("65 separators", "," * 65),
+            ("paired shell quotes", "''" * 8),
+            ("line continuations", "\\\n" * 33),
+        ):
+            text = self._SECRET[:cut] + gap + self._SECRET[cut:]
+            spans, labels = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            assert _longest_surviving_run(out, self._SECRET), f"{name}: nothing left to report"
+            assert any("OpenAI" in label for label in labels), name
+
+    def test_coverage_is_what_a_span_did_not_cover(self):
+        """Not whether the anchor happens to sit inside one.
+
+        A split value whose first fragment satisfies its grammar on its own
+        produces a span over that fragment, and the anchor is inside it. Asking
+        coverage that way suppressed the report for everything past the gap:
+        16 characters of a 45 character Slack token were replaced, 29 were left
+        in the text, and nothing was reported. That was 481 of 6,290 split
+        positions, every one of them silent.
+        """
+        from guardllm.security.outbound_dlp import _exact_findings, _normalized_labels
+
+        secret = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
+        text = secret[:16] + "," * 65 + secret[16:]
+        exact = _exact_findings(text)
+        assert exact, "the first fragment should still be attributed"
+        lo, hi = exact[0][0], exact[0][1]
+        assert text[lo:hi] == secret[:16], "attribution must stop at the ceiling"
+        assert "Slack token" in _normalized_labels(text, [(lo, hi) for lo, hi, _ in exact])
+
+    def test_ordinary_words_after_a_credential_are_not_more_of_it(self):
+        """And the other direction, which is a refused document.
+
+        Recognition reports what no span accounts for, so a credential written
+        whole must leave nothing to report. The constants following a key in a
+        source file cleared the randomness bar over a long enough window and
+        made ten of 153 standard library files carry an unlocatable credential,
+        which on the host path is a refusal of the whole document.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        for tail in (
+            " with API v2 and set retries to 3.",
+            '\nCO_FUTURE_UNICODE_LITERALS = 0x200000   # unicode string literals\n',
+            '\nINTENSE_BACKGROUND_MAGENTA = "\\x1b[105m"\n',
+            ", createdAt 2024-03-14T12:00:00Z, Base64Encoder, SHA256Digest\n",
+        ):
+            spans, labels = scan_secret_spans(f'TOKEN = "{self._SECRET}"' + tail)
+            assert spans, tail
+            assert labels == [], f"{tail!r} reported as credential material: {labels}"
+
+    def test_the_separator_free_form_still_needs_the_separator(self):
+        """Compaction is what manufactures anchors, so it cannot vouch for one.
+
+        ``skip_bytes`` offers ``sk`` and twenty body characters after it, and
+        so does every other word beginning ``sk``; ``%s" % (key`` compacts to
+        ``sskey`` and offers one that was never written. The separator survives
+        in the original text, which is where this asks for it. Without the
+        question, 37 of 153 standard library files were reported as carrying an
+        unlocatable credential.
+
+        The first two shapes below are the ones only this rule rejects: both
+        clear the randomness bar, so removing it reports them. They are kept as
+        literals from the files they came out of, because a generated fixture
+        reproduces "an anchor two unrelated words happen to spell" by luck.
+        """
+        # acconfig.h + pyconfig spells `ghp`, and `y` follows it.
+        assert not _scan_secrets(
+            '"CONFIG_ARGS": "configure configure.ac acconfig.h pyconfig.h.in '
+            'Makefile.pre.in Include Lib Misc Ext-dummy",'
+        )
+        # "as keyword" spells `sk`, and `e` follows it.
+        assert not _scan_secrets(
+            "        these attributes can be provided as keyword-arguments.\n"
+            "        This can be used to set several pen attributes in one go.\n"
+        )
+        assert not _scan_secrets(
+            "            skip_bytes = int(self._b2cratio * (size - len(decoded)))\n"
+            "            if skip_bytes > 0:\n"
+        )
+        # And a separator genuinely driven in is still one.
+        assert _scan_secrets("token s,k-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh end")
+
+    def test_the_randomness_window_stops_where_prose_catches_up(self):
+        """The bar goes flat at 4.5 bits and ordinary text keeps climbing.
+
+        A window is asked from the grammar's minimum to half as long again. Let
+        it run to the grammar's maximum instead and the constants after a real
+        credential clear a flat 4.5 bits, so a document whose credential was
+        replaced faithfully is reported as still carrying one. That is a
+        refusal of the whole document on the host path, and it happened to ten
+        of 153 standard library files.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        tail = (
+            "CO_FUTURE_UNICODE_LITERALS = 0x200000   # unicode string literals\n"
+            "CO_FUTURE_BARRY_AS_BDFL = 0x400000\n"
+            "CO_FUTURE_GENERATOR_STOP = 0x800000     # StopIteration becomes "
+            "RuntimeError in generators\n"
+            "CO_FUTURE_ANNOTATIONS = 0x1000000\n"
+        )
+        for secret in ("xoxb-C3J27XDCG2LmlZGEONYlgCtjfIZ4SOcM-z9CPVNP", self._SECRET):
+            spans, labels = scan_secret_spans(f'TOKEN = "{secret}"\n' + tail)
+            assert spans, secret
+            assert labels == [], f"{secret}: {labels}"
+
+    def test_the_randomness_window_is_swept_rather_than_sampled_once(self):
+        """At the grammar's minimum the bar is decided by rounding.
+
+        A random base62 run of twenty characters scores about 4.02 bits and the
+        length allowance asks for 4.02, so testing that one length alone
+        decides half of all values by a hundredth of a bit: 545 of 2,340
+        generated split values went unreported. A real credential is longer
+        than its minimum, so the sweep asks whether it is random anywhere it
+        could plausibly end.
+
+        The value is a literal because the shape that needs this is a body
+        whose first thirty characters are not random enough and whose next
+        thirty are; a generated one has it only by luck.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        jwt = (
+            "Bearer FQgesZ_n8S00K-703poQ.31dPgL3WPNiFp5FYg8nENYEiV1vC1pjmqp6aLFMd."
+            "Pwi45YsTDfNd6ONP_s8AzLhzOT8cwzEygnNOJ1rQ41k"
+        )
+        cut = len(jwt) // 2
+        for gap in ("," * 65, "''" * 40, "\\\n" * 33, " " * 200):
+            text = jwt[:cut] + gap + jwt[cut:]
+            spans, labels = scan_secret_spans(text)
+            out = text
+            for lo, hi in sorted(spans, reverse=True):
+                out = out[:lo] + " " * (hi - lo) + out[hi:]
+            if _longest_surviving_run(out, jwt):
+                assert labels, f"gap {gap[:6]!r}: left in the text and not reported"
+
+    def test_an_anchor_the_compact_form_assembled_must_look_random(self):
+        """A written anchor is evidence; a reassembled one is a coincidence.
+
+        ``# 1. x.o = x.s + x.d`` compacts to ``xoxs``, at a token boundary,
+        with a separator after it, and Slack asks nothing further of a ten
+        character body. Requiring randomness whenever compaction had to
+        assemble the anchor costs no detection, because an attacker who breaks
+        an anchor up still has a random value underneath it.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        comment = (
+            "# 1. x.o = x.s + x.d\n"
+            "#    This follows from the definition of x\n"
+        )
+        assert scan_secret_spans(comment) == ([], [])
+        # The same anchor genuinely broken up, over a real value, is reported.
+        split = "value x,o,x,b-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M end"
+        assert "Slack token" in scan_secret_spans(split)[1] or any(
+            lo != hi for lo, hi in scan_secret_spans(split)[0]
+        )
+
+    def test_markup_between_fragments_is_a_boundary_not_a_split(self):
+        """``</`` is two characters and was an ordinary gap.
+
+        One fragment past a split value inside ``<token>`` is ``token`` in its
+        own closing tag, so the span ate it and the record came out as
+        ``><note>``. Structure is what _joinable_gap already refuses for
+        quotes, and markup belongs in the same set for the same reason. The
+        value itself must still be replaced in full.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        cut = 20
+        text = (
+            "<record><token>" + self._SECRET[:cut] + " " + self._SECRET[cut:] +
+            "</token><note>keep this element</note>"
+            '<request id="a7f3c9e2b5d18406"></request>'
+            "<trailer>and this one</trailer></record>"
+        )
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, self._SECRET) == 0
+        assert "</token><note>keep this element</note>" in out
+        assert "<trailer>and this one</trailer>" in out
+
+    def test_the_anchor_gap_is_the_size_it_says_it_is(self):
+        """It consumed one character more than _MAX_ANCHOR_GAP allows.
+
+        Three characters is enough for prose to supply an anchor it never
+        wrote: ``x.o = x.s`` has ``` = ``` between ``o`` and ``x``, and with
+        Slack's ten character minimum the comment around it became a 38
+        character finding in _pydatetime.py.
+        """
+        from guardllm.security.outbound_dlp import _exact_findings
+
+        assert _exact_findings("# 1. x.o = x.s + x.d\n#    This follows from") == []
+        # Two characters still is a split anchor.
+        assert _exact_findings("token s,,k-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh")
+
+    def test_a_value_behind_an_underscore_is_judged_by_its_body(self):
+        """The two shapes that meet on the character before the anchor.
+
+        ``slack_xoxb_token_prefix_documentation`` is an identifier and
+        rewriting it corrupts source on its way to the model. ``_sk-7LeX...``
+        is the same shape with a real key under it, typed that way to evade
+        exactly that test. Refusing on the character alone loses the second;
+        accepting on it alone corrupts the first. The body decides.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        for ident in (
+            "const slack_xoxb_token_prefix_documentation = 1",
+            "const display_ya29_token_configuration_value_here = 2",
+        ):
+            assert scan_secret_spans(ident)[0] == [], ident
+        text = f"BEGIN _{self._SECRET[:20]} {self._SECRET[20:]} END"
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, self._SECRET) == 0

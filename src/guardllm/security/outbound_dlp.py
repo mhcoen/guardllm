@@ -3,12 +3,39 @@
 Scans outbound content against recently ingested untrusted content
 to detect exfiltration attempts. Checks verbatim overlap, n-gram
 overlap, and secret patterns.
+
+Credential scanning is two passes over two different questions, and keeping
+them apart is the organising idea of everything below.
+
+``_exact_findings`` is ATTRIBUTION: given that a credential is here, which
+characters can be replaced faithfully? It is bounded everywhere -- a ceiling on
+how wide an inserted gap may be, a ceiling on how far an anchor may itself be
+broken, a fragment walk that stops at the first structural break -- because a
+span that reaches too far corrupts the document it was meant to protect. It
+once deleted the closing tag of one XML element, a whole second element and the
+opening tag of a third.
+
+``_normalized_labels`` is RECOGNITION: is a credential here at all? It is
+bounded nowhere. Every bound in the paragraph above is a number an attacker can
+exceed on purpose, and each of them was: 65 separators, 33 shell line
+continuations and adjacent empty shell quotes each made a whole credential
+family disappear while ``/bin/sh`` still reconstructed the key. So this pass
+compacts the entire document and runs the grammars over what is left, and what
+no span accounts for is reported with no span at all, for the caller to refuse
+or replace.
+
+The division is what makes the bounds safe. Attribution may stop early; the
+value does not thereby vanish, it moves from a span to a label. Conflating the
+two is what produced both failures at once: answering them together reached
+across a record to build one span, and answering only recognition left 481 of
+6,290 split positions with nothing reported.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from bisect import bisect_left
 from collections import deque
 from typing import NamedTuple
 
@@ -90,18 +117,32 @@ _PEM_RE = re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")
 #: How wide a run of non-body characters may be and still be read as an
 #: inserted split rather than a boundary between two things.
 #:
-#: The size is the weaker half of the test; _joinable_gap's quote rule is what
-#: actually protects structure, and measurement says so: at 10, 20 and 40 the
-#: standard library figure is identical and only the leak changes. Sixty four
-#: is where every gap probed closes. It cannot simply be removed, though;
+#: The size is the weaker half of the test; _joinable_gap's structural rule is
+#: what protects a document's shape, and measurement says so: at 10, 20 and 40
+#: the standard library figure is identical and only the leak changes. Sixty
+#: four is where every gap probed closes. It cannot simply be removed, though;
 #: without any ceiling a credential and an unrelated token 400 characters
 #: apart join into one 459 character finding.
+#:
+#: This bounds attribution and nothing else. Sixty five separators step over
+#: it, and when they do the span stops here and recognition, which has no
+#: ceiling, reports the value without one. That is why a ceiling is allowed to
+#: exist at all: no threshold an attacker can exceed decides whether a
+#: credential is present, only how much of it can be replaced faithfully.
 _MAX_GAP = 64
 
-#: How far a split anchor may itself be broken, e.g. ``s,k-abc``.
+#: How far a split anchor may itself be broken, e.g. ``s,k-abc``. Attribution
+#: only, again: recognition reads the compact form and needs no such bound.
 _MAX_ANCHOR_GAP = 2
 
 _ENTROPY_THRESHOLD = 4.5
+#: Below this length entropy separates nothing, so no question in this module
+#: is asked of a shorter run. It is the floor for the standalone scan below, it
+#: is the floor for the window sweep a grammar's body must clear, and it is the
+#: shortest residue recognition will speak up about. Slack's ten character
+#: minimum asked the randomness question of ten characters, where a bar of 3.02
+#: bits is cleared by any run with nine distinct characters in it, and a
+#: comment reading ``x.o = x.s + x.d`` was reported as a Slack token.
 _ENTROPY_MIN_LENGTH = 20
 # A string of length L has a maximum possible Shannon entropy of log2(L).
 # For L in [20, 22] that ceiling (4.32 - 4.46 bits) is below _ENTROPY_THRESHOLD,
@@ -111,6 +152,8 @@ _ENTROPY_MIN_LENGTH = 20
 _ENTROPY_LENGTH_MARGIN = 0.30
 
 _NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
+
+_ALNUM_RUN = re.compile(r"[A-Za-z0-9]+")
 
 _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
@@ -189,7 +232,7 @@ def _walk_anchor(text: str, pos: int, literal: str, g: _Grammar) -> int | None:
     for k, want in enumerate(literal):
         if k:
             gap = 0
-            while i < len(text) and gap <= _MAX_ANCHOR_GAP and not _is_alnum(text[i]):
+            while i < len(text) and gap < _MAX_ANCHOR_GAP and not _is_alnum(text[i]):
                 i += 1
                 gap += 1
         if i >= len(text) or text[i] != want:
@@ -198,95 +241,333 @@ def _walk_anchor(text: str, pos: int, literal: str, g: _Grammar) -> int | None:
     return i
 
 
-def _body_run(text: str, pos: int, g: _Grammar) -> int:
-    """End of the contiguous body run starting at ``pos``."""
-    stop = pos
-    while stop < len(text) and _is_body(text[stop], g):
-        stop += 1
-    return stop
+def _joinable_gap(gap: str) -> bool:
+    """Can this run of non-body characters be an inserted split?
+
+    Two tests, and the second is what keeps structure intact. A gap longer than
+    a few characters is not somebody breaking a value up. And a gap holding a
+    quote is a boundary between two values rather than a wound in one: the
+    ``","`` between minified JSON fields, the quotes around a CSV field. Only
+    the size limit was in place at first, set to two, and it worked by accident
+    because ``","`` happens to be three characters; a value split with ``" - "``
+    then leaked because the same limit refused a legitimate three character
+    gap. Saying what a boundary IS covers both.
+
+    The ceiling is a bound on ATTRIBUTION only, and that is the whole reason it
+    is allowed to exist. Sixty five separators walk straight over it, and when
+    they do this returns False, the span stops, and recognition -- which has no
+    ceiling at all -- reports the value without one. A threshold an attacker
+    can simply exceed decides how much can be replaced here, never whether a
+    credential is present.
+    """
+    if len(gap) > _MAX_GAP:
+        return False
+    # A quote or a bracket is structural unless it is the whole gap. Where a
+    # value ends, the character closing it arrives with company: ``","``
+    # between minified JSON fields, ``", `` before the next key, ``") ``
+    # closing a call, ``</`` opening the tag that ends an element. Driven INTO
+    # a value it arrives alone. Refusing on any quote at all made ``"`` the one
+    # separator that still smuggled 32 characters out; allowing up to two
+    # swallowed the ``")`` that closes a function call. Markup was added to the
+    # same set for the same reason and against a measured failure: with only
+    # quotes here, ``</`` was an ordinary two character gap, one fragment past
+    # a split value in ``<token>`` was ``token`` inside its own closing tag,
+    # and the record came out as ``><note>`` with the tag eaten.
+    if not any(c in "\"'`<>{}[]" for c in gap):
+        return True
+    return len(gap) == 1
 
 
-def _exact_findings(text: str) -> list[tuple[int, int, str]]:
+def _fragments(text: str, pos: int, g: _Grammar) -> list[tuple[int, int]]:
+    """Body fragments after the anchor, joined across gaps of at most two.
+
+    A fragment is a maximal run of body characters. This is the whole of the
+    locality guarantee: the walk stops at the first gap too wide to be a split,
+    so nothing beyond it can ever be drawn into the value. A newline is a gap
+    like any other, which is why a value wrapped over several lines needs no
+    line handling and why trailing spaces before a break cannot reopen it.
+    """
+    out: list[tuple[int, int]] = []
+    i, total = pos, 0
+    while i < len(text) and total < g.max_body:
+        gap = i
+        while gap < len(text) and not _is_body(text[gap], g):
+            gap += 1
+        if gap > i and not _joinable_gap(text[i:gap]):
+            break
+        stop = gap
+        while stop < len(text) and _is_body(text[stop], g):
+            stop += 1
+        if stop == gap:
+            break
+        out.append((gap, stop))
+        total += stop - gap
+        i = stop
+    return out
+
+
+def _resolve(text: str, start: int, body_start: int, g: _Grammar) -> tuple[int, int] | None:
+    """How far a candidate reaches, in original coordinates, or None.
+
+    Fragments are taken while the grammar is not yet satisfied, which is a
+    split value being reassembled, and then exactly one more, which is a value
+    split after its minimum was already met. Both are needed and neither
+    subsumes the other: without the first a value broken into five pieces keeps
+    its tail, without the second a key split just past its minimum keeps
+    everything after the split. The second costs a following fragment when the
+    value was in fact complete, which is the price of an extent nothing in the
+    text determines, and it is paid one fragment at a time rather than to the
+    end of the line.
+
+    Two further rules follow, for the shapes those two do not reach: a value
+    wrapped over several lines, and one broken into four or more pieces on a
+    single line. Both were removed once as the cause of a span that crossed
+    three XML elements, and both are restored because that was the wrong
+    culprit. Neither can reach further than _fragments walks, and what let that
+    walk cross a record was a gap of ``</`` counting as an inserted split.
+    Naming markup structural fixes it at the cause; removing the rules that
+    consumed the walk only hid it, and cost a wrapped credential 19 characters.
+    """
+    frags = _fragments(text, body_start, g)
+    if not frags:
+        return None
+    taken = 0
+    used = 0
+    for idx, (lo, hi) in enumerate(frags):
+        taken += hi - lo
+        used = idx
+        if taken >= g.min_body:
+            break
+    if taken < g.min_body:
+        return None
+    if used + 1 < len(frags):
+        used += 1
+    # A value wrapped over several lines leaves each continuation alone on its
+    # own line, and a long one clears the minimum on its first fragment, so
+    # neither rule above reaches the tail: a 47 character Slack token broken
+    # over five lines kept 19 of them, and 19 is under the length at which
+    # recognition will speak up about what is left, so nothing was reported
+    # either. Keep taking fragments that are the entire content of their line.
+    # A prose line has other words on it and stops this at once.
+    while used + 1 < len(frags):
+        prev_end = frags[used][1]
+        nxt_lo, nxt_hi = frags[used + 1]
+        gap = text[prev_end:nxt_lo]
+        if "\n" not in gap or gap.strip():
+            break
+        line_lo = text.rfind("\n", 0, nxt_lo) + 1
+        line_end = text.find("\n", nxt_hi)
+        if line_end == -1:
+            line_end = len(text)
+        if text[line_lo:nxt_lo].strip() or text[nxt_hi:line_end].strip():
+            break
+        used += 1
+    # And a long value broken into pieces on ONE line clears the minimum on its
+    # first piece too. Take fragments through to the LAST one that scans as
+    # credential material in its own right, not up to the first that does not:
+    # a piece whose entropy happens to fall under the bar sat between pieces
+    # whose entropy did not, and stopping at it left 34 characters in the text
+    # with the rest of the value redacted either side. This asks the entropy
+    # scanner rather than guessing at length, so prose stops it immediately;
+    # no word scans, and the last scanning fragment is the value itself.
+    #
+    # What made this dangerous was never its reach through the fragment list,
+    # it was how far that list ran: a request id further down an XML record
+    # scanned, and the span reaching it deleted the closing tag of one element,
+    # a whole second element and the opening tag of a third. _joinable_gap
+    # calls markup structural now, so the list stops at the first tag and this
+    # cannot leave the value's own element.
+    last = used
+    for idx in range(used + 1, len(frags)):
+        lo_f, hi_f = frags[idx]
+        if _entropy_spans(text[lo_f:hi_f]):
+            last = idx
+    return start, frags[last][1]
+
+
+def _admissible(text: str, start: int, lo: int, hi: int, g: _Grammar) -> bool:
+    """Is a match beginning at ``start`` a credential, or part of a name?
+
+    Two different failures meet here and they pull opposite ways.
+
+    A value written INSIDE an identifier is not a credential, and rewriting it
+    corrupts source and documentation on its way to the model:
+    ``slack_xoxb_token_prefix_documentation`` and
+    ``display_ya29_token_configuration`` both satisfy the separator rule, and
+    both were being rewritten mid-identifier. A ``_`` or ``-`` in front of the
+    anchor is what says so, and it says so for every grammar.
+
+    A value with a character driven in FRONT of it to evade exactly that test
+    is still a credential, and ``_sk-7LeXSyYV...`` is both shapes at once. So
+    nothing is refused on the preceding character alone: it selects which
+    question is asked. Before a ``_`` or ``-`` the value must look random,
+    which the identifiers above do not and a real key does. Before an
+    alphanumeric the grammar's own ``randomness`` field decides, because it
+    records which anchors ordinary text writes unaided; asking it of the rest
+    lost ``XAKIA,IOSFODNN7EXAMPLE``, whose body clears no bar.
+    """
+    if g.randomness == "always":
+        return _looks_random(_NON_ALNUM.sub("", text[lo:hi]))
+    if start == 0:
+        return True
+    prev = text[start - 1]
+    if not _is_alnum(prev) and prev not in "_-":
+        return True
+    if prev in "_-" or g.randomness != "never":
+        return _looks_random(_NON_ALNUM.sub("", text[lo:hi]))
+    return True
+
+
+def _packed(text: str) -> tuple[str, list[int]]:
+    """The document with every non-alphanumeric removed, and where each came from.
+
+    Both halves are built by the regular expression engine rather than a loop
+    over characters. This runs four times per scan, twice on the document and
+    twice on the masked copy, and as a Python loop it was nine tenths of the
+    cost of scanning the standard library.
+    """
+    cmap: list[int] = []
+    for m in _ALNUM_RUN.finditer(text):
+        cmap.extend(range(m.start(), m.end()))
+    return _NON_ALNUM.sub("", text), cmap
+
+
+def _window_random(s: str, low: int, limit: int) -> bool:
+    """Does any credential-sized prefix of ``s`` clear the randomness bar?
+
+    One window is not enough. A credential is usually longer than its grammar's
+    minimum, and at that minimum the length allowance sits within a tenth of a
+    bit of what a random base62 run actually scores, so asking only there
+    decides half of them by rounding: it left 545 of 2,340 generated split
+    values unreported. Asking every length from ``low`` to twice it asks
+    whether the value is random anywhere a credential of this grammar could
+    end, and prose is not random at any of those lengths.
+
+    The upper end is not decoration. The bar is ``log2(n) - margin`` capped at
+    ``_ENTROPY_THRESHOLD``, so past about thirty characters it stops rising
+    with the window while ordinary text keeps accumulating distinct characters
+    and eventually clears a flat 4.5 bits. Sweeping without that limit read the
+    constants after a real credential in ``__future__.py`` as more of it, and
+    reported ten of 153 standard library files as carrying one; every widening
+    of it from here costs benign files and buys nothing measurable back.
+
+    Entropy is accumulated as the window grows, so the sweep costs one pass
+    rather than one pass per length.
+    """
+    high = min(limit, low + low // 2)
+    if low < 1 or low > len(s):
+        return False
+    counts: dict[str, int] = {}
+    weight = 0.0  # sum of c*log2(c) over the counts seen so far
+    for size, ch in enumerate(s[:high], 1):
+        seen = counts.get(ch, 0)
+        if seen:
+            weight -= seen * math.log2(seen)
+        counts[ch] = seen + 1
+        weight += (seen + 1) * math.log2(seen + 1)
+        if size < low:
+            continue
+        cap = math.log2(size)
+        if cap - weight / size >= min(_ENTROPY_THRESHOLD, cap - _ENTROPY_LENGTH_MARGIN):
+            return True
+    return False
+
+
+def _exact_findings(
+    text: str, pack: tuple[str, list[int]] | None = None
+) -> list[tuple[int, int, str]]:
     """Credentials whose exact characters are known, as spans.
 
-    Contiguous only. No fragment joining, no gap arithmetic, no reaching past
-    a separator: if the value is written whole, its own start and end are in
-    the text and this returns them; if it is not, this returns nothing and the
-    normalized pass below reports it without a span.
+    This is attribution, and it answers only the second question: given that a
+    credential is here, which characters can safely be replaced? Splitting that
+    from recognition is the correction this file needed. Answering both at once
+    produced four interacting phases that reached across whatever lay between
+    fragments, which deleted the closing tag of one XML element, an entire
+    second element and the opening tag of a third, because a request id further
+    down the record cleared the entropy threshold.
 
-    Splitting those two questions is the correction this file needed. Trying to
-    answer both at once produced four interacting phases that reached across
-    whatever lay between fragments, which deleted the closing tag of one XML
-    element, an entire second element, and the opening tag of a third, because
-    a request id further down the record cleared the entropy threshold.
+    Candidates are located on the compact form, because an anchor can itself be
+    split, but nothing else uses it: the anchor is re-walked, the separator
+    checked and the extent settled in the ORIGINAL text, so no amount of
+    unrelated content elsewhere can be joined to a value. Everything here is
+    bounded, and it is allowed to be, because recognition is not: a value
+    pushed past these bounds loses its span and is reported without one.
     """
     out: list[tuple[int, int, str]] = []
+    for m in _PEM_RE.finditer(text):
+        out.append((m.start(), m.end(), "Private key header"))
+
+    joined, cmap = pack if pack is not None else _packed(text)
     for g in _GRAMMARS:
         for literal in g.anchor:
-            pos = text.find(literal)
+            pos = joined.find(literal)
             while pos != -1:
-                nxt = text.find(literal, pos + 1)
-                after = pos + len(literal)
+                nxt = joined.find(literal, pos + 1)
+                start = cmap[pos]
+                after = _walk_anchor(text, start, literal, g)
+                if after is None:
+                    pos = nxt
+                    continue
+                # The grammar's own separator must actually be present. This is
+                # what rejects an anchor that exists only because separators
+                # were removed: `through_put_measurement` offers `ghp` in the
+                # compact form, but the original has a body character after it.
                 body_start = after
                 if g.sep_after:
-                    if body_start >= len(text) or _is_alnum(text[body_start]):
+                    seen = 0
+                    while (
+                        body_start < len(text)
+                        and seen <= _MAX_GAP
+                        and not _is_alnum(text[body_start])
+                    ):
+                        body_start += 1
+                        seen += 1
+                    if seen == 0:
                         pos = nxt
                         continue
-                    body_start += 1
-                stop = _body_run(text, body_start, g)
-                size = stop - body_start
-                if not (g.min_body <= size <= g.max_body):
-                    pos = nxt
-                    continue
-                # A left boundary is required of every grammar, not only the
-                # ones English writes, and `_` and `-` do not count as one.
-                # `slack_xoxb_token_prefix_documentation` and
-                # `display_ya29_token_configuration` both satisfy the
-                # separator rule, and both were rewritten mid-identifier,
-                # silently corrupting source and API documentation on its way
-                # to the model. A value prefixed to evade this is not lost:
-                # it has no exact span, so the normalized pass reports it
-                # without one and the caller refuses.
-                if pos > 0 and (_is_alnum(text[pos - 1]) or text[pos - 1] in "_-"):
-                    pos = nxt
-                    continue
-                if g.randomness == "always" and not _looks_random(
-                    _NON_ALNUM.sub("", text[pos:stop])
-                ):
-                    pos = nxt
-                    continue
-                out.append((pos, stop, g.label))
+                span = _resolve(text, start, body_start, g)
+                if span is not None and _admissible(text, start, span[0], span[1], g):
+                    out.append((span[0], span[1], g.label))
                 pos = nxt
     return out
 
 
-def _normalized_labels(text: str, covered: list[tuple[int, int]]) -> list[str]:
+def _normalized_labels(
+    text: str,
+    covered: list[tuple[int, int]],
+    pack: tuple[str, list[int]] | None = None,
+) -> list[str]:
     """Credentials that exist once every separator is removed, without spans.
 
-    This is the recognition half, and it deliberately has no locality bound of
-    any kind. A ceiling on how far apart two fragments may sit is a threshold
-    an attacker simply exceeds: 65 commas, or 33 shell line continuations,
-    between five character chunks made every credential family disappear while
-    ``/bin/sh`` still reconstructed the key exactly. Adjacent empty shell
-    quotes did the same, because quote counting cannot tell a split from a
-    boundary either.
+    This is recognition, and it deliberately has no locality bound of any kind.
+    A ceiling on how far apart two fragments may sit is a threshold an attacker
+    simply exceeds: 65 commas, or 33 shell line continuations, between five
+    character chunks made every credential family disappear while ``/bin/sh``
+    still reconstructed the key exactly. Adjacent empty shell quotes did the
+    same, because quote counting cannot tell a split from a boundary either.
 
     So nothing here tries to. The whole document is compacted and the grammars
-    are run over it; anything found that no exact span already covers is
-    reported as a label with no span, and the callers refuse or replace on that
-    basis exactly as they do for residue.
+    are run over it; what no span already accounts for is reported as a label
+    with no span, and the callers refuse or replace on that basis.
 
-    The randomness requirement is what keeps ordinary prose out. Compacting a
-    document joins every word, so ``sk`` followed by twenty letters occurs
-    constantly; a real payload clears the bar and English does not.
+    What keeps ordinary prose out is not a bound but the two structural rules
+    the exact path already applies, asked of the ORIGINAL text where the
+    information still exists:
+
+    The grammar's own separator must follow the anchor. Compaction is what
+    manufactures anchors -- ``%s" % (key`` compacts to ``sskey`` and offers
+    ``sk`` -- and a manufactured one has a body character after it, as does
+    ``skip_bytes``. Without this rule 37 of 153 standard library files were
+    reported as carrying an unlocatable credential, and each of those is a
+    refused document.
+
+    The anchor must begin at a token boundary, or else its body must look
+    random. Compacting joins every word, so ``sk`` followed by twenty letters
+    occurs constantly; the anchors ``randomness`` marks are the ones English
+    writes on its own, and those must clear the bar wherever they begin.
     """
-    packed: list[str] = []
-    cmap: list[int] = []
-    for i, ch in enumerate(text):
-        if _is_alnum(ch):
-            packed.append(ch)
-            cmap.append(i)
-    joined = "".join(packed)
+    joined, cmap = pack if pack is not None else _packed(text)
+    inside = _covered_flags(cmap, covered)
     found: list[str] = []
     for g in _GRAMMARS:
         if g.label in found:
@@ -294,28 +575,89 @@ def _normalized_labels(text: str, covered: list[tuple[int, int]]) -> list[str]:
         for literal in g.anchor:
             pos = joined.find(literal)
             while pos != -1:
-                body_start = pos + len(literal)
-                stop = body_start
-                limit = min(len(joined), body_start + g.max_body)
-                while stop < limit and _is_body(joined[stop], g):
-                    stop += 1
-                size = stop - body_start
-                # Randomness is asked of the credential-sized prefix, not of
-                # the greedy run. Compacting joins the document, so the greedy
-                # run trails prose behind the value and the mixture falls under
-                # the bar: 630 of 6,290 split positions went unreported that
-                # way, silently, which is the failure mode this whole pass
-                # exists to remove.
-                head = joined[pos : body_start + g.min_body]
-                if size >= g.min_body and any(c.isdigit() for c in head):
-                    origin = cmap[pos]
-                    if not any(lo <= origin < hi for lo, hi in covered):
-                        found.append(g.label)
-                        break
+                if _normalized_hit(text, joined, cmap, inside, g, literal, pos):
+                    found.append(g.label)
+                    break
                 pos = joined.find(literal, pos + 1)
             if g.label in found:
                 break
     return found
+
+
+def _covered_flags(cmap: list[int], covered: list[tuple[int, int]]) -> bytearray:
+    """Which compacted characters lie inside an exact span."""
+    flags = bytearray(len(cmap))
+    for lo, hi in covered:
+        left = bisect_left(cmap, lo)
+        right = bisect_left(cmap, hi)
+        for i in range(left, right):
+            flags[i] = 1
+    return flags
+
+
+def _normalized_hit(
+    text: str,
+    joined: str,
+    cmap: list[int],
+    inside: bytearray,
+    g: _Grammar,
+    literal: str,
+    pos: int,
+) -> bool:
+    """Is this compacted occurrence a credential no span already accounts for?"""
+    body_start = pos + len(literal)
+    stop = body_start
+    limit = min(len(joined), body_start + g.max_body)
+    while stop < limit and _is_body(joined[stop], g):
+        stop += 1
+    if stop - body_start < g.min_body:
+        return False
+
+    if g.sep_after:
+        # Asked of the original text, where the separator survives. A split
+        # value still carries it: compaction removes whatever run sits between
+        # the anchor and the body, so the character after the anchor's last one
+        # is not alphanumeric. `skip_bytes` has `i` there and is not a
+        # candidate, for the same reason the exact path never reported it.
+        end = cmap[pos + len(literal) - 1] + 1
+        if end >= len(text) or _is_alnum(text[end]):
+            return False
+
+    origin = cmap[pos]
+    at_boundary = origin == 0 or not (
+        _is_alnum(text[origin - 1]) or text[origin - 1] in "_-"
+    )
+    # Compaction is what manufactures anchors, so an anchor it had to assemble
+    # is not the evidence a written one is: ``x.o = x.s`` in a comment offers
+    # Slack's ``xoxs``, at a token boundary, with a separator after it, and
+    # Slack asks nothing else of a ten character body. Requiring the body to
+    # look random whenever the anchor was reassembled costs no detection --
+    # an attacker who breaks an anchor up still has a random value under it --
+    # and it is what separates a split credential from a sentence.
+    written = cmap[pos + len(literal) - 1] - origin == len(literal) - 1
+    if not written or not at_boundary or g.randomness != "never":
+        floor = max(g.min_body, _ENTROPY_MIN_LENGTH)
+        if not _window_random(joined[body_start:stop], floor, g.max_body):
+            return False
+
+    # Coverage. An exact span accounts for this credential only if what it does
+    # not cover is not itself credential material. Asking instead whether the
+    # ANCHOR sits inside a span said yes for every value whose first fragment
+    # satisfied the grammar on its own, which is most of them: the span covered
+    # 16 characters of a 45 character Slack token and the report for the other
+    # 29 was suppressed, 481 times in 6,290 split positions, silently. Prose
+    # after a credential is not credential material and stops this, which is
+    # why a document holding one is not also refused for holding it.
+    residue = []
+    accounted = False
+    for i in range(body_start, stop):
+        if inside[i]:
+            accounted = True
+        else:
+            residue.append(joined[i])
+    if not accounted:
+        return True
+    return _window_random("".join(residue), _ENTROPY_MIN_LENGTH, g.max_body)
 
 
 def _findings(text: str) -> list[tuple[int, int, str]]:
@@ -327,10 +669,17 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     """Locate credentials in ``text``, returning spans into the ORIGINAL text.
 
     Shared with L13 so the model-boundary denier and the egress blocker cannot
-    disagree about what a credential is. Both now read _findings, which is the
-    point: when they were separate implementations, a value split with
+    disagree about what a credential is. Both read the same two passes, which
+    is the point: when they were separate implementations, a value split with
     punctuation was located by this one and missed by the other, so L3 allowed
     outbound content holding a key.
+
+    The two returned halves answer different questions and the callers must not
+    confuse them. The spans are attribution: characters that can be replaced
+    faithfully. The labels are recognition: credentials that are present, some
+    of which no span accounts for, which the caller refuses or sweeps rather
+    than passing on. A value split beyond what attribution can reach does not
+    disappear, it moves from the first half to the second.
 
     Extent, settled after several wrong answers worth recording so they are not
     retried. The shortest accepted prefix left 25 recoverable characters of a
@@ -344,17 +693,21 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
 
     What survives is fragment-scoped and local. A value is a run of body
     characters, possibly broken by inserted separators; fragments join across a
-    gap of at most two, which is what a split looks like and what structure
-    does not, since ``","`` between JSON values is three. Fragments are taken
-    while the grammar is unsatisfied, then exactly one more. The cost of an
-    extent the text does not determine is one following fragment rather than
-    the remainder of a line.
+    joinable gap, which is what a split looks like and what structure does not.
+    Fragments are taken while the grammar is unsatisfied, then exactly one
+    more. The cost of an extent the text does not determine is one following
+    fragment rather than the remainder of a line.
 
     An entropy hit is deliberately not treated as delimiting. It fires on one
     fragment of a split credential, and letting it settle the extent is how
     half a key stayed in the text.
     """
-    spans: list[tuple[int, int]] = [(lo, hi) for lo, hi, _ in _exact_findings(text)]
+    # Compacted once and shared. Both passes read the same form of the same
+    # string, and building it four times a scan rather than twice was most of
+    # the difference between half a second over the standard library and one.
+    pack = _packed(text)
+    exact = _exact_findings(text, pack)
+    spans: list[tuple[int, int]] = [(lo, hi) for lo, hi, _ in exact]
     spans.extend(_entropy_spans(text))
 
     merged_spans: list[tuple[int, int]] = []
@@ -377,8 +730,7 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     # entropy spans. An entropy hit lands on one fragment of a split value, and
     # treating that as coverage suppressed the normalized report for the whole
     # credential: 592 of 6,290 split positions went silent that way.
-    exact_only = [(lo, hi) for lo, hi, _ in _exact_findings(text)]
-    for label in _normalized_labels(text, exact_only):
+    for label in _normalized_labels(text, [(lo, hi) for lo, hi, _ in exact], pack):
         if label not in labels:
             labels.append(label)
     return merged_spans, labels
@@ -420,11 +772,12 @@ def _scan_secrets(text: str) -> list[str]:
     """
     found: list[str] = []
     stripped = strip_invisibles(text)
-    exact = _exact_findings(stripped)
+    pack = _packed(stripped)
+    exact = _exact_findings(stripped, pack)
     for _lo, _hi, label in exact:
         if label not in found:
             found.append(label)
-    for label in _normalized_labels(stripped, [(lo, hi) for lo, hi, _ in exact]):
+    for label in _normalized_labels(stripped, [(lo, hi) for lo, hi, _ in exact], pack):
         if label not in found:
             found.append(label)
     ws_removed = _WHITESPACE_RE.sub("", stripped)

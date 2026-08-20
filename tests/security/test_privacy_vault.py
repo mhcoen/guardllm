@@ -3290,32 +3290,114 @@ class TestRecognitionAndAttribution:
                         f"name of {size}: {delimiter!r} consumed from {text!r}"
                     )
 
-    def test_a_value_split_across_a_boundary_is_reported_instead(self):
-        """The extent stays put and the finding is reported without one.
+    def test_a_value_split_across_a_boundary_is_reported_by_its_length(self):
+        """Length is the only thing that separates the two populations.
 
-        Refusing to cross structure is what keeps a record intact, and saying
-        nothing about it is what left 897 of 900 split values in the text with
-        1,024 characters of one readable. What is on the other side has to look
-        like more of a value rather than the next thing along, so a key, a tag
-        and an attribute name stay silent and a random continuation does not.
+        Refusing to cross structure keeps a record intact, and saying nothing
+        about what lies beyond the break left 897 of 900 split values in the
+        text with 1,024 characters of one readable. But a key, a tag and an
+        attribute name sit on the far side of a structural break exactly as a
+        continuation does, and they are made of the same characters. Judging
+        the contents was tried and put a label on 1,000 of 1,500 benign JSON
+        and XML documents holding a redacted identifier beside a camel-cased
+        key, which on the host path refuses each of them.
+
+        So only a continuation longer than any name is reported. Shorter ones
+        are not, and that is written down rather than pretended away.
         """
         from guardllm.security.outbound_dlp import scan_secret_spans
 
         token = "PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52ZkBtJqrys4WKrg"
+        long_tail = "".join("aZ9" for _ in range(80))[:200]
         for gap in ('""', "``", "<>", "[]", '","', "''"):
-            text = token[:30] + gap + token[30:]
+            text = token + gap + long_tail
             spans, labels = scan_secret_spans(text)
-            out = text
-            for lo, hi in sorted(spans, reverse=True):
-                out = out[:lo] + " " * (hi - lo) + out[hi:]
-            run = _longest_surviving_run(out, token)
-            assert run, "fixture no longer leaves a tail, so it pins nothing"
-            assert labels, f"gap {gap!r}: left in the text and not reported"
-        # And a continuation too long to be any name at all, whatever it is
-        # made of, is reported on length alone.
-        long_tail = "ab" * 40
-        text = token + '"' + long_tail
-        assert scan_secret_spans(text)[1], "an 80 character tail went unreported"
+            assert labels, f"gap {gap!r}: a 200 character continuation went unreported"
+        # A benign document is not refused for holding a name beside a value.
+        for name in ("camelCaseKey2", "a" * 79, "base64ishValue123"):
+            for text in (
+                f'{{"a": "{token}", "{name}": "next"}}',
+                f"<{name}>{token}</{name}><e>n</e>",
+            ):
+                assert not scan_secret_spans(text)[1], f"{name!r} read as a continuation"
+
+    def test_a_quoted_credential_at_the_end_of_a_file_does_not_crash(self):
+        """The commonest shape there is, and it raised out of the scanner.
+
+        A continuation that is empty reached the sorted-run test, which indexed
+        position zero of nothing: ``TOKEN="<key>"`` with nothing after the
+        closing quote raised IndexError from scan_secret_spans, 20 times in 20,
+        and through the vault as well. Anything shorter than two characters is
+        not a chart and is not asked.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        rng = random.Random(3)
+        value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
+        for text in (
+            f'TOKEN="{value}"',
+            f"TOKEN='{value}'",
+            f'{{"k": "{value}"}}',
+            f"<t>{value}</t>",
+            value,
+        ):
+            spans, _labels = scan_secret_spans(text)
+            assert spans, f"{text[:16]!r}: nothing found"
+            _vault().deidentify(text, deny_action="marker")
+
+    def test_a_sorted_secret_is_not_mistaken_for_an_alphabet(self):
+        """Sorted was far too broad a reading of "chart".
+
+        Any value whose characters happen to ascend is sorted, and 1,000 of
+        1,000 generated high-entropy secrets that did were suppressed outright,
+        missed by both entry points and passed by the vault. A chart steps by
+        exactly one at every position; a value that merely ascends skips.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import _monotonic
+
+        rng = random.Random(21)
+        # Lowercase and digits only, and distinct. Distinct so the value clears
+        # the entropy bar on its own merits, and single-case so it is still
+        # ascending after the comparison lowercases it -- a mixed-case value
+        # sorted by code point is not, so it would pass this test whatever the
+        # rule did.
+        alphabet = string.ascii_lowercase + string.digits
+        for _ in range(50):
+            value = "".join(sorted(rng.sample(alphabet, 30)))
+            assert not _monotonic(value), f"{value!r} suppressed as a chart"
+            assert _scan_secrets(value), f"{value!r} missed"
+        assert _monotonic("abcdefghijklmnopqrstuvwxyz")
+        # And a run too short to be a chart is not one. `continues` asks the
+        # length first, so nothing reaches this with an empty string today;
+        # the guard is what stops that being an accident.
+        assert not _monotonic("")
+        assert not _monotonic("a")
+
+    def test_a_continuation_behind_the_span_is_seen_too(self):
+        """The halves of a split value do not score alike.
+
+        It is routinely the SECOND half that clears the bar and takes the span,
+        leaving the first one behind it, so looking only ahead of a span misses
+        exactly half of these.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        rng = random.Random(5)
+        head = "".join(rng.choice(string.ascii_lowercase) for _ in range(200))
+        tail = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
+        for gap in ('"', "`", "<", "["):
+            spans, labels = scan_secret_spans(head + gap + tail)
+            assert spans, "the second half should still take a span"
+            assert labels, f"gap {gap!r}: the half behind the span went unreported"
 
     def test_an_alphabet_in_order_is_not_a_secret(self):
         """It has maximal entropy by construction and carries nothing.

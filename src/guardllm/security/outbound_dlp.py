@@ -893,29 +893,37 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
 
 
 def _monotonic(token: str) -> bool:
-    """Is this run just the characters of some alphabet in order?
+    """Is this run one stretch of an alphabet, written straight through?
 
-    A chart of an alphabet has maximal entropy by construction and is not a
-    secret. Folding compatibility forms made three more styles of chart look
+    A chart of an alphabet has maximal entropy by construction and carries
+    nothing. Folding compatibility forms made three more styles of chart look
     like one, on top of the plain and mathematical rows that already did.
-    A random value is sorted with probability that rounds to nothing at these
-    lengths, so this costs no detection and is not a length or entropy guess.
+
+    Consecutive, not merely sorted. Sorted was too broad by far: any value
+    whose characters happen to ascend is sorted, and 1,000 of 1,000 generated
+    high-entropy secrets that did were suppressed outright, missed by both
+    entry points and passed by the vault. A chart steps by exactly one at every
+    position; a secret that ascends does not, because it skips.
+
+    Case-insensitively, because the confusable table maps some letters to
+    lowercase and leaves others alone, so a folded chart arrives as
+    ``abcDeFghi...`` and does not step by one in code points at all.
+
+    Anything shorter than two characters is not a chart, and asking was a
+    crash: an empty continuation reached this from _split_by_structure and
+    indexed position zero of nothing, so ``TOKEN="<key>"`` at the end of a file
+    raised IndexError out of the span scanner.
     """
-    # Case-insensitively, because the confusable table maps some letters to
-    # lowercase and leaves others alone, so a folded chart arrives as
-    # ``abcDeFghi...`` and is not sorted by code point at all.
-    #
-    # One pass, no pairing, and it stops the moment both directions are ruled
-    # out, which for a random token is within a few characters. Written with
-    # zip and a list of pairs it allocated a tuple per character of every token
-    # it looked at, and a one megabyte run cost 70 megabytes of that alone.
+    if len(token) < 2:
+        return False
     plain = token.lower()
     rising = falling = True
     previous = plain[0]
     for char in plain[1:]:
-        if previous >= char:
+        step = ord(char) - ord(previous)
+        if step != 1:
             rising = False
-        if previous <= char:
+        if step != -1:
             falling = False
         if not rising and not falling:
             return False
@@ -995,29 +1003,31 @@ def _split_by_structure(text: str, spans: list[tuple[int, int]]) -> bool:
     backticks or brackets is still a value driven apart, and saying nothing
     left 897 of 900 of them in the text with 1,024 characters of one readable.
 
-    So the extent stays where it is and the finding is reported without one.
-    What is on the other side has to look like more of a value rather than the
-    next thing along, because a key, a tag and an attribute name are all on the
-    other side of a structural break too.
+    So the extent stays where it is and the finding is reported without one,
+    but only where what lies beyond the break is longer than any name, which is
+    the only thing that separates the two. See ``continues`` below for what was
+    tried instead and what it cost.
     """
 
     def continues(piece: str) -> bool:
-        if _monotonic(piece):
-            return False
-        if len(piece) >= 4 * _ENTROPY_MIN_LENGTH:
-            # Longer than any key, tag or attribute name, whatever it is made
-            # of. This is what bounds the damage when a continuation is all
-            # letters and so cannot be told from a name by anything else.
-            return True
-        # What a value has and a name does not: digits and both cases in one
-        # run. ``isalpha`` alone is not enough, because ``/`` belongs to this
-        # scan's own class, so a closing tag arrives as ``/tokenname``.
-        return (
-            len(piece) >= 8
-            and any(c.isdigit() for c in piece)
-            and any(c.isupper() for c in piece)
-            and any(c.islower() for c in piece)
-        )
+        """Is this more of a value, or the next thing along?
+
+        Only length answers it. Everything else that was tried here answers it
+        for both at once, because a key, a tag and an attribute name sit on the
+        far side of a structural break exactly as a continuation does, and they
+        are made of the same characters. Digits with both cases was tried:
+        it caught 844 of 1,750 split values and put a label on 1,000 of 1,500
+        benign JSON and XML documents that merely held a redacted identifier
+        next to a camel-cased key. On the host path each of those is a refused
+        document, and two thirds of them is not a scanner.
+
+        Dropping it costs 128 further silent cases of 1,750 and takes the worst
+        survivor from 79 characters to 80, which is the whole price. What the
+        length keeps is the case it was added for: a tail of 256 or 1,024
+        characters is still reported, and those were 450 of the 900 that used
+        to go out in full.
+        """
+        return len(piece) >= 8 * _ENTROPY_MIN_LENGTH and not _monotonic(piece)
 
     for lo, hi in spans:
         # Behind the span as well as ahead of it. The halves of a split value

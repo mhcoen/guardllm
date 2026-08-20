@@ -35,8 +35,10 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from bisect import bisect_left
 from collections import deque
+from functools import cache
 from typing import NamedTuple
 
 from guardllm.security.normalization import (
@@ -165,6 +167,40 @@ _HEX_RE = re.compile(r"[0-9a-fA-F]+")
 
 # Whitespace run, used to build a whitespace-removed form for secret scanning
 _WHITESPACE_RE = re.compile(r"\s+")
+
+
+@cache
+def _ascii_equivalent(ch: str) -> str:
+    """The single ASCII character this one folds to, or itself.
+
+    Compatibility forms are how a credential is written so that no scanner
+    here sees it while a model still reads it: ``ＡＫＩＡ`` is four characters
+    none of which are ASCII, and NFKC turns every one of them back. Of 700
+    credentials rewritten that way, 399 passed both scanners silently and the
+    vault let one through untouched, the longest recoverable run being 105
+    characters.
+
+    Punctuation counts, not just letters and digits. A Google token written
+    full-width keeps its ``．`` and its ``－``, and a body class that has never
+    heard of those breaks at every one of them; folding only the alphanumerics
+    left 39 of 700 still silent for exactly that reason.
+
+    One character in, one character out, and only when the result is a single
+    ASCII character. That is what keeps every span mapping back to the
+    original text unchanged; a general NFKC pass does not, because it expands
+    ligatures and would shift every index after one.
+    """
+    folded = unicodedata.normalize("NFKC", ch)
+    if len(folded) == 1 and folded.isascii():
+        return folded
+    return ch
+
+
+def _fold_ascii(text: str) -> str:
+    """Fold compatibility forms to ASCII without moving a single index."""
+    if text.isascii():
+        return text
+    return "".join(_ascii_equivalent(ch) for ch in text)
 
 
 def _shannon_entropy(s: str) -> float:
@@ -744,6 +780,11 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     # Compacted once and shared. Both passes read the same form of the same
     # string, and building it four times a scan rather than twice was most of
     # the difference between half a second over the standard library and one.
+    # Folded first, and every index below is an index into the ORIGINAL text
+    # because the fold is one character for one character. Neither pass ran on
+    # anything but raw text before, so a credential written in full-width
+    # characters was invisible to both while a model still read it.
+    text = _fold_ascii(text)
     pack = _packed(text)
     exact = _exact_findings(text, pack)
     spans: list[tuple[int, int]] = [(lo, hi) for lo, hi, _ in exact]
@@ -799,17 +840,27 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
     JSON, XML and CSV records keep their shape.
     """
     out: list[tuple[int, int]] = []
+    reached = 0
     for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", text):
+        # A match already inside the span the previous one grew into is the
+        # same value, and walking it again is what made this quadratic: 800
+        # adjoining fragments cost 0.81s, four times the cost of 400.
+        if m.start() < reached:
+            continue
         token = m.group()
         entropy = _shannon_entropy(token)
         threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
         if entropy >= threshold:
-            out.append(_entropy_extent(text, m.start(), m.end()))
+            span = _entropy_extent(text, m.start(), m.end())
+            reached = max(reached, span[1])
+            out.append(span)
             continue
         if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
             try:
                 if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                    out.append(_entropy_extent(text, m.start(), m.end()))
+                    span = _entropy_extent(text, m.start(), m.end())
+                    reached = max(reached, span[1])
+                    out.append(span)
             except ValueError:
                 pass
     return out
@@ -884,15 +935,25 @@ def _scan_secrets(text: str) -> list[str]:
     below and cheap to undo.
     """
     found: list[str] = []
-    stripped = strip_invisibles(text)
-    pack = _packed(stripped)
-    exact = _exact_findings(stripped, pack)
-    for _lo, _hi, label in exact:
-        if label not in found:
-            found.append(label)
-    for label in _normalized_labels(stripped, [(lo, hi) for lo, hi, _ in exact], pack):
-        if label not in found:
-            found.append(label)
+    # Two forms, because the two entry points must not disagree and they
+    # normalise differently. strip_invisibles applies NFC and a confusable
+    # table, which composes `A` and a combining acute into one character and
+    # then folds it to lowercase, destroying the AKIA anchor that the span
+    # scanner still sees in the raw text: 485 of 500 such values were found by
+    # one entry point and missed by the other. Reading both forms means this
+    # cannot miss what the span scanner finds.
+    raw = _fold_ascii(text)
+    stripped = _fold_ascii(strip_invisibles(text))
+    forms = [stripped] if raw == stripped else [stripped, raw]
+    for form in forms:
+        pack = _packed(form)
+        exact = _exact_findings(form, pack)
+        for _lo, _hi, label in exact:
+            if label not in found:
+                found.append(label)
+        for label in _normalized_labels(form, [(lo, hi) for lo, hi, _ in exact], pack):
+            if label not in found:
+                found.append(label)
     ws_removed = _WHITESPACE_RE.sub("", stripped)
 
     # High-entropy token detection: look for long hex/base64-like tokens.

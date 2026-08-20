@@ -16,6 +16,7 @@ import pytest
 
 from guardllm import Guard
 from guardllm.security import token_codec as codec
+from guardllm.security.outbound_dlp import _fold_ascii as _fold
 from guardllm.security.outbound_dlp import _scan_secrets
 from guardllm.security.pii_detect import (
     SeededValues,
@@ -3128,6 +3129,108 @@ class TestRecognitionAndAttribution:
         assert not _scan_secrets(
             "            skip_bytes = int(self._b2cratio * (size - len(decoded)))\n"
         )
+
+    def test_compatibility_forms_are_folded_before_either_scanner_looks(self):
+        """A credential nobody has to decode to read.
+
+        ``ＡＫＩＡ`` is four characters, none of them ASCII, and NFKC turns
+        every one of them back. Neither pass normalised anything, so 399 of
+        700 credentials rewritten this way passed both scanners silently, the
+        longest recoverable run being 105 characters, and one reached the
+        vault untouched. The fold is one character for one character so every
+        span still indexes the original text.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+
+        def wide(value: str) -> str:
+            return "".join(chr(ord(c) - 0x21 + 0xFF01) if "!" <= c <= "~" else c for c in value)
+
+        for name in ("aws", "openai", "google", "slack", "github"):
+            secret = _SPLIT_FIXTURES[name]
+            text = wide(secret)
+            spans, _ = scan_secret_spans(text)
+            assert spans, f"{name}: full-width form not located"
+            lo, hi = spans[0]
+            assert text[lo:hi] == wide(secret[: hi - lo]), "the fold moved an index"
+            assert _scan_secrets(text), f"{name}: egress missed the full-width form"
+        # Punctuation counts too, and this is the half no end-to-end fixture
+        # here pins on its own: a value keeps its separators, and a body class
+        # that has never heard of the full-width forms breaks at every one of
+        # them. Folding only the alphanumerics left 39 of 700 silent.
+        assert _fold("\uff53\uff4b\uff0d\uff50\uff52\uff4f\uff4a\uff0d") == "sk-proj-"
+        assert _fold("\uff59\uff41\uff12\uff19\uff0e") == "ya29."
+        assert _fold("\u3000") == " "
+        assert _scan_secrets(wide("ya29.A0ARrdaM-x_9KpQA0ARrdaM-x_9KpQA0ARrdaM"))
+        # A form that is not one ASCII character is left exactly as it was.
+        assert "\ufb01" in _fold("\ufb01le")
+
+    def test_the_two_entry_points_see_the_same_normalisation(self):
+        """They normalised differently, so one found what the other could not.
+
+        strip_invisibles applies NFC and a confusable table. A combining acute
+        on the leading `A` composes to a single character and then folds to
+        lowercase, which destroys the AKIA anchor for the egress scanner while
+        the span scanner, reading raw text, still sees `A` and treats the mark
+        as a gap. 485 of 500 such values were found by one and missed by the
+        other, and parity looked clean only because both missed other things.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+
+        for mark in ("\u0301", "\u0308", "\u0327"):
+            text = "AKIA" + mark + "IOSFODNN7EXAMPLE"
+            spans, labels = scan_secret_spans(text)
+            assert bool(spans or labels) == bool(_scan_secrets(text)), (
+                f"{mark!r}: the model boundary and the egress blocker disagree"
+            )
+            assert _scan_secrets(text), f"{mark!r}: missed outright"
+
+    def test_two_separate_cross_line_findings_do_not_cost_the_document(self):
+        """Narrowing assumed the residue was one contiguous run of lines.
+
+        With two disjoint blocks, narrowing the first leaves the second
+        detectable, the check after narrowing fails, and the whole document
+        was replaced anyway, in 100 cases of 100. Narrowing repeats now.
+        """
+        block = (
+            "      3. Current Quarter\n"
+            "      4. New Business\n"
+            "        - Upcoming Product Launch\n"
+            "        - Marketing Campaign Plans\n"
+            "        - Customer Feedback and Improvements\n"
+            "      5. Action Items and Next Steps\n"
+        )
+        document = (
+            "agenda:\n"
+            + block
+            + "  owner: operations\n"
+            + block
+            + "  notes: none recorded for this session\n"
+        )
+        assert _scan_secrets(document), "fixture no longer trips the merged form"
+        out = _vault().deidentify(document, deny_action="marker")
+        assert out.content != marker_for(PIIClass.CREDENTIAL), "whole document replaced"
+        assert "owner: operations" in out.content
+        assert "notes: none recorded for this session" in out.content
+
+    def test_an_entropy_run_is_walked_once_not_once_per_match(self):
+        """Every match inside a span the previous one grew into is the same
+        value, and walking each of them again made this quadratic: 800
+        adjoining fragments cost 0.81 seconds against 0.21 for 400."""
+        import time
+
+        from guardllm.security.outbound_dlp import _entropy_spans
+
+        def elapsed(count: int) -> float:
+            text = " ".join("aB3dE6gH9jK2mN5pQ8rS" for _ in range(count))
+            start = time.perf_counter()
+            _entropy_spans(text)
+            return time.perf_counter() - start
+
+        small = min(elapsed(200) for _ in range(3))
+        large = min(elapsed(800) for _ in range(3))
+        # Four times the input. Quadratic would be about sixteen times the
+        # work; the bound is loose so the test measures shape, not a machine.
+        assert large < small * 9, f"{small:.4f}s for 200, {large:.4f}s for 800"
 
     def test_a_document_no_line_carries_is_not_replaced_wholesale(self):
         """The comment said one thing and the code did another.

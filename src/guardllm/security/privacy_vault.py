@@ -880,37 +880,49 @@ class PrivacyVault:
         return rebuilt, swept
 
     def _sweep_line_span(self, lines: list[str]) -> tuple[str, int]:
-        """Replace the narrowest run of lines that still scans as residue.
+        """Replace the narrowest runs of lines that still scan as residue.
 
-        The window is known to scan as a whole, so each end is narrowed by
-        halving while it still does. That is sound because the residue is one
-        contiguous run: dropping more of the prefix can only stop it scanning,
-        never start it. The result is verified, and only if narrowing somehow
-        left residue behind does this fall back to replacing everything, which
-        keeps the safety property while making the blunt outcome rare rather
-        than routine.
+        Each run is found by halving each end of a window known to scan while
+        it still does, which is sound for ONE contiguous run: dropping more of
+        the prefix can only stop it scanning, never start it.
+
+        A document can hold more than one. Narrowing assumed otherwise and
+        verified the result globally, so with two disjoint blocks the check
+        after narrowing the first still failed and the whole document was
+        replaced anyway, in 100 cases of 100. So this repeats: narrow, replace,
+        look again. The bound is the line count, since every pass replaces at
+        least one line and a marker does not scan.
         """
         from guardllm.security.outbound_dlp import _scan_secrets
 
-        def scans(a: int, b: int) -> bool:
-            return bool(_scan_secrets("\n".join(lines[a:b])))
+        lines = list(lines)
+        swept = 0
+        for _ in range(len(lines)):
+            if not _scan_secrets("\n".join(lines)):
+                break
 
-        lo, hi = 0, len(lines)
-        step = hi - lo
-        while step > 1:
-            step = max(1, step // 2)
-            while lo + step < hi and scans(lo + step, hi):
-                lo += step
-        step = hi - lo
-        while step > 1:
-            step = max(1, step // 2)
-            while hi - step > lo and scans(lo, hi - step):
-                hi -= step
-        replaced = lines[:lo] + [marker_for(PIIClass.CREDENTIAL)] + lines[hi:]
-        rebuilt = "\n".join(replaced)
+            def scans(a: int, b: int) -> bool:
+                return bool(_scan_secrets("\n".join(lines[a:b])))
+
+            lo, hi = 0, len(lines)
+            if not scans(lo, hi):
+                break
+            step = hi - lo
+            while step > 1:
+                step = max(1, step // 2)
+                while lo + step < hi and scans(lo + step, hi):
+                    lo += step
+            step = hi - lo
+            while step > 1:
+                step = max(1, step // 2)
+                while hi - step > lo and scans(lo, hi - step):
+                    hi -= step
+            lines[lo:hi] = [marker_for(PIIClass.CREDENTIAL)]
+            swept += hi - lo
+        rebuilt = "\n".join(lines)
         if _scan_secrets(rebuilt):
             return marker_for(PIIClass.CREDENTIAL), 1
-        return rebuilt, hi - lo
+        return rebuilt, swept
 
     # -- diagnostics scrubbing -----------------------------------------
 

@@ -2807,41 +2807,128 @@ class TestRecognitionAndAttribution:
         """
         from guardllm.security.outbound_dlp import scan_secret_spans
 
-        jwt = (
-            "Bearer FQgesZ_n8S00K-703poQ.31dPgL3WPNiFp5FYg8nENYEiV1vC1pjmqp6aLFMd."
-            "Pwi45YsTDfNd6ONP_s8AzLhzOT8cwzEygnNOJ1rQ41k"
-        )
-        cut = len(jwt) // 2
+        # A literal, because the shape that needs this is a body whose first
+        # twenty characters do not clear the bar and whose next twenty do. The
+        # cut has to fall early enough that no span covers the head, or the
+        # value is settled as a split and never reaches the bar at all.
+        key = "sk-jxt4gwOjAHQaiyCt7NPjPPEaJ8thKCXmJ3UBtDqkfZd7Ph66"
         for gap in ("," * 65, "''" * 40, "\\\n" * 33, " " * 200):
-            text = jwt[:cut] + gap + jwt[cut:]
+            for cut in range(1, 12):
+                text = key[:cut] + gap + key[cut:]
+                spans, labels = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                run = _longest_surviving_run(out, key)
+                assert not run or labels, (
+                    f"gap {gap[:4]!r} cut {cut}: {run} chars left, nothing reported"
+                )
+
+    def test_a_value_driven_apart_is_reported_wherever_it_was_cut(self):
+        """The corpus that found this only ever cut in the middle.
+
+        A gap past the ceiling puts a value beyond attribution's reach, so
+        recognition is the only thing left, and it was answering with an
+        entropy test in the band where the bar and a random run differ by a
+        hundredth of a bit. Cutting at the midpoint hides that: it leaves a
+        long tail, and long tails clear the bar. Cutting anywhere leaves 795 of
+        3,200 generated values with something readable in the text and nothing
+        reported, up to 54 characters of one.
+
+        The fix is not a better bar. A run of separators wider than the ceiling
+        is itself the evidence, because widening it is the evasion.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        for secret in (
+            "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M",
+            "ya29.A0ARrdaM-x_9KpQA0ARrdaM-x_9KpQA0ARrdaM",
+            "AKIAIOSFODNN7EXAMPLE",
+            self._SECRET,
+        ):
+            for gap in ("," * 65, "''" * 40, "\\\n" * 33, " " * 200):
+                for cut in range(1, len(secret)):
+                    text = secret[:cut] + gap + secret[cut:]
+                    spans, labels = scan_secret_spans(text)
+                    out = text
+                    for lo, hi in sorted(spans, reverse=True):
+                        out = out[:lo] + " " * (hi - lo) + out[hi:]
+                    run = _longest_surviving_run(out, secret)
+                    assert not run or labels, (
+                        f"{secret[:8]} {gap[:4]!r}@{cut}: {run} chars left, nothing reported"
+                    )
+
+    def test_a_wide_break_alone_is_not_a_split(self):
+        """Both halves of that rule, and what the second one is for.
+
+        A run of separators wider than the ceiling is common in ordinary
+        documents: the ``=====`` and ``-----`` rules under a docstring heading
+        are exactly that shape, and reading them alone as evidence reported
+        _pyio and heapq as carrying an OpenAI key. What makes it a split is a
+        wide break with a credential the exact pass ALREADY FOUND on the other
+        side of it. Prose has no such span anywhere.
+        """
+        assert not _scan_secrets(
+            "    ' " * 0 + "        open a disk file for updating (reading and writing)\n"
+            "        ========= ====================================================="
+            "==========\n\n        The available modes are described below.\n"
+        )
+        assert not _scan_secrets(
+            "# Theoretical number of comparisons\n"
+            "#    n inputs     k-extreme values     average of m runs()\n"
+            "# -------------   ----------------   ---------------------\n"
+            "#      1000            100                    12345\n"
+        )
+
+    def test_a_settled_split_is_not_asked_to_look_random_as_well(self):
+        """Once both halves say split, the entropy bar has nothing left to add.
+
+        A JWT payload does not clear it over any window, and neither does a
+        Slack token issued as ``xoxb-`` and two twelve digit runs. Asking
+        anyway left the value in the text with nothing reported, which is the
+        one outcome this pass exists to prevent.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        for secret in (
+            "Bearer FQgesZ_n8S00K-703poQ.31dPgL3WPNiFp5FYg8nENYEiV1vC1pjmqp6aLFMd."
+            "Pwi45YsTDfNd6ONP_s8AzLhzOT8cwzEygnNOJ1rQ41k",
+            "xoxb-644258639558-895460543690-hnmtmofbndkgikxkzxmhzcmw",
+        ):
+            cut = len(secret) // 2
+            text = secret[:cut] + "," * 65 + secret[cut:]
             spans, labels = scan_secret_spans(text)
             out = text
             for lo, hi in sorted(spans, reverse=True):
                 out = out[:lo] + " " * (hi - lo) + out[hi:]
-            if _longest_surviving_run(out, jwt):
-                assert labels, f"gap {gap[:6]!r}: left in the text and not reported"
+            assert _longest_surviving_run(out, secret), "fixture no longer leaves a tail"
+            assert labels, f"{secret[:10]}: left in the text and not reported"
 
-    def test_an_anchor_the_compact_form_assembled_must_look_random(self):
-        """A written anchor is evidence; a reassembled one is a coincidence.
+    def test_a_body_too_short_to_measure_is_not_rejected_for_it(self):
+        """AKIA admits sixteen characters and the floor is twenty.
 
-        ``# 1. x.o = x.s + x.d`` compacts to ``xoxs``, at a token boundary,
-        with a separator after it, and Slack asks nothing further of a ten
-        character body. Requiring randomness whenever compaction had to
-        assemble the anchor costs no detection, because an attacker who breaks
-        an anchor up still has a random value underneath it.
+        So every AWS key whose anchor was driven apart was refused by a test
+        its grammar can never satisfy, silently, 56 times in 3,200. Below the
+        floor entropy is not evidence in either direction, and what decides
+        instead is an anchor ordinary text does not write.
         """
         from guardllm.security.outbound_dlp import scan_secret_spans
 
-        comment = (
-            "# 1. x.o = x.s + x.d\n"
-            "#    This follows from the definition of x\n"
-        )
-        assert scan_secret_spans(comment) == ([], [])
-        # The same anchor genuinely broken up, over a real value, is reported.
-        split = "value x,o,x,b-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M end"
-        assert "Slack token" in scan_secret_spans(split)[1] or any(
-            lo != hi for lo, hi in scan_secret_spans(split)[0]
-        )
+        secret = "AKIAIOSFODNN7EXAMPLE"
+        # The prefix matters and a fixture without it makes the rule look
+        # redundant: an anchor at a token boundary is never asked to look
+        # random in the first place, so only a value typed behind one reaches
+        # the test its grammar cannot pass.
+        for prefix in ("", "X", "key", "9"):
+            for cut in (1, 2, 4, 8):
+                text = prefix + secret[:cut] + " " * 200 + secret[cut:]
+                spans, labels = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                assert not _longest_surviving_run(out, secret) or labels, (
+                    f"{prefix!r} cut {cut}"
+                )
 
     def test_markup_between_fragments_is_a_boundary_not_a_split(self):
         """``</`` is two characters and was an ordinary gap.

@@ -432,7 +432,7 @@ def _packed(text: str) -> tuple[str, list[int]]:
     return _NON_ALNUM.sub("", text), cmap
 
 
-def _window_random(s: str, low: int, limit: int) -> bool:
+def _window_random(s: str, low: int, high: int) -> bool:
     """Does any credential-sized prefix of ``s`` clear the randomness bar?
 
     One window is not enough. A credential is usually longer than its grammar's
@@ -448,14 +448,18 @@ def _window_random(s: str, low: int, limit: int) -> bool:
     with the window while ordinary text keeps accumulating distinct characters
     and eventually clears a flat 4.5 bits. Sweeping without that limit read the
     constants after a real credential in ``__future__.py`` as more of it, and
-    reported ten of 153 standard library files as carrying one; every widening
-    of it from here costs benign files and buys nothing measurable back.
+    reported ten of 153 standard library files as carrying one.
+
+    Twice is where the curve turns. At one and a half a random base62 body is
+    still being judged in the band where the bar and its own expected entropy
+    differ by a hundredth of a bit, and 83 of 3,200 values split beyond
+    attribution's reach went unreported for it. Past twice, five more close and
+    six more benign files open.
 
     Entropy is accumulated as the window grows, so the sweep costs one pass
     rather than one pass per length.
     """
-    high = min(limit, low + low // 2)
-    if low < 1 or low > len(s):
+    if low < 1 or low > len(s) or high < low:
         return False
     counts: dict[str, int] = {}
     weight = 0.0  # sum of c*log2(c) over the counts seen so far
@@ -471,6 +475,25 @@ def _window_random(s: str, low: int, limit: int) -> bool:
         if cap - weight / size >= min(_ENTROPY_THRESHOLD, cap - _ENTROPY_LENGTH_MARGIN):
             return True
     return False
+
+
+def _credential_window() -> tuple[int, int]:
+    """The window lengths a body is asked to look random over.
+
+    From ``_ENTROPY_MIN_LENGTH``, below which entropy separates nothing, to
+    twice it, past which the bar has gone flat at ``_ENTROPY_THRESHOLD`` while
+    ordinary text keeps accumulating distinct characters and catches up. Both
+    ends were measured against values split beyond attribution's reach and
+    against real credentials written into real source files, and both bite:
+    a ceiling of thirty leaves 83 of 3,200 split values unreported, and one of
+    sixty reads the constants following a key in ``__future__.py`` as more of
+    the key.
+
+    No grammar term. The ceiling was briefly twice each grammar's own minimum,
+    which is the same thing for most of them and 72 for GitHub, and the extra
+    width bought nothing measurable while costing benign files.
+    """
+    return _ENTROPY_MIN_LENGTH, 2 * _ENTROPY_MIN_LENGTH
 
 
 def _exact_findings(
@@ -623,41 +646,70 @@ def _normalized_hit(
         if end >= len(text) or _is_alnum(text[end]):
             return False
 
+    # What the exact pass already accounted for, and whether more body material
+    # sits past a break too wide to be anything but a value driven apart.
+    residue = []
+    accounted = False
+    driven_apart = False
+    for i in range(body_start, stop):
+        if inside[i]:
+            accounted = True
+            continue
+        residue.append(joined[i])
+        # A run of more than _MAX_GAP characters, none of them alphanumeric,
+        # inside one candidate. Compaction removed exactly the non-alphanumerics,
+        # so the distance between two neighbours here IS that run and nothing
+        # needs re-reading to measure it.
+        #
+        # This is the same number the gap ceiling uses and it points the other
+        # way, which is the whole reason it is safe. Widening a gap is how a
+        # value is pushed out of attribution's reach, so it must be what pushes
+        # it into recognition's. Narrowing it gets the value joined into a span
+        # instead. There is no width in between.
+        if i and cmap[i] - cmap[i - 1] - 1 > _MAX_GAP:
+            driven_apart = True
+
+    # A credential the exact pass has already found part of, with more body
+    # material past a break that wide, is a value split. Nothing else needs to
+    # be established about it, and requiring its body to look random anyway is
+    # what left 31 of 3,200 such values unreported: a JWT payload does not
+    # clear the bar over any window, and neither does a Slack token issued as
+    # two twelve digit runs.
+    #
+    # Both halves are required. A wide break on its own is an underlined
+    # heading in a docstring, and the ``=====`` and ``-----`` rules in _pyio
+    # and heapq were read as split credentials when it alone was enough.
+    settled = accounted and driven_apart
+
     origin = cmap[pos]
     at_boundary = origin == 0 or not (
         _is_alnum(text[origin - 1]) or text[origin - 1] in "_-"
     )
-    # Compaction is what manufactures anchors, so an anchor it had to assemble
-    # is not the evidence a written one is: ``x.o = x.s`` in a comment offers
-    # Slack's ``xoxs``, at a token boundary, with a separator after it, and
-    # Slack asks nothing else of a ten character body. Requiring the body to
-    # look random whenever the anchor was reassembled costs no detection --
-    # an attacker who breaks an anchor up still has a random value under it --
-    # and it is what separates a split credential from a sentence.
-    written = cmap[pos + len(literal) - 1] - origin == len(literal) - 1
-    if not written or not at_boundary or g.randomness != "never":
-        floor = max(g.min_body, _ENTROPY_MIN_LENGTH)
-        if not _window_random(joined[body_start:stop], floor, g.max_body):
+    if not settled and (not at_boundary or g.randomness != "never"):
+        # A body too short to reach the floor cannot be asked this at all, and
+        # answering "no" for it is not a conservative default, it is a silent
+        # loss. AKIA admits exactly sixteen characters, so every AWS key whose
+        # anchor was driven apart was rejected by a test its grammar can never
+        # satisfy; a short Slack token near the end of a document is the same
+        # thing per value rather than per grammar. Below the floor entropy is
+        # not evidence either way, and what decides instead is the anchor,
+        # which is what `randomness` records.
+        low, high = _credential_window()
+        body = joined[body_start:stop]
+        if len(body) >= low and not _window_random(body, low, min(high, g.max_body)):
             return False
 
-    # Coverage. An exact span accounts for this credential only if what it does
-    # not cover is not itself credential material. Asking instead whether the
-    # ANCHOR sits inside a span said yes for every value whose first fragment
-    # satisfied the grammar on its own, which is most of them: the span covered
-    # 16 characters of a 45 character Slack token and the report for the other
-    # 29 was suppressed, 481 times in 6,290 split positions, silently. Prose
-    # after a credential is not credential material and stops this, which is
-    # why a document holding one is not also refused for holding it.
-    residue = []
-    accounted = False
-    for i in range(body_start, stop):
-        if inside[i]:
-            accounted = True
-        else:
-            residue.append(joined[i])
-    if not accounted:
+    if not accounted or driven_apart:
         return True
-    return _window_random("".join(residue), _ENTROPY_MIN_LENGTH, g.max_body)
+    # Otherwise the residue has to answer for itself, and at these lengths the
+    # bar is decided by rounding: a random base62 run of twenty characters
+    # scores about 4.02 bits against a bar of 4.02. What rescues most genuine
+    # tails is the test above, because a gap that puts a value beyond
+    # attribution's reach is wide by construction. Prose after a credential is
+    # not reached that way and stops here, which is why a document holding a
+    # credential is not also refused for holding it.
+    low, high = _credential_window()
+    return _window_random("".join(residue), low, min(high, g.max_body))
 
 
 def _findings(text: str) -> list[tuple[int, int, str]]:

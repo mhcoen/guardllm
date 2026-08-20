@@ -2968,9 +2968,12 @@ class TestRecognitionAndAttribution:
         # twenty characters do not clear the bar and whose next twenty do. The
         # cut has to fall early enough that no span covers the head, or the
         # value is settled as a split and never reaches the bar at all.
-        key = "sk-jxt4gwOjAHQaiyCt7NPjPPEaJ8thKCXmJ3UBtDqkfZd7Ph66"
+        key = (
+            "Bearer eyJiL8uwlwiCVaiqs12Jo8LxI0HHxKaqb.XqT_5AxpFTTRsTyFq-B728rgjtG-"
+            "Cqe2A3-V4w6u.O_BaQYVJ5OGIFzgsAKH-mBnaQKZ2Wh-bW2KIio7DFg5"
+        )
         for gap in ("," * 65, "''" * 40, "\\\n" * 33, " " * 200):
-            for cut in range(1, 12):
+            for cut in range(24, 40):
                 text = key[:cut] + gap + key[cut:]
                 spans, labels = scan_secret_spans(text)
                 out = text
@@ -3037,29 +3040,128 @@ class TestRecognitionAndAttribution:
             "#      1000            100                    12345\n"
         )
 
-    def test_a_settled_split_is_not_asked_to_look_random_as_well(self):
-        """Once both halves say split, the entropy bar has nothing left to add.
+    def test_an_entropy_run_follows_what_continues_it(self):
+        """A split value's halves do not score alike, and the one that does
+        not is left behind.
 
-        A JWT payload does not clear it over any window, and neither does a
-        Slack token issued as ``xoxb-`` and two twelve digit runs. Asking
-        anyway left the value in the text with nothing reported, which is the
-        one outcome this pass exists to prevent.
+        Insert one space into a random 64 character token and the two halves
+        are judged separately: the half that clears the bar is replaced, the
+        half that does not is left in the text, and the evidence for it was the
+        half that just got masked. Splitting at every position leaked 8,727
+        times of 17,763 that way, up to 37 characters, and none of it was
+        reported. A run costs one adjoining fragment on each side, then only
+        fragments too long to be words.
         """
         from guardllm.security.outbound_dlp import scan_secret_spans
 
-        for secret in (
-            "Bearer FQgesZ_n8S00K-703poQ.31dPgL3WPNiFp5FYg8nENYEiV1vC1pjmqp6aLFMd."
-            "Pwi45YsTDfNd6ONP_s8AzLhzOT8cwzEygnNOJ1rQ41k",
-            "xoxb-644258639558-895460543690-hnmtmofbndkgikxkzxmhzcmw",
-        ):
-            cut = len(secret) // 2
-            text = secret[:cut] + "," * 65 + secret[cut:]
+        token = "PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52ZkBtJqrys4WKrg"
+        for cut in (41, 20, 55, 62):
+            for gap in (" ", "\t", "\n"):
+                text = token[:cut] + gap + token[cut:]
+                spans, labels = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                run = _longest_surviving_run(out, token)
+                assert not run or labels, f"cut {cut} gap {gap!r}: {run} left, not reported"
+        # The short tail is the case the length test alone would miss, so the
+        # first fragment on each side is taken whatever its length.
+        text = token[:-6] + " " + token[-6:]
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, token) == 0
+
+    def test_the_entropy_walk_stops_at_markup(self):
+        """It cannot take _joinable_gap's single-character exemption.
+
+        ``/`` is a base64 character and so belongs to this scan's own class,
+        which makes ``</token>`` read as a one character gap ``<`` followed by
+        the fragment ``/token``. With the exemption allowed, the span swallowed
+        the closing tag it existed to stop at, and the record came out as
+        ``<record><`` followed by the rest.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        text = (
+            "<record><token>ghp_HgiKXSjjarvO0oeFGPRMbw60yPcKiRvgq1GZbyb5</token>"
+            "<env>production</env></record>"
+        )
+        spans, _ = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert "<record><token>" in out
+        assert "</token><env>production</env></record>" in out
+
+    def test_mid_token_randomness_is_asked_only_of_a_mid_token_match(self):
+        """Reading it as "always" cost a whole class of value.
+
+        Three characters driven into ``sk`` or ``ghp`` defeat the anchor walk,
+        which tolerates two, so attribution never fires. An all-lowercase body
+        clears no entropy bar, so recognition did not either. Both scanners
+        returned nothing and the vault passed the value through unchanged even
+        with deny_action="fail": 1,748 of 2,400 cases, worst 82 characters.
+        """
+        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+
+        # The OpenAI value is the discriminating one and the assertion below
+        # pins that it stays so. The GitHub value is kept because its body is
+        # the same shape, but its tail now falls to the entropy walk, so it
+        # would pass this test with the rule disabled.
+        discriminating = "sk-ghgccgwrotwrcdzwxgxkcdsoczzrdiouyrdlqbym"
+        for secret in (discriminating, "ghp_qwlkvbnzmxcjhgfdsapoiuytrewqasdfghjklz"):
+            text = secret[0] + ",,," + secret[1:]
             spans, labels = scan_secret_spans(text)
             out = text
             for lo, hi in sorted(spans, reverse=True):
                 out = out[:lo] + " " * (hi - lo) + out[hi:]
-            assert _longest_surviving_run(out, secret), "fixture no longer leaves a tail"
-            assert labels, f"{secret[:10]}: left in the text and not reported"
+            run = _longest_surviving_run(out, secret)
+            if secret is discriminating:
+                assert run, "fixture no longer leaves a tail, so it pins nothing"
+            assert not run or labels, f"{secret[:6]}: left in the text, not reported"
+            assert bool(_scan_secrets(text)) == bool(labels or spans), (
+                "the two entry points must not disagree"
+            )
+        # And the anchors English writes mid-token are still rejected there.
+        assert not _scan_secrets(
+            "            skip_bytes = int(self._b2cratio * (size - len(decoded)))\n"
+        )
+
+    def test_a_document_no_line_carries_is_not_replaced_wholesale(self):
+        """The comment said one thing and the code did another.
+
+        When no single line carries the residue the fallback claimed to
+        replace "the span between the first and last offending line" and
+        actually replaced the whole document. A benign 28,243 character YAML
+        file came back as a 21 character marker, because its numbered list of
+        Title Case phrases reads as one 4.6 bit token once the line breaks
+        between them are removed. The contract is that a document is never
+        withheld wholesale for benign content, and this broke it.
+        """
+        document = (
+            "agenda:\n"
+            "  meeting: quarterly review\n"
+            "  topics:\n"
+            "      3. Current Quarter\n"
+            "      4. New Business\n"
+            "        - Upcoming Product Launch\n"
+            "        - Marketing Campaign Plans\n"
+            "        - Customer Feedback and Improvements\n"
+            "      5. Action Items and Next Steps\n"
+            "  owner: operations\n"
+            "  notes: none recorded for this session\n"
+        )
+        assert _scan_secrets(document), "fixture no longer trips the merged form"
+        assert not any(_scan_secrets(line) for line in document.split("\n")), (
+            "fixture no longer needs the cross-line fallback"
+        )
+        out = _vault().deidentify(document, deny_action="marker")
+        assert out.content != marker_for(PIIClass.CREDENTIAL), "whole document replaced"
+        assert "meeting: quarterly review" in out.content
+        assert "notes: none recorded for this session" in out.content
+        assert len(out.content) > len(document) // 2
 
     def test_a_body_too_short_to_measure_is_not_rejected_for_it(self):
         """AKIA admits sixteen characters and the floor is twenty.

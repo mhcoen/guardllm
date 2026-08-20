@@ -368,27 +368,13 @@ def _resolve(text: str, start: int, body_start: int, g: _Grammar) -> tuple[int, 
         if text[line_lo:nxt_lo].strip() or text[nxt_hi:line_end].strip():
             break
         used += 1
-    # And a long value broken into pieces on ONE line clears the minimum on its
-    # first piece too. Take fragments through to the LAST one that scans as
-    # credential material in its own right, not up to the first that does not:
-    # a piece whose entropy happens to fall under the bar sat between pieces
-    # whose entropy did not, and stopping at it left 34 characters in the text
-    # with the rest of the value redacted either side. This asks the entropy
-    # scanner rather than guessing at length, so prose stops it immediately;
-    # no word scans, and the last scanning fragment is the value itself.
-    #
-    # What made this dangerous was never its reach through the fragment list,
-    # it was how far that list ran: a request id further down an XML record
-    # scanned, and the span reaching it deleted the closing tag of one element,
-    # a whole second element and the opening tag of a third. _joinable_gap
-    # calls markup structural now, so the list stops at the first tag and this
-    # cannot leave the value's own element.
-    last = used
-    for idx in range(used + 1, len(frags)):
-        lo_f, hi_f = frags[idx]
-        if _entropy_spans(text[lo_f:hi_f]):
-            last = idx
-    return start, frags[last][1]
+    # A long value broken into pieces on ONE line once needed a third rule
+    # here, taking fragments through the last that scanned as credential
+    # material. It is gone: the entropy scan follows its own runs through the
+    # fragments that continue them now, which covers the same shape from the
+    # other side, and measurement says this rule closes nothing the walk does
+    # not and costs one multi-piece case of its own.
+    return start, frags[used][1]
 
 
 def _admissible(text: str, start: int, lo: int, hi: int, g: _Grammar) -> bool:
@@ -675,21 +661,18 @@ def _normalized_hit(
         if i and cmap[i] - cmap[i - 1] - 1 > _MAX_GAP:
             driven_apart = True
 
-    # A credential the exact pass has already found part of, with more body
-    # material past a break that wide, is a value split. Nothing else needs to
-    # be established about it, and requiring its body to look random anyway is
-    # what left 31 of 3,200 such values unreported: a JWT payload does not
-    # clear the bar over any window, and neither does a Slack token issued as
-    # two twelve digit runs.
-    #
-    # Both halves are required. A wide break on its own is an underlined
-    # heading in a docstring, and the ``=====`` and ``-----`` rules in _pyio
-    # and heapq were read as split credentials when it alone was enough.
-    settled = accounted and driven_apart
-
     origin = cmap[pos]
     at_boundary = origin == 0 or not (_is_alnum(text[origin - 1]) or text[origin - 1] in "_-")
-    if not settled and (not at_boundary or g.randomness != "never"):
+    # ``mid_token`` is asked only of a match that begins mid-token, which is
+    # what the field has always said and what the exact path has always done.
+    # Reading it as "always" here cost a whole class: three characters driven
+    # into `sk` or `ghp` defeat the anchor walk, so attribution never fires,
+    # and an all-lowercase body clears no entropy bar, so recognition did not
+    # either. `s,,,k-<40 lowercase>` left both scanners with nothing to say and
+    # the vault passed it through unchanged, 582 times in 1,200 and up to 82
+    # characters. `always` stays as it is: Bearer begins English sentences, and
+    # without it "Send the Bearer token in the Authorization header" is a JWT.
+    if not at_boundary or g.randomness == "always":
         # A body too short to reach the floor cannot be asked this at all, and
         # answering "no" for it is not a conservative default, it is a silent
         # loss. AKIA admits exactly sixteen characters, so every AWS key whose
@@ -793,11 +776,27 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
 
 
 def _entropy_spans(text: str) -> list[tuple[int, int]]:
-    """High-entropy runs, on the raw text only.
+    """High-entropy runs, on the raw text only, with their continuations.
 
-    Orthogonal to the grammars and unchanged by the restructure. Raw text only:
-    with separators removed, unrelated lines join into one high-entropy run and
-    mapping that back produced spans covering a whole document.
+    Orthogonal to the grammars. Raw text only: with separators removed,
+    unrelated lines join into one high-entropy run and mapping that back
+    produced spans covering a whole document.
+
+    A run found here is extended through what continues it, for the same
+    reason and by the same rule the grammars use. A random value split by one
+    inserted space becomes two fragments, and the halves do not score alike:
+    one clears the bar and is replaced, the other falls under it, is not, and
+    is left in the text with nothing reported, because the evidence for it was
+    the half that just got masked. Splitting a 64 character token at every
+    position leaked 8,727 times out of 17,763 that way, up to 37 characters.
+
+    So an undelimited run costs one adjoining fragment on each side, exactly as
+    an undelimited credential does, and then keeps taking fragments only while
+    they are too long to be words. The first rule catches the short tail the
+    length test would miss; the second follows a value broken into many pieces
+    without following prose, since prose stops it at the first ordinary word.
+    Gaps are judged by _joinable_gap, so quotes and markup end the walk and
+    JSON, XML and CSV records keep their shape.
     """
     out: list[tuple[int, int]] = []
     for m in re.finditer(r"[A-Za-z0-9+/\-_]{20,}", text):
@@ -805,15 +804,73 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
         entropy = _shannon_entropy(token)
         threshold = min(_ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN)
         if entropy >= threshold:
-            out.append((m.start(), m.end()))
+            out.append(_entropy_extent(text, m.start(), m.end()))
             continue
         if len(token) % 2 == 0 and _HEX_RE.fullmatch(token):
             try:
                 if _shannon_entropy_bytes(bytes.fromhex(token)) >= _ENTROPY_THRESHOLD:
-                    out.append((m.start(), m.end()))
+                    out.append(_entropy_extent(text, m.start(), m.end()))
             except ValueError:
                 pass
     return out
+
+
+def _entropy_body(ch: str) -> bool:
+    """The character class the entropy scan's own pattern accepts."""
+    return ch.isascii() and (ch.isalnum() or ch in "+/-_")
+
+
+def _inserted_split(gap: str) -> bool:
+    """A gap this walk may cross: joinable, and holding no structure at all.
+
+    Stricter than _joinable_gap, which lets a single structural character
+    through on the grounds that a quote driven INTO a value arrives alone.
+    That exemption cannot be taken here, because ``/`` is a base64 character
+    and so belongs to this scan's own class: ``</token>`` therefore reads as
+    the one character gap ``<`` followed by the fragment ``/token``, and the
+    span swallowed the closing tag it was supposed to stop at. Nothing is lost
+    by refusing it, since a value driven apart is split with separators that
+    are not markup.
+    """
+    return _joinable_gap(gap) and not any(c in "\"'`<>{}[]" for c in gap)
+
+
+def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
+    """Follow a high-entropy run through the fragments that continue it.
+
+    One adjoining fragment on each side whatever its length, then only
+    fragments at least ``_ENTROPY_MIN_LENGTH`` long. Written as two plain
+    walks rather than one parameterised by direction, because the version that
+    was clever about it could not be read.
+    """
+    first = True
+    while lo > 0:
+        gap = lo
+        while gap > 0 and not _entropy_body(text[gap - 1]):
+            gap -= 1
+        if gap == lo or not _inserted_split(text[gap:lo]):
+            break
+        frag = gap
+        while frag > 0 and _entropy_body(text[frag - 1]):
+            frag -= 1
+        if frag == gap or (not first and gap - frag < _ENTROPY_MIN_LENGTH):
+            break
+        lo, first = frag, False
+
+    first = True
+    while hi < len(text):
+        gap = hi
+        while gap < len(text) and not _entropy_body(text[gap]):
+            gap += 1
+        if gap == hi or not _inserted_split(text[hi:gap]):
+            break
+        frag = gap
+        while frag < len(text) and _entropy_body(text[frag]):
+            frag += 1
+        if frag == gap or (not first and frag - gap < _ENTROPY_MIN_LENGTH):
+            break
+        hi, first = frag, False
+    return lo, hi
 
 
 def _scan_secrets(text: str) -> list[str]:

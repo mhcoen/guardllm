@@ -30,8 +30,8 @@ from __future__ import annotations
 import ipaddress
 import re
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from guardllm.security.types import DetectedSpan, Detector, PIIClass
 
@@ -137,8 +137,6 @@ def _allowed_lengths(ds: str) -> frozenset[int] | None:
 def labelled_card_valid(value: str) -> bool:
     """A labelled PAN needs only Luhn: the label supplies the intent."""
     return luhn_valid(value)
-
-
 
 
 def card_valid(value: str) -> bool:
@@ -273,11 +271,27 @@ def labelled_phone_valid(value: str) -> bool:
 #: schema declaration, not an identifier.
 _LABEL_WORDS = frozenset(
     {
-        "passport", "passportno", "passportnumber",
-        "medicalrecord", "medicalrecordnumber", "mrn",
-        "nationalid", "nationalidentity", "driverslicense", "driverlicence",
-        "driverslicence", "dl", "ssn", "socialsecurity", "socialsecuritynumber",
-        "none", "null", "redacted", "unknown", "string", "example",
+        "passport",
+        "passportno",
+        "passportnumber",
+        "medicalrecord",
+        "medicalrecordnumber",
+        "mrn",
+        "nationalid",
+        "nationalidentity",
+        "driverslicense",
+        "driverlicence",
+        "driverslicence",
+        "dl",
+        "ssn",
+        "socialsecurity",
+        "socialsecuritynumber",
+        "none",
+        "null",
+        "redacted",
+        "unknown",
+        "string",
+        "example",
     }
 )
 
@@ -578,7 +592,8 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     DetectorSpec(
         PIIClass.PASSPORT,
         "passport",
-        rf"{_LO}passport(?:[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"r"|[\"'’”]?\s*[:=]\s*[\"'‘“]?))"
+        rf"{_LO}passport(?:[\s_]*(?:number|no\.?|#)[\"'’”]?\s*[:=]?\s*[\"'‘“]?"
+        r"|[\"'’”]?\s*[:=]\s*[\"'‘“]?))"
         r"(?P<passport_v>[A-Za-z0-9]{6,9})\b",
         opaque_id_valid,
     ),
@@ -610,6 +625,7 @@ _BY_GROUP: dict[str, DetectorSpec] = {d.group: d for d in _DETECTORS}
 #: whatever this produces, never over the whole text, which is what keeps the
 #: added cost proportional to the number of candidates rather than the length.
 _COMBINED = re.compile("|".join(f"(?P<{d.group}>{d.pattern})" for d in _DETECTORS))
+
 
 #: Maps every group name in a compiled alternation, both the detector group and
 #: its optional inner value group, to the spec and the value group to read.
@@ -957,9 +973,7 @@ def _resolve_overlaps(matches: list[RawMatch]) -> DetectionResult:
     return DetectionResult(kept, ambiguous)
 
 
-def _run_detector(
-    detector: Detector, text: str
-) -> tuple[list[DetectedSpan], str | None]:
+def _run_detector(detector: Detector, text: str) -> tuple[list[DetectedSpan], str | None]:
     """Run one tier-3 detector and validate every span it returns.
 
     Returns ``(spans, None)`` on success, or ``([], reason)`` when the detector
@@ -1041,9 +1055,7 @@ def _run_detector(
         # Every span rejected. Returning an empty success here reported clean
         # coverage for a detector that produced nothing usable, which is the
         # silent non-coverage this protocol exists to prevent.
-        return [], (
-            f"detector {detector_id!r} returned {len(raw)} span(s), none valid"
-        )
+        return [], (f"detector {detector_id!r} returned {len(raw)} span(s), none valid")
     if rejected:
         return kept, f"detector {detector_id!r}: {rejected} invalid span(s) dropped"
     return kept, None
@@ -1112,9 +1124,7 @@ def detect(
         spans, unlocatable_credentials = credential_spans(text)
         for start, end in spans:
             if not _is_masked(start, end):
-                matches.append(
-                    RawMatch(PIIClass.CREDENTIAL, start, end, text[start:end])
-                )
+                matches.append(RawMatch(PIIClass.CREDENTIAL, start, end, text[start:end]))
 
     if seeded is not None:
         for start, end, cls in seeded.find(text):

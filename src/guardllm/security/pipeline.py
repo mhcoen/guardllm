@@ -13,6 +13,7 @@ from guardllm.security.isolation import wrap_untrusted
 from guardllm.security.normalization import normalize_confusables
 from guardllm.security.outbound_dlp import OutboundDLP
 from guardllm.security.policy_engine import PolicyEngine
+from guardllm.security.privacy_vault import PrivacyVault
 from guardllm.security.prompt_injection_detector import detect_prompt_injection
 from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
 from guardllm.security.rate_limiter import RateLimiter
@@ -22,15 +23,13 @@ from guardllm.security.source_gate import (
     SourceGateResult,
     check_extraction_allowed,
 )
-from guardllm.security.privacy_vault import PrivacyVault
 from guardllm.security.types import (
     AuthorizationEvent,
     Binding,
     GateResult,
     OutboundResult,
-    ProcessedContent,
-    PIIClass,
     PrivacyConfig,
+    ProcessedContent,
     RateLimitResult,
     SecurityContext,
     SensitivityLevel,

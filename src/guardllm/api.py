@@ -17,9 +17,9 @@ from guardllm.security.types import (
     AuthorizationEvent,
     Binding,
     ContentType,
-    GateResult,
     DeidentifyResult,
     Destination,
+    GateResult,
     OutboundResult,
     PIIClass,
     PolicyConfig,
@@ -392,9 +392,7 @@ class Guard:
         vault = self._pipeline.vault
         if vault is None:
             raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
-        result = vault.reidentify(
-            content, destination=destination, allowed_classes=allowed_classes
-        )
+        result = vault.reidentify(content, destination=destination, allowed_classes=allowed_classes)
         self._audit(
             AuditEvent(
                 event_type="reidentified",
@@ -441,9 +439,7 @@ class Guard:
         # the body would miss a canary in a subject line, a credential in a
         # filename, or a protected value in nested metadata.
         for leaf in _string_leaves(prepared.args):
-            outcome = self._pipeline.check_outbound_content(
-                leaf, context, has_quoting_directive
-            )
+            outcome = self._pipeline.check_outbound_content(leaf, context, has_quoting_directive)
             if not outcome.allowed:
                 return PreparedCall(
                     allowed=False,

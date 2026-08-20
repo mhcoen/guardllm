@@ -119,6 +119,7 @@ PAYLOAD_SYMBOLS = CODEWORD_SYMBOLS - PARITY_SYMBOLS  # 12 symbols = 60 bits
 #: bound, so the two are coupled and PrivacyConfig documents the relationship.
 PAYLOAD_BITS = PAYLOAD_SYMBOLS * 5  # 60
 
+
 # Generator polynomial g(x) = (x - a^1)(x - a^2)(x - a^3), coefficients high to low.
 def _build_generator() -> list[int]:
     g = [1]

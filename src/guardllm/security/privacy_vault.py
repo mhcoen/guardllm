@@ -66,7 +66,7 @@ from guardllm.security.types import (
 #: at most 15 characters, so L3's ``[A-Za-z0-9+/\-_]{20,}`` entropy scanner
 #: never sees a candidate and cannot misattribute a token as a leaked secret.
 #: Any future format change must preserve that, and a test asserts it.
-_TOKEN_PREFIX = "[[GL:"
+_TOKEN_PREFIX = "[[GL:"  # noqa: S105  # a token marker, not a credential
 
 #: Tolerant matcher for resolution. Models mangle tokens in predictable ways:
 #: markdown-escaped brackets, interior whitespace, a line break mid-body. What
@@ -433,9 +433,7 @@ class PrivacyVault:
                     f"privacy vault is full ({self._config.vault_max_entries} entries)"
                 )
             for pii_class, norm, value in new_keys:
-                issued[(pii_class, norm)] = self._issue_locked(
-                    (pii_class, norm), pii_class, value
-                )
+                issued[(pii_class, norm)] = self._issue_locked((pii_class, norm), pii_class, value)
             return issued
 
     def token_key(self, pii_class: PIIClass, value: str) -> tuple[PIIClass, str]:
@@ -531,9 +529,7 @@ class PrivacyVault:
                 raw = m.group()[trim : len(m.group()) - trim] if trim else m.group()
                 # Colons are stripped: the damage being detected is a missing
                 # or misplaced delimiter, so the check cannot depend on one.
-                compact = _crockford_fold(
-                    raw.translate(self._STRIP_SEPARATORS).replace(":", "")
-                )
+                compact = _crockford_fold(raw.translate(self._STRIP_SEPARATORS).replace(":", ""))
                 if len(compact) < codec.CODEWORD_SYMBOLS - 2 or compact in seen:
                     continue
                 seen.add(compact)
@@ -581,7 +577,7 @@ class PrivacyVault:
         # needed for genuinely damaged bodies, and those are found by the
         # bounded patterns below.
         n = codec.CODEWORD_SYMBOLS
-        for run in re.finditer(r"[0-9A-Za-z]{%d,}" % n, text):
+        for run in re.finditer(rf"[0-9A-Za-z]{{{n},}}", text):
             folded = _crockford_fold(run.group())
             for k in range(len(folded) - n + 1):
                 if folded[k : k + n] in self._issued_bodies:
@@ -730,10 +726,7 @@ class PrivacyVault:
             return DeidentifyResult(
                 content=text,
                 allowed=False,
-                reason=(
-                    "De-identification incomplete: "
-                    + "; ".join(found.detector_warnings)
-                ),
+                reason=("De-identification incomplete: " + "; ".join(found.detector_warnings)),
             )
         if found.unlocatable_credentials and deny_action == "fail":
             # No faithful span to substitute. On the host-assembled path that
@@ -803,8 +796,7 @@ class PrivacyVault:
                         content=text,
                         allowed=False,
                         reason=(
-                            f"Class '{match.pii_class.value}' must not cross the "
-                            "model boundary"
+                            f"Class '{match.pii_class.value}' must not cross the model boundary"
                         ),
                         denied=[match.pii_class],
                     )
@@ -844,9 +836,7 @@ class PrivacyVault:
         if denied or found.unlocatable_credentials:
             content, swept = self._sweep_credential_residue(content)
             if swept:
-                warnings.append(
-                    f"Replaced {swept} line(s) still carrying credential material"
-                )
+                warnings.append(f"Replaced {swept} line(s) still carrying credential material")
 
         return DeidentifyResult(
             content=content,
@@ -1064,9 +1054,7 @@ class PrivacyVault:
                 if entry is None:
                     unresolvable += 1
                     if failure is None:
-                        failure = (
-                            f"Unresolvable token in field '{_path_of(segments)}' ({status})"
-                        )
+                        failure = f"Unresolvable token in field '{_path_of(segments)}' ({status})"
                     return ""
                 if status == CORRECTED:
                     warnings.append("Recovered a mangled token by error correction")

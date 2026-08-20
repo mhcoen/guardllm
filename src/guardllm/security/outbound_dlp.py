@@ -105,8 +105,14 @@ _GRAMMARS: list[_Grammar] = [
     _Grammar("GitHub app token", ("ghs",), True, "", False, 36, 60, "mid_token"),
     _Grammar("GitHub refresh token", ("ghr",), True, "", False, 36, 60, "mid_token"),
     _Grammar(
-        "Slack token", ("xoxb", "xoxa", "xoxp", "xoxr", "xoxs"),
-        True, "-", False, 10, 100, "never",
+        "Slack token",
+        ("xoxb", "xoxa", "xoxp", "xoxr", "xoxs"),
+        True,
+        "-",
+        False,
+        10,
+        100,
+        "never",
     ),
     _Grammar("Bearer/JWT token", ("Bearer",), True, "-_.", False, 30, 800, "always"),
 ]
@@ -682,9 +688,7 @@ def _normalized_hit(
     settled = accounted and driven_apart
 
     origin = cmap[pos]
-    at_boundary = origin == 0 or not (
-        _is_alnum(text[origin - 1]) or text[origin - 1] in "_-"
-    )
+    at_boundary = origin == 0 or not (_is_alnum(text[origin - 1]) or text[origin - 1] in "_-")
     if not settled and (not at_boundary or g.randomness != "never"):
         # A body too short to reach the floor cannot be asked this at all, and
         # answering "no" for it is not a conservative default, it is a silent

@@ -29,9 +29,9 @@ from guardllm.security.privacy_vault import PrivacyVault, marker_for
 from guardllm.security.types import (
     DEFAULT_TOKENIZE_CLASSES,
     REDACT,
-    DetectedSpan,
     ContentType,
     Destination,
+    DetectedSpan,
     PIIClass,
     PolicyConfig,
     PrivacyConfig,
@@ -106,13 +106,16 @@ class TestCodec:
                         bad[b] ^= mb
                         assert codec.decode(bad).status == codec.UNCORRECTABLE
 
-    @pytest.mark.parametrize("mangle", [
-        lambda t: t.lower(),
-        lambda t: t.replace("1", "I").replace("0", "O"),
-        lambda t: t.replace("1", "l"),
-        lambda t: "-".join(t[i : i + 3] for i in range(0, 15, 3)),
-        lambda t: f"  {t} ",
-    ])
+    @pytest.mark.parametrize(
+        "mangle",
+        [
+            lambda t: t.lower(),
+            lambda t: t.replace("1", "I").replace("0", "O"),
+            lambda t: t.replace("1", "l"),
+            lambda t: "-".join(t[i : i + 3] for i in range(0, 15, 3)),
+            lambda t: f"  {t} ",
+        ],
+    )
     def test_crockford_absorbs_common_mangling_for_free(self, mangle):
         """Case and I/L/O folding cost nothing from the correction budget."""
         p = codec.random_payload()
@@ -373,7 +376,10 @@ class TestPipelineIntegration:
             "gmail_send_email", scope=dict(prepared.args), user_message="send it"
         )
         gate = guard.check_tool_call(
-            "gmail_send_email", prepared.args, ctx, authorization=auth,
+            "gmail_send_email",
+            prepared.args,
+            ctx,
+            authorization=auth,
             user_message="send it",
         )
         assert gate.allowed, gate.reason
@@ -429,12 +435,15 @@ class TestReviewRegressions:
         assert out.blocked
         assert "bob.two@example.com" not in out.content
 
-    @pytest.mark.parametrize("cred", [
-        "sk-abcdefghijklmnopqrstuvwx",
-        "AKIAIOSFODNN7EXAMPLE",
-        "ghp_" + "a" * 36,
-        "-----BEGIN RSA PRIVATE KEY-----",
-    ])
+    @pytest.mark.parametrize(
+        "cred",
+        [
+            "sk-abcdefghijklmnopqrstuvwx",
+            "AKIAIOSFODNN7EXAMPLE",
+            "ghp_" + "a" * 36,
+            "-----BEGIN RSA PRIVATE KEY-----",
+        ],
+    )
     def test_credentials_never_cross_the_model_boundary(self, cred):
         """Uses L3's own pattern table so the two cannot disagree."""
         guard = Guard(privacy=_config())
@@ -461,31 +470,37 @@ class TestReviewRegressions:
         ctx = Guard.context_internal_sensitive()
         assert not guard.check_outbound(f"patient record for {EMAIL} with ssn {SSN}", ctx).allowed
 
-    @pytest.mark.parametrize("text,cls", [
-        ("SSN: 078 05 1120", PIIClass.SSN),
-        ("SSN: 078051120", PIIClass.SSN),
-        ("+442071838750", PIIClass.PHONE),
-        ("gb82 west 12345698765432", PIIClass.IBAN),
-        ("DOB: 03-11-1974", PIIClass.DATE_OF_BIRTH),
-        ("ABA: 021000021", PIIClass.ROUTING_NUMBER),
-        ("MRN: a4471902", PIIClass.MEDICAL_RECORD),
-        ("passport no. x1234567", PIIClass.PASSPORT),
-    ])
+    @pytest.mark.parametrize(
+        "text,cls",
+        [
+            ("SSN: 078 05 1120", PIIClass.SSN),
+            ("SSN: 078051120", PIIClass.SSN),
+            ("+442071838750", PIIClass.PHONE),
+            ("gb82 west 12345698765432", PIIClass.IBAN),
+            ("DOB: 03-11-1974", PIIClass.DATE_OF_BIRTH),
+            ("ABA: 021000021", PIIClass.ROUTING_NUMBER),
+            ("MRN: a4471902", PIIClass.MEDICAL_RECORD),
+            ("passport no. x1234567", PIIClass.PASSPORT),
+        ],
+    )
     def test_ordinary_representations_are_detected(self, text, cls):
         """A false negative here is plaintext at the provider with no signal."""
         r = detect(text, classes=DEFAULT_TOKENIZE_CLASSES)
         assert cls in {m.pii_class for m in r.matches}
 
-    @pytest.mark.parametrize("text", [
-        "Decimal('1.2345E+12345680')",
-        "Decimal('+35236450.6')",
-        "'+3.140000; -3.140000'",
-        "DELTA = +123456789",
-        "build 1.2.3 +20240101",
-        "id: 123 45 6789",
-        "seq +9987654321",
-        "COLOR_SCALE = 9468822170900693",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Decimal('1.2345E+12345680')",
+            "Decimal('+35236450.6')",
+            "'+3.140000; -3.140000'",
+            "DELTA = +123456789",
+            "build 1.2.3 +20240101",
+            "id: 123 45 6789",
+            "seq +9987654321",
+            "COLOR_SCALE = 9468822170900693",
+        ],
+    )
     def test_ambiguous_numbers_are_not_treated_as_identifiers(self, text):
         """Broadening recall in round two tokenized counters, deltas, and
         version strings, corrupting code and structured data the model was
@@ -554,17 +569,19 @@ class TestReviewRegressions:
 
     def test_compressed_ipv6_is_detected(self):
         from guardllm.security.types import ClassPolicy
+
         v = PrivacyVault(_config(class_policy={PIIClass.IPV6: ClassPolicy.TOKENIZE}))
         assert "2001:db8::1" not in v.deidentify("host 2001:db8::1").content
 
     def test_class_policy_override_is_actually_scanned(self):
         """Detecting only `classes` makes an override a silent no-op."""
         from guardllm.security.types import ClassPolicy
+
         v = PrivacyVault(_config(class_policy={PIIClass.IPV4: ClassPolicy.TOKENIZE}))
         assert "203.0.113.42" not in v.deidentify("host 203.0.113.42").content
 
     def test_expanding_casefold_does_not_shift_seeded_offsets(self):
-        """"ß".casefold() is "ss", so offsets taken in folded text cut the
+        """ "ß".casefold() is "ss", so offsets taken in folded text cut the
         wrong characters in the original."""
         seeded = SeededValues()
         seeded.add({"Alice": PIIClass.PERSON})
@@ -652,9 +669,7 @@ class TestDetectorInterface:
         destination entitled to names would then be handed an SSN."""
         text = f"Dana, SSN {SSN}, called."
         greedy = _Detector([_person(0, len(text) - 8)])  # swallows the SSN
-        v = _vault(
-            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,)
-        )
+        v = _vault(classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,))
         r = v.deidentify(text)
         assert r.allowed
         # The validated SSN keeps its own class, so restoration cannot hand an
@@ -674,9 +689,7 @@ class TestDetectorInterface:
     def test_an_inferred_span_keeps_the_part_a_validated_span_did_not_cover(self):
         text = "Jane Doe <jane@example.com>"
         greedy = _Detector([_person(0, len(text))])
-        v = _vault(
-            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,)
-        )
+        v = _vault(classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(greedy,))
         r = v.deidentify(text)
         assert r.allowed
         classes = {f.pii_class for f in r.findings}
@@ -721,9 +734,7 @@ class TestDetectorInterface:
         assert r.content == text  # nothing substituted over a guessed span
 
     def test_a_detector_may_not_widen_its_declared_classes(self):
-        d = _Detector(
-            [DetectedSpan(0, 5, PIIClass.SSN)], classes=frozenset({PIIClass.PERSON})
-        )
+        d = _Detector([DetectedSpan(0, 5, PIIClass.SSN)], classes=frozenset({PIIClass.PERSON}))
         v = _vault(detectors=(d,))
         r = v.deidentify("12345 Main Street")
         assert [f.pii_class for f in r.findings] == []
@@ -826,9 +837,11 @@ class TestRoundThreeRegressions:
                 if kind == "not_iterable":
                     return DetectedSpan(0, 4, PIIClass.PERSON)
                 if kind == "generator_raises":
+
                     def gen():
                         yield DetectedSpan(0, 4, PIIClass.PERSON)
                         raise RuntimeError("boom")
+
                     return gen()
 
                 class Bad:
@@ -885,19 +898,32 @@ class TestRoundThreeRegressions:
         assert p.allowed
         assert p.args["to"][0]["address"] == EMAIL
 
-    @pytest.mark.parametrize("number", [
-        "+44 20 7183 8750", "+47 22 59 13 00", "+65 6123 4567", "+64 9 123 4567",
-        "+353 1 234 5678", "+49 30 901820", "+91 98765 43210",
-    ])
+    @pytest.mark.parametrize(
+        "number",
+        [
+            "+44 20 7183 8750",
+            "+47 22 59 13 00",
+            "+65 6123 4567",
+            "+64 9 123 4567",
+            "+353 1 234 5678",
+            "+49 30 901820",
+            "+91 98765 43210",
+        ],
+    )
     def test_international_numbers_are_detected(self, number):
         """Requiring exactly ten digits was a NANP assumption applied globally,
         and each of these then crossed the boundary in plaintext."""
         r = detect(number, classes=DEFAULT_TOKENIZE_CLASSES)
         assert PIIClass.PHONE in {m.pii_class for m in r.matches}
 
-    @pytest.mark.parametrize("labelled", [
-        "Tel: 020 7183 8750", "phone 22 59 13 00", "mobile: 09876 543210",
-    ])
+    @pytest.mark.parametrize(
+        "labelled",
+        [
+            "Tel: 020 7183 8750",
+            "phone 22 59 13 00",
+            "mobile: 09876 543210",
+        ],
+    )
     def test_labelled_national_numbers_outside_the_nanp(self, labelled):
         r = detect(labelled, classes=DEFAULT_TOKENIZE_CLASSES)
         assert PIIClass.PHONE in {m.pii_class for m in r.matches}
@@ -928,10 +954,13 @@ class TestRoundThreeRegressions:
         from guardllm.security.pii_detect import credential_spans
 
         for probe in [
-            "sk-abcdefghij klmnopqrstuvwx", "AKIAIOSF ODNN7EXAMPLE",
-            "x9Qv2Lm8Np4Rs7Tw3Yz6Bc1Df5Gh9Jk2", "ghp_" + "a" * 36,
+            "sk-abcdefghij klmnopqrstuvwx",
+            "AKIAIOSF ODNN7EXAMPLE",
+            "x9Qv2Lm8Np4Rs7Tw3Yz6Bc1Df5Gh9Jk2",
+            "ghp_" + "a" * 36,
             "the quick brown fox jumps over the lazy dog",
-            "https://example.com/a/long/path/here", "ordinary english prose",
+            "https://example.com/a/long/path/here",
+            "ordinary english prose",
         ]:
             text = f"ctx {probe}"
             spans, unlocatable = credential_spans(text)
@@ -978,18 +1007,18 @@ class TestRoundFourRegressions:
             def find(self, text):
                 return [DetectedSpan(0, 5, PIIClass.PERSON), DetectedSpan(-9, -1, PIIClass.PERSON)]
 
-        guard = Guard(privacy=_config(
-            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(Partial(),)
-        ))
+        guard = Guard(
+            privacy=_config(
+                classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}, detectors=(Partial(),)
+            )
+        )
         out = guard.process_inbound("Alice met Bob", Guard.context_web())
         assert out.detection_incomplete is True
 
     def test_reset_clears_seeded_values(self):
         """A Guard reused between tenants kept applying the previous tenant's
         labels, corrupting later prompts."""
-        guard = Guard(privacy=_config(
-            classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}
-        ))
+        guard = Guard(privacy=_config(classes=DEFAULT_TOKENIZE_CLASSES | {PIIClass.PERSON}))
         guard.seed_private_values({"May": PIIClass.PERSON})
         guard.reset()
         assert guard.deidentify("May report").content == "May report"
@@ -1036,12 +1065,15 @@ class TestRoundFourRegressions:
         assert any("Jane Doe" in p for p in person)
         assert any("Smith" in p for p in person)
 
-    @pytest.mark.parametrize("text,tail", [
-        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
-        ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
-        ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
-        ("{'a': 'sk-abcdefghijklmnopqrstuvwx', 'b': 'x'}", "'b': 'x'"),
-    ])
+    @pytest.mark.parametrize(
+        "text,tail",
+        [
+            ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
+            ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
+            ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
+            ("{'a': 'sk-abcdefghijklmnopqrstuvwx', 'b': 'x'}", "'b': 'x'"),
+        ],
+    )
     def test_a_quoted_credential_leaves_its_structure_intact(self, text, tail):
         """A quote closing a value is a boundary, and the value stops there.
 
@@ -1058,13 +1090,18 @@ class TestRoundFourRegressions:
         assert tail in result.content
         assert "redacted:credential" in result.content
 
-    @pytest.mark.parametrize("text,gone,kept", [
-        ("Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence",
-         "in this", "ordinary sentence"),
-        ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing", "text kept"),
-        ("The key is sk-ABCDEFGHIJKLMNOPQRSTUV, please use it today",
-         "please", "use it today"),
-    ])
+    @pytest.mark.parametrize(
+        "text,gone,kept",
+        [
+            (
+                "Please preserve sk-ABCDEFGHIJKLMNOPQRSTUV in this ordinary sentence",
+                "in this",
+                "ordinary sentence",
+            ),
+            ("lead sk-abcdefghijklmnopqrstuvwx trailing text kept", "trailing", "text kept"),
+            ("The key is sk-ABCDEFGHIJKLMNOPQRSTUV, please use it today", "please", "use it today"),
+        ],
+    )
     def test_an_undelimited_credential_costs_one_following_fragment(self, text, gone, kept):
         """And where the extent is UNKNOWN, the line is the unit of redaction.
 
@@ -1086,9 +1123,7 @@ class TestRoundFourRegressions:
     def test_a_contiguous_credential_is_not_truncated(self):
         """Minimizing a reconstruction must not displace an exact raw match."""
         v = _vault()
-        out = v.deidentify(
-            'lead "sk-abcdefghijklmnopqrstuvwx", trailing', deny_action="marker"
-        )
+        out = v.deidentify('lead "sk-abcdefghijklmnopqrstuvwx", trailing', deny_action="marker")
         assert "uvwx" not in out.content
         assert "trailing" in out.content
 
@@ -1182,7 +1217,7 @@ _NEGATIVES: tuple[str, ...] = (
     "pan_id=4",
     "phone: str",
     "dob = None",
-    "ssn_field = \"redacted\"",
+    'ssn_field = "redacted"',
     "routing = router.get()",
     "card number of items: 12",
     "passport control queue 5",
@@ -1217,10 +1252,17 @@ def test_corpus_negative(text):
 
 
 class TestRoundFiveRegressions:
-    @pytest.mark.parametrize("pan", [
-        "30000000000000007", "380000000000000006", "60110000000000001",
-        "622126000000000000", "65000000000000003", "8100000000000000000",
-    ])
+    @pytest.mark.parametrize(
+        "pan",
+        [
+            "30000000000000007",
+            "380000000000000006",
+            "60110000000000001",
+            "622126000000000000",
+            "65000000000000003",
+            "8100000000000000000",
+        ],
+    )
     def test_overlapping_iin_ranges_resolve_to_the_right_lengths(self, pan):
         """A brand-keyed lookup resolved overlaps by branch order, so Discover
         ranges were claimed by the Diners and Maestro branches and checked
@@ -1341,10 +1383,17 @@ class TestRoundFiveRegressions:
         assert "L4 footer" in out.content
         assert "redacted:credential" in out.content
 
-    @pytest.mark.parametrize("text,fragment,keep", [
-        ('lead "sk-abcdefghijklmnopqrstuvwx", trailing text kept', "uvwx", "trailing text kept"),
-        ('key "ya29.A0ARrdaMA0ARrdaMA0ARrdaM". In this sentence', "rdaM", "In this sentence"),
-    ])
+    @pytest.mark.parametrize(
+        "text,fragment,keep",
+        [
+            (
+                'lead "sk-abcdefghijklmnopqrstuvwx", trailing text kept',
+                "uvwx",
+                "trailing text kept",
+            ),
+            ('key "ya29.A0ARrdaMA0ARrdaMA0ARrdaM". In this sentence', "rdaM", "In this sentence"),
+        ],
+    )
     def test_contiguous_credentials_are_exact(self, text, fragment, keep):
         """A raw match is exact, so it must never be shortened by the
         reconstruction path: minimizing it truncated the secret and left its
@@ -1359,13 +1408,16 @@ class TestRoundFiveRegressions:
         assert keep in out.content
         assert "redacted:credential" in out.content
 
-    @pytest.mark.parametrize("text", [
-        "GL:DEBUG:1 context initialized",
-        '{"backend":"GL:CORE:4","ok":true}',
-        'raise RuntimeError("GL:ERROR:7")',
-        "https://example.test/trace/GL:DEBUG:1",
-        "shader=GL:VERSION:4",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "GL:DEBUG:1 context initialized",
+            '{"backend":"GL:CORE:4","ok":true}',
+            'raise RuntimeError("GL:ERROR:7")',
+            "https://example.test/trace/GL:DEBUG:1",
+            "shader=GL:VERSION:4",
+        ],
+    )
     def test_ordinary_gl_text_does_not_block_a_tool_call(self, text):
         """Matching any GL:WORD:x rejected log lines, JSON values, OpenGL
         version strings, and URL segments, on an empty vault too."""
@@ -1380,30 +1432,36 @@ class TestRoundFiveRegressions:
 
 
 class TestRoundSixRegressions:
-    @pytest.mark.parametrize("text", [
-        "The medical record contains allergies.",
-        "National ID verification is disabled.",
-        'PASSPORT = "passport"',
-        'MEDICAL_RECORD = "medical_record"',
-        "passport control queue 5",
-        "the card is 12 of 52",
-        "born 1974 in Boston",
-        "routing 3 packets",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "The medical record contains allergies.",
+            "National ID verification is disabled.",
+            'PASSPORT = "passport"',
+            'MEDICAL_RECORD = "medical_record"',
+            "passport control queue 5",
+            "the card is 12 of 52",
+            "born 1974 in Boston",
+            "routing 3 packets",
+        ],
+    )
     def test_optional_separator_no_longer_swallows_the_next_word(self, text):
         """Making the separator optional in round five let the following
         ordinary word be read as the identifier. Two of these are real lines
         from this library's own source."""
         assert not detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches
 
-    @pytest.mark.parametrize("text", [
-        "580832 580137 580136",
-        "601 602 603 621 1997",
-        "586218 310631 654729",
-        "601030 506450 506451",
-        "57364 96029699",
-        "1000 2000 3000 4000",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "580832 580137 580136",
+            "601 602 603 621 1997",
+            "586218 310631 654729",
+            "601030 506450 506451",
+            "57364 96029699",
+            "1000 2000 3000 4000",
+        ],
+    )
     def test_numeric_columns_are_not_concatenated_into_a_card(self, text):
         """A separator after every digit merged unrelated identifier columns
         into one Luhn-valid PAN, replacing three real IDs with one token."""
@@ -1411,10 +1469,17 @@ class TestRoundSixRegressions:
         assert PIIClass.CREDIT_CARD not in found
         assert PIIClass.PHONE not in found
 
-    @pytest.mark.parametrize("pan", [
-        "4111111111111111", "4111 1111 1111 1111", "378282246310005",
-        "3782 822463 10005", "5555555555554444", "6011000000000004",
-    ])
+    @pytest.mark.parametrize(
+        "pan",
+        [
+            "4111111111111111",
+            "4111 1111 1111 1111",
+            "378282246310005",
+            "3782 822463 10005",
+            "5555555555554444",
+            "6011000000000004",
+        ],
+    )
     def test_real_presentation_groupings_still_detected(self, pan):
         found = {m.pii_class for m in detect(pan, classes=DEFAULT_TOKENIZE_CLASSES).matches}
         assert PIIClass.CREDIT_CARD in found
@@ -1456,7 +1521,9 @@ class TestModuleIntegrity:
     symptom tests passed while the mechanism was absent.
     """
 
-    @pytest.mark.parametrize("module", ["pii_detect", "privacy_vault", "outbound_dlp", "token_codec"])
+    @pytest.mark.parametrize(
+        "module", ["pii_detect", "privacy_vault", "outbound_dlp", "token_codec"]
+    )
     def test_no_duplicate_top_level_definitions(self, module):
         import ast
         import collections
@@ -1495,25 +1562,36 @@ class TestModuleIntegrity:
 
 
 class TestRoundSevenRegressions:
-    @pytest.mark.parametrize("text,expected", [
-        ("MRN A4471902", PIIClass.MEDICAL_RECORD),
-        ("SSN 078051120", PIIClass.SSN),
-        ("MRN: ALPHAONE", PIIClass.MEDICAL_RECORD),
-        ("Passport: ABCDEFG", PIIClass.PASSPORT),
-        ("Driver license: ABCDEFG", PIIClass.DRIVERS_LICENSE),
-        ("National ID: ABCDEFG", PIIClass.NATIONAL_ID),
-        ("(617) 555 0142", PIIClass.PHONE),
-        ("3613 490 083 4867", PIIClass.CREDIT_CARD),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("MRN A4471902", PIIClass.MEDICAL_RECORD),
+            ("SSN 078051120", PIIClass.SSN),
+            ("MRN: ALPHAONE", PIIClass.MEDICAL_RECORD),
+            ("Passport: ABCDEFG", PIIClass.PASSPORT),
+            ("Driver license: ABCDEFG", PIIClass.DRIVERS_LICENSE),
+            ("National ID: ABCDEFG", PIIClass.NATIONAL_ID),
+            ("(617) 555 0142", PIIClass.PHONE),
+            ("3613 490 083 4867", PIIClass.CREDIT_CARD),
+        ],
+    )
     def test_recall_regressions_from_tightening(self, text, expected):
         """Acronym labels need no punctuation, and ICAO and FHIR both permit
         alphabetic identifiers, so requiring a digit invented a constraint."""
         found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
         assert expected in found
 
-    @pytest.mark.parametrize("pan_prefix", [
-        "30880000", "30950000", "30960000", "31120000", "31580000", "33370000",
-    ])
+    @pytest.mark.parametrize(
+        "pan_prefix",
+        [
+            "30880000",
+            "30950000",
+            "30960000",
+            "31120000",
+            "31580000",
+            "33370000",
+        ],
+    )
     def test_discover_acquired_ranges_are_recognized(self, pan_prefix):
         from guardllm.security.pii_detect import card_valid, luhn_valid
 
@@ -1610,12 +1688,15 @@ def test_every_declared_label_has_a_probe():
 
 
 class TestRoundEightRegressions:
-    @pytest.mark.parametrize("secret", [
-        "sk-" + "abcdefghij" * 3,
-        "ya29." + "Ab3Cd5Ef7G" * 3,
-        "ghp_" + "abcdefghij" * 4,
-        "xoxb-" + "1234567890abcdefghij",
-    ])
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            "sk-" + "abcdefghij" * 3,
+            "ya29." + "Ab3Cd5Ef7G" * 3,
+            "ghp_" + "abcdefghij" * 4,
+            "xoxb-" + "1234567890abcdefghij",
+        ],
+    )
     def test_no_credential_fragment_survives_any_split(self, secret):
         """The shortest-prefix extent stopped inside the secret, so up to 19
         characters of a live key stayed model-visible with allowed=True. A
@@ -1663,13 +1744,16 @@ class TestRoundEightRegressions:
         assert not p.allowed
         assert EMAIL not in str(p.args)
 
-    @pytest.mark.parametrize("text", [
-        "GL:DEBUG:1 context initialized",
-        '{"backend":"GL:CORE:4","ok":true}',
-        "shader=GL:VERSION:4",
-        "see [[wiki page]] for details",
-        "[[note]] and [[ref]]",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "GL:DEBUG:1 context initialized",
+            '{"backend":"GL:CORE:4","ok":true}',
+            "shader=GL:VERSION:4",
+            "see [[wiki page]] for details",
+            "[[note]] and [[ref]]",
+        ],
+    )
     def test_bracketed_and_gl_text_still_dispatches(self, text):
         v = _vault()
         v.deidentify(f"mail {EMAIL}")
@@ -1706,16 +1790,22 @@ class TestPrecisionRegressions:
     """
 
     def test_card_groupings_require_a_consistent_separator(self):
-        """"3892 713-853-3989" is a street number and a phone number. Allowing
+        """ "3892 713-853-3989" is a street number and a phone number. Allowing
         a grouping to mix space and hyphen merged them into one Diners card,
         127 times in the benign corpus."""
         found = detect("3892 713-853-3989", classes=DEFAULT_TOKENIZE_CLASSES)
         assert PIIClass.CREDIT_CARD not in {m.pii_class for m in found.matches}
 
-    @pytest.mark.parametrize("pan", [
-        "4111 1111 1111 1111", "4111-1111-1111-1111",
-        "3782 822463 10005", "3613 490 083 4867", "36134900834867",
-    ])
+    @pytest.mark.parametrize(
+        "pan",
+        [
+            "4111 1111 1111 1111",
+            "4111-1111-1111-1111",
+            "3782 822463 10005",
+            "3613 490 083 4867",
+            "36134900834867",
+        ],
+    )
     def test_real_presentation_groupings_survive(self, pan):
         found = detect(pan, classes=DEFAULT_TOKENIZE_CLASSES)
         assert PIIClass.CREDIT_CARD in {m.pii_class for m in found.matches}
@@ -1756,16 +1846,19 @@ class TestWikiLinkFalsePositive:
     "[[Global URL settings]]".
     """
 
-    @pytest.mark.parametrize("text", [
-        "[[Glossary of terms]]",
-        "[[Global configuration]]",
-        "[[Global URL settings]]",
-        "[[Legal notice here]]",
-        "[[Angular]]",
-        "see [[Glossary of terms]] here",
-        "[[Guidelines: MAC address policy]]",
-        "[[Global: URL map]]",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[[Glossary of terms]]",
+            "[[Global configuration]]",
+            "[[Global URL settings]]",
+            "[[Legal notice here]]",
+            "[[Angular]]",
+            "see [[Glossary of terms]] here",
+            "[[Guidelines: MAC address policy]]",
+            "[[Global: URL map]]",
+        ],
+    )
     def test_bracketed_prose_does_not_fail_a_tool_call(self, text):
         v = _vault()
         v.deidentify(f"mail {EMAIL}")
@@ -1819,29 +1912,35 @@ class TestRoundNineRegressions:
                             f"{len(secret[i:j])} chars survived at split {pos}"
                         )
 
-    @pytest.mark.parametrize("text,expected", [
-        ("Routing number 021000021", PIIClass.ROUTING_NUMBER),
-        ("Medical record number A4471902", PIIClass.MEDICAL_RECORD),
-        ("DL no. A1234567", PIIClass.DRIVERS_LICENSE),
-        ("Driver's license number A1234567", PIIClass.DRIVERS_LICENSE),
-        ("SSN number 078051120", PIIClass.SSN),
-        ("National ID number AB12345", PIIClass.NATIONAL_ID),
-        ("Contact number 020 7183 8750", PIIClass.PHONE),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("Routing number 021000021", PIIClass.ROUTING_NUMBER),
+            ("Medical record number A4471902", PIIClass.MEDICAL_RECORD),
+            ("DL no. A1234567", PIIClass.DRIVERS_LICENSE),
+            ("Driver's license number A1234567", PIIClass.DRIVERS_LICENSE),
+            ("SSN number 078051120", PIIClass.SSN),
+            ("National ID number AB12345", PIIClass.NATIONAL_ID),
+            ("Contact number 020 7183 8750", PIIClass.PHONE),
+        ],
+    )
     def test_a_number_noun_separates_on_its_own(self, text, expected):
         """These accepted the noun and then demanded punctuation after it, so
         ordinary declared PII crossed unchanged."""
         found = {m.pii_class for m in detect(text, classes=DEFAULT_TOKENIZE_CLASSES).matches}
         assert expected in found
 
-    @pytest.mark.parametrize("pan", [
-        "4222 2222 2222 2",          # 13-digit Visa, 4-4-4-1
-        "4000 0000 0000 0000 006",   # 19-digit Visa, 4-4-4-4-3
-        "6011 0000 0000 0000 1",     # 17-digit Discover
-        "6011 0000 0000 0000 04",    # 18-digit Discover
-        "3782 822463 10005",         # 15-digit Amex, 4-6-5
-        "3613 490 083 4867",         # 14-digit Diners, 4-3-3-4
-    ])
+    @pytest.mark.parametrize(
+        "pan",
+        [
+            "4222 2222 2222 2",  # 13-digit Visa, 4-4-4-1
+            "4000 0000 0000 0000 006",  # 19-digit Visa, 4-4-4-4-3
+            "6011 0000 0000 0000 1",  # 17-digit Discover
+            "6011 0000 0000 0000 04",  # 18-digit Discover
+            "3782 822463 10005",  # 15-digit Amex, 4-6-5
+            "3613 490 083 4867",  # 14-digit Diners, 4-3-3-4
+        ],
+    )
     def test_grouped_pan_lengths_the_iin_table_accepts(self, pan):
         """Enumerating a few layouts produced totals of only 12, 16, and 20
         digits, so valid grouped lengths were invisible."""
@@ -1891,13 +1990,16 @@ class TestRoundNineRegressions:
             if p.allowed:
                 assert p.args["to"][0]["address"] == EMAIL, f"{c}+{b} dispatched literally"
 
-    @pytest.mark.parametrize("text", [
-        "[[GL Email Configuration]]",
-        "[[GL Address Normalization]]",
-        "[[Glossary of terms]]",
-        "[[Global URL settings]]",
-        "[[Guidelines: MAC address policy]]",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[[GL Email Configuration]]",
+            "[[GL Address Normalization]]",
+            "[[Glossary of terms]]",
+            "[[Global URL settings]]",
+            "[[Guidelines: MAC address policy]]",
+        ],
+    )
     def test_bracketed_prose_is_not_refused(self, text):
         """Keying refusal on "GL" plus a class name was wrong in both
         directions. Edit distance to the issued set is not: prose is nowhere
@@ -2004,16 +2106,19 @@ class TestRoundTenRegressions:
                 run = _longest_surviving_run(out, secret)
                 assert run == 0, f"{name} split {pos}: {run} chars survived"
 
-    @pytest.mark.parametrize("text", [
-        "Please read the documentation configuration authentication guide today",
-        "internationalization localization synchronization authentication",
-        # `sk_` sits inside `netmask_cache`, and once whitespace is removed the
-        # following words supply the twenty alphanumerics the OpenAI grammar
-        # wants. Acted on, this redacted 67,445 characters of ipaddress.py. The
-        # words after it must contain no underscore, or the run ends early and
-        # the case is not reproduced at all.
-        "netmask_cache holds every prefixlen value here",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Please read the documentation configuration authentication guide today",
+            "internationalization localization synchronization authentication",
+            # `sk_` sits inside `netmask_cache`, and once whitespace is removed the
+            # following words supply the twenty alphanumerics the OpenAI grammar
+            # wants. Acted on, this redacted 67,445 characters of ipaddress.py. The
+            # words after it must contain no underscore, or the run ends early and
+            # the case is not reproduced at all.
+            "netmask_cache holds every prefixlen value here",
+        ],
+    )
     def test_ordinary_long_words_are_never_redacted(self, text):
         """Finding 1, the other direction. A ten character threshold ate three
         real English words, and `sk_` inside `netmask_cache` acquired twenty
@@ -2068,60 +2173,79 @@ class TestRoundTenRegressions:
         )
         assert not v._has_stray_issued_payload(doc)
 
-    @pytest.mark.parametrize("text", [
-        "UATP account number 135412345678903",
-        "UATP card number 135412345678903",
-        "UATP number 135412345678903",
-        "UATP no. 135412345678903",
-        "UATP account no. 135412345678903",
-        "uatp account number: 135412345678903",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "UATP account number 135412345678903",
+            "UATP card number 135412345678903",
+            "UATP number 135412345678903",
+            "UATP no. 135412345678903",
+            "UATP account no. 135412345678903",
+            "uatp account number: 135412345678903",
+        ],
+    )
     def test_uatp_labelled_forms_are_detected(self, text):
         """Finding 4. UATP is absent from the unlabelled IIN table on purpose,
         so a labelled form it missed was a plaintext PAN with no fallback."""
         found = detect(text, classes=frozenset({PIIClass.CREDIT_CARD})).matches
         assert [m.value for m in found] == ["135412345678903"]
 
-    @pytest.mark.parametrize("text", [
-        "Driver license number required",
-        "Medical record number required",
-        "National ID number required",
-        "Routing number optional",
-        "Driver license number missing",
-        "Medical record number unknown",
-        "DL no. required",
-        "National ID number pending",
-        "Please provide your driver license number promptly",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Driver license number required",
+            "Medical record number required",
+            "National ID number required",
+            "Routing number optional",
+            "Driver license number missing",
+            "Medical record number unknown",
+            "DL no. required",
+            "National ID number pending",
+            "Please provide your driver license number promptly",
+        ],
+    )
     def test_requirement_prose_is_not_tokenized(self, text):
         """Finding 5. A number noun separates a label from its value on its
         own, and these classes have no checksum, so the next word became the
         value."""
-        classes = frozenset({
-            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD,
-            PIIClass.NATIONAL_ID, PIIClass.ROUTING_NUMBER, PIIClass.PHONE,
-        })
+        classes = frozenset(
+            {
+                PIIClass.DRIVERS_LICENSE,
+                PIIClass.MEDICAL_RECORD,
+                PIIClass.NATIONAL_ID,
+                PIIClass.ROUTING_NUMBER,
+                PIIClass.PHONE,
+            }
+        )
         assert detect(text, classes=classes).matches == []
 
-    @pytest.mark.parametrize("text,value", [
-        ("Routing number 021000021", "021000021"),
-        ("DL no. A1234567", "A1234567"),
-        ("Medical record number 4471902", "4471902"),
-        ("National ID number 123456789", "123456789"),
-        ("Driver license number D1234567", "D1234567"),
-        ("DL number ABC1234", "ABC1234"),
-        # Uppercase code form, and the explicit separator that admits anything.
-        ("Medical record number ALPHAONE", "ALPHAONE"),
-        ("Medical record number: alphaone", "alphaone"),
-    ])
+    @pytest.mark.parametrize(
+        "text,value",
+        [
+            ("Routing number 021000021", "021000021"),
+            ("DL no. A1234567", "A1234567"),
+            ("Medical record number 4471902", "4471902"),
+            ("National ID number 123456789", "123456789"),
+            ("Driver license number D1234567", "D1234567"),
+            ("DL number ABC1234", "ABC1234"),
+            # Uppercase code form, and the explicit separator that admits anything.
+            ("Medical record number ALPHAONE", "ALPHAONE"),
+            ("Medical record number: alphaone", "alphaone"),
+        ],
+    )
     def test_code_shaped_values_still_detected(self, text, value):
         """Finding 5 must not cost recall. `(?-i:` is what makes this real: the
         guard is spliced inside the case-insensitive group _LO opens, so an
         uppercase class matches lowercase and "required" passed as a code."""
-        classes = frozenset({
-            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD,
-            PIIClass.NATIONAL_ID, PIIClass.ROUTING_NUMBER, PIIClass.PHONE,
-        })
+        classes = frozenset(
+            {
+                PIIClass.DRIVERS_LICENSE,
+                PIIClass.MEDICAL_RECORD,
+                PIIClass.NATIONAL_ID,
+                PIIClass.ROUTING_NUMBER,
+                PIIClass.PHONE,
+            }
+        )
         assert [m.value for m in detect(text, classes=classes).matches] == [value]
 
     def test_a_credential_ending_inside_its_line_spares_the_lines_below(self):
@@ -2180,12 +2304,15 @@ class TestRoundTenRegressions:
         finally:
             PrivacyVault._PROXIMITY_WINDOW_BUDGET = original
 
-    @pytest.mark.parametrize("text", [
-        "netmask_cache holds 20 prefixlen values here",
-        "the netmask_cache stores 12 computed values here",
-        "disk_usage report 2024 shows every mounted volume here",
-        "task_queue holds 15 pending items right now here",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "netmask_cache holds 20 prefixlen values here",
+            "the netmask_cache stores 12 computed values here",
+            "disk_usage report 2024 shows every mounted volume here",
+            "task_queue holds 15 pending items right now here",
+        ],
+    )
     def test_a_digit_does_not_excuse_a_mid_token_merge(self, text):
         """The mid-token allowance must be randomness, not a digit. Accepting a
         digit let ordinary sentences through: the merge joins the words and the
@@ -2270,10 +2397,17 @@ class TestRoundElevenRegressions:
             assert not p.allowed, f"{label} dispatched: {damaged}"
             assert EMAIL not in str(p.args)
 
-    @pytest.mark.parametrize("text", [
-        "documentation", "configuration", "authentication",
-        "abcdefghijklmno", "internationaliz", "SGVsbG8gV29ybGQ",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "documentation",
+            "configuration",
+            "authentication",
+            "abcdefghijklmno",
+            "internationaliz",
+            "SGVsbG8gV29ybGQ",
+        ],
+    )
     def test_ordinary_codeword_length_runs_are_not_refused(self, text):
         """Finding 1's cost, bounded. Nearness to a random 60-bit payload is
         specific enough that dropping the marker requirement costs nothing."""
@@ -2281,11 +2415,14 @@ class TestRoundElevenRegressions:
         v.deidentify(f"mail {EMAIL}")
         assert not v._has_stray_issued_payload(text)
 
-    @pytest.mark.parametrize("text", [
-        "Use Bearer authorization. Header values are case sensitive.",
-        "The Bearer token. Refresh is automatic.",
-        "Bearer authentication. Configuration follows.",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Use Bearer authorization. Header values are case sensitive.",
+            "The Bearer token. Refresh is automatic.",
+            "Bearer authentication. Configuration follows.",
+        ],
+    )
     def test_bearer_prose_is_not_a_jwt(self, text):
         """Finding 2, the worst of the round: it changed behaviour with the
         vault switched off. Making the mandatory separator optional let the
@@ -2348,24 +2485,34 @@ class TestRoundElevenRegressions:
         assert _longest_surviving_run(out, slack) == 0
         assert "AKIAIOSFODNN7EXAMPLE" not in out
 
-    @pytest.mark.parametrize("text,value", [
-        ('Patient medical record number "abcdefg"', "abcdefg"),
-        ("Patient national ID number 'alphaone'", "alphaone"),
-        ('Patient driver license number "abcdxyz"', "abcdxyz"),
-    ])
+    @pytest.mark.parametrize(
+        "text,value",
+        [
+            ('Patient medical record number "abcdefg"', "abcdefg"),
+            ("Patient national ID number 'alphaone'", "alphaone"),
+            ('Patient driver license number "abcdxyz"', "abcdxyz"),
+        ],
+    )
     def test_a_quoted_lowercase_identifier_is_covered(self, text, value):
         """Finding 5. Hospitals and host applications do issue opaque
         identifiers with arbitrary casing. A quote is structural delimiting and
         is evidence enough, so these no longer need to look like codes."""
-        classes = frozenset({
-            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD, PIIClass.NATIONAL_ID,
-        })
+        classes = frozenset(
+            {
+                PIIClass.DRIVERS_LICENSE,
+                PIIClass.MEDICAL_RECORD,
+                PIIClass.NATIONAL_ID,
+            }
+        )
         assert [m.value for m in detect(text, classes=classes).matches] == [value]
 
-    @pytest.mark.parametrize("text,value", [
-        ("Patient medical record number abcdefg", "abcdefg"),
-        ("Patient national ID number alphaone", "alphaone"),
-    ])
+    @pytest.mark.parametrize(
+        "text,value",
+        [
+            ("Patient medical record number abcdefg", "abcdefg"),
+            ("Patient national ID number alphaone", "alphaone"),
+        ],
+    )
     def test_a_bare_lowercase_identifier_needs_seeding_and_says_so(self, text, value):
         """Finding 5's remaining limit, asserted rather than implied.
 
@@ -2376,9 +2523,13 @@ class TestRoundElevenRegressions:
         recorded rather than assumed closed. A host that issues such
         identifiers declares them, and then they are caught.
         """
-        classes = frozenset({
-            PIIClass.DRIVERS_LICENSE, PIIClass.MEDICAL_RECORD, PIIClass.NATIONAL_ID,
-        })
+        classes = frozenset(
+            {
+                PIIClass.DRIVERS_LICENSE,
+                PIIClass.MEDICAL_RECORD,
+                PIIClass.NATIONAL_ID,
+            }
+        )
         assert detect(text, classes=classes).matches == []
 
         seeded = SeededValues()
@@ -2433,12 +2584,15 @@ class TestPunctuationSplits:
                 run = _longest_surviving_run(out, secret)
                 assert run == 0, f"{name} {sep!r} at {pos}: {run} chars survived"
 
-    @pytest.mark.parametrize("text,keep", [
-        ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
-        ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
-        ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
-        ("7,alice,sk-abcdefghijklmnopqrstuvwx,ok,next", "next"),
-    ])
+    @pytest.mark.parametrize(
+        "text,keep",
+        [
+            ('{"key": "sk-abcdefghijklmnopqrstuvwx", "other": "value"}', '"other": "value"'),
+            ('{"key":"sk-abcdefghijklmnopqrstuvwx","other":"value"}', '"other":"value"'),
+            ('call("sk-abcdefghijklmnopqrstuvwx") then continue', ") then continue"),
+            ("7,alice,sk-abcdefghijklmnopqrstuvwx,ok,next", "next"),
+        ],
+    )
     def test_delimited_credentials_stay_exact(self, text, keep):
         """And the precision that punctuation buys must survive it.
 
@@ -2546,16 +2700,19 @@ class TestPunctuationSplits:
             run = _longest_surviving_run(out, secret)
             assert run == 0, f"split {pos}: {run} chars survived"
 
-    @pytest.mark.parametrize("text", [
-        # Shapes from _sysconfigdata__darwin_darwin.py, where dropping the
-        # boundary requirement redacted 50,683 characters of one file. No
-        # random path in either: those trip the entropy scan on their own
-        # merits, which is pre-existing and correct.
-        '"CONFIG_ARGS": "--enable-framework --with-pydebug pyconfig.h '
-        'pyconfig.h in Makefile preinstall CONFIGURE_CFLAGS arch arm64"',
-        '"LLVM_PROF_MERGER": "tools/llvm/bin/llvm-profdata merge '
-        '-output=code.profclangd -sparse=true pyconfig.h in Makefile"',
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Shapes from _sysconfigdata__darwin_darwin.py, where dropping the
+            # boundary requirement redacted 50,683 characters of one file. No
+            # random path in either: those trip the entropy scan on their own
+            # merits, which is pre-existing and correct.
+            '"CONFIG_ARGS": "--enable-framework --with-pydebug pyconfig.h '
+            'pyconfig.h in Makefile preinstall CONFIGURE_CFLAGS arch arm64"',
+            '"LLVM_PROF_MERGER": "tools/llvm/bin/llvm-profdata merge '
+            '-output=code.profclangd -sparse=true pyconfig.h in Makefile"',
+        ],
+    )
     def test_build_config_text_is_not_a_credential(self, text):
         """With every separator gone a grammar can start wherever two unrelated
         words meet, so the separator-free form requires a token boundary
@@ -2727,7 +2884,7 @@ class TestRecognitionAndAttribution:
 
         for tail in (
             " with API v2 and set retries to 3.",
-            '\nCO_FUTURE_UNICODE_LITERALS = 0x200000   # unicode string literals\n',
+            "\nCO_FUTURE_UNICODE_LITERALS = 0x200000   # unicode string literals\n",
             '\nINTENSE_BACKGROUND_MAGENTA = "\\x1b[105m"\n',
             ", createdAt 2024-03-14T12:00:00Z, Base64Encoder, SHA256Digest\n",
         ):
@@ -2926,9 +3083,7 @@ class TestRecognitionAndAttribution:
                 out = text
                 for lo, hi in sorted(spans, reverse=True):
                     out = out[:lo] + " " * (hi - lo) + out[hi:]
-                assert not _longest_surviving_run(out, secret) or labels, (
-                    f"{prefix!r} cut {cut}"
-                )
+                assert not _longest_surviving_run(out, secret) or labels, f"{prefix!r} cut {cut}"
 
     def test_markup_between_fragments_is_a_boundary_not_a_split(self):
         """``</`` is two characters and was an ordinary gap.
@@ -2943,8 +3098,11 @@ class TestRecognitionAndAttribution:
 
         cut = 20
         text = (
-            "<record><token>" + self._SECRET[:cut] + " " + self._SECRET[cut:] +
-            "</token><note>keep this element</note>"
+            "<record><token>"
+            + self._SECRET[:cut]
+            + " "
+            + self._SECRET[cut:]
+            + "</token><note>keep this element</note>"
             '<request id="a7f3c9e2b5d18406"></request>'
             "<trailer>and this one</trailer></record>"
         )

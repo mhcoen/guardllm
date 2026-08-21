@@ -30,6 +30,7 @@ from guardllm.security.privacy_vault import PrivacyVault, marker_for
 from guardllm.security.types import (
     DEFAULT_TOKENIZE_CLASSES,
     REDACT,
+    ClassPolicy,
     ContentType,
     Destination,
     DetectedSpan,
@@ -3566,13 +3567,28 @@ class TestRecognitionAndAttribution:
         assert not _monotonic("")
         assert not _monotonic("a")
 
-    def test_an_alphabet_in_order_is_not_a_secret(self):
-        """It has maximal entropy by construction and carries nothing.
+    def test_an_alphabet_in_order_is_never_redacted(self):
+        """It carries nothing, so no span may cover it. It is still reported.
+
+        This test used to assert that a chart produced no finding at all, and
+        that was the bug a review found: `234567ABCDEFGHIJKLMNOPQRSTUVWXYZ` is
+        the RFC 4648 Base32 alphabet and also an ordinary TOTP shared secret,
+        so suppressing charts in both passes let all 32 characters out of
+        check_outbound with reason="clean".
+
+        The contract is narrower now and matches every other bound in the
+        attribution pass: `_monotonic` decides how much can be REPLACED, never
+        whether a credential is PRESENT. A chart still takes no span, so a
+        document holding a character table is never corrupted, and measured
+        over 153 standard library files the spans and the characters they
+        cover do not move at all. It does draw a label, which is the safe
+        direction, because a value can be indistinguishable from an alphabet
+        only by being one.
 
         Folding made three more styles of alphabet chart look like the plain
         and mathematical rows that already tripped this. A random value is
         sorted with a probability that rounds to nothing at these lengths, so
-        refusing a monotonic run costs no detection.
+        refusing a monotonic run costs no exact redaction.
 
         The last row is why the comparison lowercases first, and it is here
         rather than left to the full-width row above because the two forms no
@@ -3597,9 +3613,31 @@ class TestRecognitionAndAttribution:
             "\u237aB\u217dD\u025cF\u210aH\u02db"
             "J\u03baL\u217fN\u2207P\u051bR\u01bdT\u1d1cV\u1d21X\u0263Z",
         ):
-            assert not _scan_secrets(chart), f"{chart[:12]!r} read as a secret"
+            from guardllm.security.outbound_dlp import scan_secret_spans
+
+            spans, _labels = scan_secret_spans(chart)
+            assert spans == [], f"{chart[:12]!r} was spanned, so it would be redacted"
         # And a real high-entropy token is still one.
         assert _scan_secrets("PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52Zk")
+
+    def test_a_chart_that_is_also_a_secret_is_still_reported(self):
+        """The Base32 alphabet in order is a valid TOTP shared secret.
+
+        Nothing can separate the two, so the pass that decides presence must
+        not be the one that knows about charts. Both entry points report it,
+        and the vault refuses the document rather than passing it.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = "234567ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        doc = f'TOTP_SHARED_SECRET = "{secret}"'
+        assert _scan_secrets(doc), "the shared secret went out with nothing reported"
+        assert _scan_secrets(secret), "bare, it went out with nothing reported"
+        # Reported without a span: the chart is named, never rewritten.
+        spans, labels = scan_secret_spans(doc)
+        assert labels, "no label on the span-scanner path either"
+        assert all(doc[lo:hi] != secret for lo, hi in spans), "the chart was redacted"
+        assert not _vault().deidentify(doc, deny_action="fail").allowed
 
     def test_the_cross_line_sweep_costs_what_it_replaces(self):
         """Not what it scans past, and not the document, once per block.
@@ -4108,3 +4146,75 @@ class TestNpmCredentials:
             "NPM_CONFIG_USERCONFIG_FILE_LOCATION_VAR",
         ):
             assert not _scan_secrets(name), f"{name!r} read as a credential"
+
+
+class TestPolicyCannotBeWidened:
+    """Two gates that a caller could talk their way past.
+
+    Both were found by review rather than by the corpora, because neither is a
+    detection failure: the scanner did its job and the policy layer then handed
+    the value over anyway. That makes them the more serious kind.
+    """
+
+    def test_allowed_classes_narrows_and_never_widens(self):
+        """It replaced the destination policy instead of intersecting it.
+
+        A destination entitled to EMAIL alone restored a full SSN when the
+        caller passed ``allowed_classes={SSN}``, so the argument that reads as
+        a per-call restriction was a per-call bypass of the only gate on that
+        path. A caller who can choose the destination could choose the classes
+        too, which is the whole of ``destination_policy`` undone by a keyword.
+        """
+        vault = _vault(destination_policy={Destination.USER: frozenset({PIIClass.EMAIL})})
+        ssn = vault.token_for(PIIClass.SSN, "123-45-6789")
+        email = vault.token_for(PIIClass.EMAIL, EMAIL)
+
+        widened = vault.reidentify(
+            f"SSN {ssn}", destination=Destination.USER, allowed_classes=frozenset({PIIClass.SSN})
+        )
+        assert "123-45-6789" not in widened.content, "allowed_classes widened the policy"
+        assert PIIClass.SSN in widened.withheld
+
+        # Narrowing still narrows, in both directions.
+        kept = vault.reidentify(
+            f"Mail {email}",
+            destination=Destination.USER,
+            allowed_classes=frozenset({PIIClass.EMAIL}),
+        )
+        assert EMAIL in kept.content, "intersection withheld a class both sides permit"
+        dropped = vault.reidentify(
+            f"Mail {email}",
+            destination=Destination.USER,
+            allowed_classes=frozenset({PIIClass.SSN}),
+        )
+        assert EMAIL not in dropped.content, "narrowing to another class still restored"
+
+    def test_a_mandatory_deny_class_cannot_be_overridden(self):
+        """``class_policy`` was consulted before the mandatory-deny set.
+
+        ``{CREDENTIAL: ALLOW}`` therefore won outright and a recognized OpenAI
+        key crossed to the model provider unchanged. Refused at construction so
+        the host learns the line has no effect, and refused again in
+        ``policy_for`` so a dict mutated after construction cannot reach the
+        boundary either.
+        """
+        with pytest.raises(ValueError, match="mandatory-deny"):
+            PrivacyConfig(class_policy={PIIClass.CREDENTIAL: ClassPolicy.ALLOW})
+        with pytest.raises(ValueError, match="mandatory-deny"):
+            PrivacyConfig(class_policy={PIIClass.CREDENTIAL: ClassPolicy.TOKENIZE})
+
+        # The constructor is not the only guard, because it is sidesteppable.
+        cfg = PrivacyConfig()
+        cfg.class_policy[PIIClass.CREDENTIAL] = ClassPolicy.ALLOW
+        assert cfg.policy_for(PIIClass.CREDENTIAL) is ClassPolicy.DENY
+        key = "sk-abcdefghijklmnopqrstuvwxyz1234"
+        result = PrivacyVault(cfg).deidentify(f"key {key}", deny_action="marker")
+        assert key not in result.content, "a mutated policy let a credential through"
+
+        # An explicit DENY is the same as the default and stays legal.
+        assert (
+            PrivacyConfig(class_policy={PIIClass.CREDENTIAL: ClassPolicy.DENY}).policy_for(
+                PIIClass.CREDENTIAL
+            )
+            is ClassPolicy.DENY
+        )

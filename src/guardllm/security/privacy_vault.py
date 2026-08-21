@@ -1051,11 +1051,16 @@ class PrivacyVault:
         silently.
         """
         cfg = self._config
-        permitted = (
-            allowed_classes
-            if allowed_classes is not None
-            else cfg.destination_policy.get(destination, frozenset())
-        )
+        # ``allowed_classes`` NARROWS the destination's policy and can never
+        # widen it. It replaced the policy outright until a review reproduced
+        # the obvious consequence: a destination entitled to EMAIL alone
+        # restored a full SSN when the caller passed {SSN}, so the argument
+        # that reads as a per-call restriction was a per-call bypass of the
+        # only gate on that path. Intersection is the whole fix, and it is the
+        # behaviour the documentation already claimed.
+        permitted = cfg.destination_policy.get(destination, frozenset())
+        if allowed_classes is not None:
+            permitted = permitted & allowed_classes
         outcomes: dict[str, int] = {}
         restored: list[PIIClass] = []
         withheld: list[PIIClass] = []

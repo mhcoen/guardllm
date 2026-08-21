@@ -68,6 +68,11 @@ which is how a reader tells a guess from a match.
 which seeds them gets them tokenized without extra configuration, and they stay
 undetected otherwise rather than being guessed at.
 
+`CREDENTIAL` is not on that list and is not configurable. It is always denied
+at the model boundary, `class_policy` cannot weaken it, and a config that tries
+raises `ValueError` rather than being quietly ignored, so a host never keeps a
+line it believes is in force.
+
 ## Tokens
 
 `deidentify` returns the rewritten content and a finding per occurrence:
@@ -125,8 +130,11 @@ shown = guard.reidentify(result.content, destination=Destination.USER)
 
 The email came back because `Destination.USER` is entitled to `EMAIL`. The
 person did not, because nothing entitled that destination to `PERSON`.
-Destinations are `USER`, `TOOL`, `EXTERNAL`, and `LOG`. `allowed_classes`
-narrows a single call further; it can never widen past the policy.
+Destinations are `USER`, `TOOL`, `EXTERNAL`, and `LOG`.
+
+`allowed_classes` narrows a single call further and can never widen past the
+policy: the two sets are intersected, so a class the destination does not
+permit stays withheld however the argument is written.
 
 ## Failing closed
 

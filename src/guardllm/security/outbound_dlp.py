@@ -983,6 +983,14 @@ def _monotonic(token: str) -> bool:
     nothing. Folding compatibility forms made three more styles of chart look
     like one, on top of the plain and mathematical rows that already did.
 
+    Asked by the SPAN pass only, so that a chart is never redacted and the
+    document keeps its shape. The label pass does not ask, and must not: a
+    TOTP shared secret drawn from the RFC 4648 alphabet in order IS a chart,
+    and suppressing it in both places let all 32 characters out with
+    reason="clean". This predicate decides how much can be replaced, never
+    whether a credential is present, which is the same division every bound in
+    the attribution pass observes.
+
     Consecutive, not merely sorted. Sorted was too broad by far: any value
     whose characters happen to ascend is sorted, and 1,000 of 1,000 generated
     high-entropy secrets that did were suppressed outright, missed by both
@@ -1153,8 +1161,24 @@ def _scan_secrets(text: str) -> list[str]:
                 continue
             if merged and not any(c.isdigit() for c in token):
                 continue
-            if _monotonic(token):
-                continue
+            # NOTE: _monotonic is deliberately NOT consulted here, only in the
+            # span pass. Suppressing a chart in both places is the one rule in
+            # this module that could make a credential disappear entirely
+            # rather than move from a span to a label, which is exactly what
+            # the division at the top of this file exists to prevent. It did:
+            # `234567ABCDEFGHIJKLMNOPQRSTUVWXYZ` is the RFC 4648 Base32
+            # alphabet and also an ordinary TOTP shared secret, and all 32
+            # characters left through check_outbound with reason="clean".
+            #
+            # A value can be indistinguishable from an alphabet only by being
+            # one, so nothing here can separate the two. Reporting is the safe
+            # direction: the span pass still refuses to redact a chart, so
+            # measured over 153 standard library files the spans and the
+            # characters they cover are unchanged at 37 and 3,157, and the
+            # whole cost is three more files drawing a label, base64.py and
+            # calendar.py among them. A refused document is loud and an
+            # operator can act on it. A shared secret leaving in the clear is
+            # silent.
             entropy = _shannon_entropy(token)
             # Length-aware threshold: never require more entropy than the
             # length can produce. Caps at _ENTROPY_THRESHOLD for long tokens

@@ -652,6 +652,30 @@ class PrivacyConfig:
     #: can never remove a finding another one produced.
     detectors: tuple[Detector, ...] = ()
 
+    def __post_init__(self) -> None:
+        """Refuse a config that tries to weaken a mandatory-deny class.
+
+        ``class_policy`` is consulted before every other rule, so
+        ``{PIIClass.CREDENTIAL: ClassPolicy.ALLOW}`` used to win outright and a
+        recognized OpenAI key went out unchanged. Silently ignoring the entry
+        would be worse than the bug it fixes: the host would keep a line of
+        configuration it believes is in force. It raises instead, and
+        ``policy_for`` below independently refuses to return anything but DENY
+        for these classes, because an invariant this load-bearing should not
+        rest on a constructor a caller can sidestep with a direct mutation.
+        """
+        weakened = sorted(
+            c.value
+            for c, p in self.class_policy.items()
+            if c in DEFAULT_DENY_CLASSES and p is not ClassPolicy.DENY
+        )
+        if weakened:
+            raise ValueError(
+                "class_policy cannot weaken a mandatory-deny class: "
+                f"{', '.join(weakened)}. These are always denied at the model "
+                "boundary and the entry would have no effect."
+            )
+
     def scanned_classes(self) -> frozenset[PIIClass]:
         """Every class detection must look for.
 
@@ -664,12 +688,19 @@ class PrivacyConfig:
         return frozenset(self.classes | extra | DEFAULT_DENY_CLASSES)
 
     def policy_for(self, pii_class: PIIClass) -> ClassPolicy:
-        """Resolve the model-boundary policy for one class."""
+        """Resolve the model-boundary policy for one class.
+
+        Mandatory deny is checked FIRST, before any override. The constructor
+        already rejects a config that tries to weaken one of these, so reaching
+        this line means the mapping was mutated after construction; the answer
+        is the same either way, because a credential crossing to a model
+        provider is not a thing an override may authorize.
+        """
+        if pii_class in DEFAULT_DENY_CLASSES:
+            return ClassPolicy.DENY
         override = self.class_policy.get(pii_class)
         if override is not None:
             return override
-        if pii_class in DEFAULT_DENY_CLASSES:
-            return ClassPolicy.DENY
         if pii_class in self.classes:
             return ClassPolicy.TOKENIZE
         return ClassPolicy.ALLOW

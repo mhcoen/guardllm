@@ -3290,36 +3290,42 @@ class TestRecognitionAndAttribution:
                         f"name of {size}: {delimiter!r} consumed from {text!r}"
                     )
 
-    def test_a_value_split_across_a_boundary_is_reported_by_its_length(self):
-        """Length is the only thing that separates the two populations.
+    def test_a_long_name_beside_a_credential_is_not_a_finding(self):
+        """What replaced two rounds of trying to report a boundary split.
 
-        Refusing to cross structure keeps a record intact, and saying nothing
-        about what lies beyond the break left 897 of 900 split values in the
-        text with 1,024 characters of one readable. But a key, a tag and an
-        attribute name sit on the far side of a structural break exactly as a
-        continuation does, and they are made of the same characters. Judging
-        the contents was tried and put a label on 1,000 of 1,500 benign JSON
-        and XML documents holding a redacted identifier beside a camel-cased
-        key, which on the host path refuses each of them.
+        A value split across a structural boundary is not reported. Reporting
+        one was carried for two rounds and measured wrong in both directions
+        every time: judging the far side of the break by its contents labelled
+        1,000 of 1,500 benign documents, judging it by length labelled 1,000 of
+        1,000 holding a 220 character key, and neither caught a value split
+        between two JSON fields, where the continuation is two fragments away
+        rather than one. It is recorded as open in the handoff instead.
 
-        So only a continuation longer than any name is reported. Shorter ones
-        are not, and that is written down rather than pretended away.
+        What is guaranteed is the other half: the record keeps its shape and is
+        not refused for holding a long name next to a credential.
         """
+        import random
+        import string
+
         from guardllm.security.outbound_dlp import scan_secret_spans
 
-        token = "PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52ZkBtJqrys4WKrg"
-        long_tail = "".join("aZ9" for _ in range(80))[:200]
-        for gap in ('""', "``", "<>", "[]", '","', "''"):
-            text = token + gap + long_tail
-            spans, labels = scan_secret_spans(text)
-            assert labels, f"gap {gap!r}: a 200 character continuation went unreported"
-        # A benign document is not refused for holding a name beside a value.
-        for name in ("camelCaseKey2", "a" * 79, "base64ishValue123"):
+        rng = random.Random(7)
+        value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
+        for name in ("k" * 20, "k" * 80, "camelCaseKeyName2" * 13, "a" * 220):
             for text in (
-                f'{{"a": "{token}", "{name}": "next"}}',
-                f"<{name}>{token}</{name}><e>n</e>",
+                f'{{"a": "{value}", "{name}": "next"}}',
+                f"<{name}>{value}</{name}><e>n</e>",
+                f'<n a="{value}" {name}="next"/>',
             ):
-                assert not scan_secret_spans(text)[1], f"{name!r} read as a continuation"
+                spans, labels = scan_secret_spans(text)
+                assert labels == [], f"{len(name)} character name read as a value"
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                for delimiter in ('"', "<", ">"):
+                    assert out.count(delimiter) == text.count(delimiter), (
+                        f"name of {len(name)}: {delimiter!r} consumed"
+                    )
 
     def test_a_damaged_chart_is_still_a_chart(self):
         """Requiring every step to be exactly one was as wrong as "sorted".
@@ -3405,7 +3411,7 @@ class TestRecognitionAndAttribution:
             secret = display[grammar.label] + "".join(rng.choice(alphabet) for _ in range(size))
             if grammar.label not in _scan_secrets(secret):
                 continue
-            attacked = "\u200d".join(secret)
+            attacked = "‍".join(secret)
             for text in (
                 '{"v":"' + attacked + '","tail":"keep"}',
                 "<v>" + attacked + "</v><tail>keep</tail>",
@@ -3423,14 +3429,48 @@ class TestRecognitionAndAttribution:
                 assert "keep" in out, "the record lost its other field"
         assert checked >= 12, f"only {checked} grammars reached the assertion"
 
+    def test_prose_joined_by_an_invisible_is_not_a_credential(self):
+        """The same rule as above, asked from the other side.
+
+        A mark between the characters of a value must not end it. A mark
+        between two WORDS must not join them into one, and reading the
+        invisible-stripped form as the PRIMARY one did exactly that: every soft
+        hyphen and zero-width joiner became a token-forming character, a
+        pangram joined at its word boundaries became one run scoring 4.6 bits,
+        and 1,000 of 1,000 of them were labelled and refused by the vault.
+
+        Removing invisibles joins words exactly as removing whitespace does, so
+        it earns the same digit requirement. The raw form is primary; the
+        stripped form is a secondary reading and pays for it.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        for mark in ("­", "‍", "​", "﻿"):
+            for sentence in (
+                "sphinx of black quartz judge my vow",
+                "pack my box with five dozen liquor jugs",
+                "the five boxing wizards jump quickly",
+                "how vexingly quick daft zebras jump",
+                "two driven jocks help fax my big quiz",
+            ):
+                text = mark.join(sentence.split())
+                spans, labels = scan_secret_spans(text)
+                assert labels == [], f"{mark!r}: {sentence!r} read as a credential"
+                assert spans == [], f"{mark!r}: {sentence!r} spanned"
+                assert _vault().deidentify(text, deny_action="fail").allowed, (
+                    f"{mark!r}: an ordinary sentence was refused"
+                )
+
     def test_a_quoted_credential_at_the_end_of_a_file_does_not_crash(self):
         """The commonest shape there is, and it raised out of the scanner.
 
-        A continuation that is empty reached the sorted-run test, which indexed
-        position zero of nothing: ``TOKEN="<key>"`` with nothing after the
-        closing quote raised IndexError from scan_secret_spans, 20 times in 20,
-        and through the vault as well. Anything shorter than two characters is
-        not a chart and is not asked.
+        The boundary-split rule that used to follow a value past a quote handed
+        the sorted-run test an empty continuation, which indexed position zero
+        of nothing: ``TOKEN="<key>"`` with nothing after the closing quote
+        raised IndexError from scan_secret_spans, 20 times in 20, and through
+        the vault as well. That rule is gone, so nothing reaches the guard with
+        an empty run today; the shape it crashed on is pinned here anyway,
+        because it is the commonest one a file ends with.
         """
         import random
         import string
@@ -3475,31 +3515,14 @@ class TestRecognitionAndAttribution:
             assert not _monotonic(value), f"{value!r} suppressed as a chart"
             assert _scan_secrets(value), f"{value!r} missed"
         assert _monotonic("abcdefghijklmnopqrstuvwxyz")
-        # And a run too short to be a chart is not one. `continues` asks the
-        # length first, so nothing reaches this with an empty string today;
-        # the guard is what stops that being an accident.
+        # And a run too short to be a chart is not one. Nothing hands it an
+        # empty string today, now that the rule which used to has been removed.
+        # Asserted directly rather than reached through a fixture, because a
+        # guard no caller can reach is the kind that rots: without it the walk
+        # below reads an empty run as a chart of nothing and returns True, and
+        # the next rule to call this inherits the crash.
         assert not _monotonic("")
         assert not _monotonic("a")
-
-    def test_a_continuation_behind_the_span_is_seen_too(self):
-        """The halves of a split value do not score alike.
-
-        It is routinely the SECOND half that clears the bar and takes the span,
-        leaving the first one behind it, so looking only ahead of a span misses
-        exactly half of these.
-        """
-        import random
-        import string
-
-        from guardllm.security.outbound_dlp import scan_secret_spans
-
-        rng = random.Random(5)
-        head = "".join(rng.choice(string.ascii_lowercase) for _ in range(200))
-        tail = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
-        for gap in ('"', "`", "<", "["):
-            spans, labels = scan_secret_spans(head + gap + tail)
-            assert spans, "the second half should still take a span"
-            assert labels, f"gap {gap!r}: the half behind the span went unreported"
 
     def test_an_alphabet_in_order_is_not_a_secret(self):
         """It has maximal entropy by construction and carries nothing.
@@ -3508,6 +3531,19 @@ class TestRecognitionAndAttribution:
         and mathematical rows that already tripped this. A random value is
         sorted with a probability that rounds to nothing at these lengths, so
         refusing a monotonic run costs no detection.
+
+        The last row is why the comparison lowercases first, and it is here
+        rather than left to the full-width row above because the two forms no
+        longer agree. ``strip_invisibles`` runs a confusable table that answers
+        in lowercase, so the full-width chart reaches the stripped form as
+        ``abcDeFghijklmnopQRstUvWxyz``; ``_fold_ascii`` restores the case the
+        source character had, so it reaches the RAW form as plain capitals.
+        The raw form is the primary one now, which left nothing exercising the
+        mixed-case path. This row supplies one directly: caseless symbols the
+        table reads as lowercase letters, alternating with ASCII capitals, so
+        it folds to ``aBcDeFgH...``. Consecutive case-insensitively, and
+        twenty-five irregular steps in code points, which without the lowering
+        is a 4.7 bit secret and a refused document.
         """
         for chart in (
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -3516,6 +3552,8 @@ class TestRecognitionAndAttribution:
             "\uff2b\uff2c\uff2d\uff2e\uff2f\uff30\uff31\uff32\uff33\uff34"
             "\uff35\uff36\uff37\uff38\uff39\uff3a",
             "ZYXWVUTSRQPONMLKJIHGFEDCBA",
+            "\u237aB\u217dD\u025cF\u210aH\u02db"
+            "J\u03baL\u217fN\u2207P\u051bR\u01bdT\u1d1cV\u1d21X\u0263Z",
         ):
             assert not _scan_secrets(chart), f"{chart[:12]!r} read as a secret"
         # And a real high-entropy token is still one.

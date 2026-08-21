@@ -854,10 +854,6 @@ def scan_secret_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     for label in _normalized_labels(text, [(lo, hi) for lo, hi, _ in exact], pack):
         if label not in labels:
             labels.append(label)
-    if _split_by_structure(text, merged_spans):
-        boundary = "High-entropy token (split across a boundary)"
-        if boundary not in labels:
-            labels.append(boundary)
     return merged_spans, labels
 
 
@@ -931,9 +927,11 @@ def _monotonic(token: str) -> bool:
     ``abcDeFghi...`` and does not step by one in code points at all.
 
     Anything shorter than two characters is not a chart, and asking was a
-    crash: an empty continuation reached this from _split_by_structure and
-    indexed position zero of nothing, so ``TOKEN="<key>"`` at the end of a file
-    raised IndexError out of the span scanner.
+    crash: the boundary-split rule that used to sit below this one handed it an
+    empty continuation, which indexed position zero of nothing, so
+    ``TOKEN="<key>"`` at the end of a file raised IndexError out of the span
+    scanner. That rule is gone; the guard stays, because nothing should have to
+    know that it is the only caller that could reach it.
     """
     if len(token) < 2:
         return False
@@ -985,9 +983,14 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
     that long: a span ran from a JSON value through ``", "`` and into a twenty
     character key, 100 times in 100, and the record came out unparseable. There
     is no safe length, because a name may be any length. A value split across
-    structure gets a label instead, from _split_by_structure below, so it is
-    refused rather than either leaked or replaced by a span that eats the
-    document.
+    structure is therefore NOT reported at all. Reporting one was carried for
+    two rounds and measured wrong in both directions every time -- judging the
+    far side of the break by its contents labelled 1,000 of 1,500 benign
+    documents, judging it by length labelled 1,000 of 1,000 holding a 220
+    character key -- and neither caught a value split between two JSON fields,
+    where the continuation is two fragments away rather than one. The record
+    keeping its shape is what is guaranteed here; the split is recorded as open
+    in the handoff.
     """
     first = True
     while lo > 0:
@@ -1021,66 +1024,6 @@ def _entropy_extent(text: str, lo: int, hi: int) -> tuple[int, int]:
             break
         hi, first = frag, False
     return lo, hi
-
-
-def _split_by_structure(text: str, spans: list[tuple[int, int]]) -> bool:
-    """Is a high-entropy run continued past a structural break?
-
-    The walk above will not cross one, because a span that does corrupts the
-    document it is protecting. But a value driven apart with a pair of quotes,
-    backticks or brackets is still a value driven apart, and saying nothing
-    left 897 of 900 of them in the text with 1,024 characters of one readable.
-
-    So the extent stays where it is and the finding is reported without one,
-    but only where what lies beyond the break is longer than any name, which is
-    the only thing that separates the two. See ``continues`` below for what was
-    tried instead and what it cost.
-    """
-
-    def continues(piece: str) -> bool:
-        """Is this more of a value, or the next thing along?
-
-        Only length answers it. Everything else that was tried here answers it
-        for both at once, because a key, a tag and an attribute name sit on the
-        far side of a structural break exactly as a continuation does, and they
-        are made of the same characters. Digits with both cases was tried:
-        it caught 844 of 1,750 split values and put a label on 1,000 of 1,500
-        benign JSON and XML documents that merely held a redacted identifier
-        next to a camel-cased key. On the host path each of those is a refused
-        document, and two thirds of them is not a scanner.
-
-        Dropping it costs 128 further silent cases of 1,750 and takes the worst
-        survivor from 79 characters to 80, which is the whole price. What the
-        length keeps is the case it was added for: a tail of 256 or 1,024
-        characters is still reported, and those were 450 of the 900 that used
-        to go out in full.
-        """
-        return len(piece) >= 8 * _ENTROPY_MIN_LENGTH and not _monotonic(piece)
-
-    for lo, hi in spans:
-        # Behind the span as well as ahead of it. The halves of a split value
-        # do not score alike, and it is routinely the SECOND half that clears
-        # the bar and takes the span, leaving the first one behind it.
-        gap = lo
-        while gap > 0 and not _entropy_body(text[gap - 1]):
-            gap -= 1
-        if gap != lo and lo - gap <= _MAX_GAP and _structural(text[gap:lo]):
-            frag = gap
-            while frag > 0 and _entropy_body(text[frag - 1]):
-                frag -= 1
-            if continues(text[frag:gap]):
-                return True
-        gap = hi
-        while gap < len(text) and not _entropy_body(text[gap]):
-            gap += 1
-        if gap == hi or gap - hi > _MAX_GAP or not _structural(text[hi:gap]):
-            continue
-        frag = gap
-        while frag < len(text) and _entropy_body(text[frag]):
-            frag += 1
-        if continues(text[gap:frag]):
-            return True
-    return False
 
 
 def _scan_secrets(text: str) -> list[str]:
@@ -1122,7 +1065,15 @@ def _scan_secrets(text: str) -> list[str]:
     # form, only consider tokens that contain a digit: this is the signature of
     # a machine token/secret, and it prevents a natural-language sentence
     # (whose words merge into one long alphabetic run) from being flagged.
-    entropy_forms: list[tuple[str, bool]] = [(stripped, False)]
+    # The raw form is the primary one. Reading the invisible-stripped form as
+    # primary made every soft hyphen and zero-width joiner between two words a
+    # token-forming character: a pangram joined at its word boundaries became
+    # one long run scoring 4.6 bits, and 1,000 of 1,000 of them were labelled
+    # and refused. Removing invisibles joins words exactly as removing
+    # whitespace does, so it earns the same digit requirement.
+    entropy_forms: list[tuple[str, bool]] = [(raw, False)]
+    if stripped != raw:
+        entropy_forms.append((stripped, True))
     if ws_removed != stripped:
         entropy_forms.append((ws_removed, True))
     seen_tokens: set[str] = set()

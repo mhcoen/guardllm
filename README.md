@@ -43,6 +43,12 @@ This is the architectural gap that point tools leave open. Individual tools like
 - Heuristic prompt injection detection (sub-millisecond, no external API calls)
 - Canary token detection for exfiltration signals
 
+**Privacy at the model boundary** (opt-in, see [docs/privacy.md](docs/privacy.md))
+- Pseudonymization before the prompt reaches the provider: personal data is replaced with an opaque token, and the real value is restored only where policy allows
+- Two independent deny-by-default gates: `restore_policy` per tool field, `destination_policy` per destination
+- Declared values and deterministic pattern detection, neither of which infers; a `Detector` protocol for anything else
+- Tokens carry an error-correcting check, so one mangled symbol is recovered and two are refused rather than resolved to the wrong value
+
 **Authorization & policy**
 - Policy-based tool authorization gates
 - Action gating (manual confirmation path for sensitive operations)

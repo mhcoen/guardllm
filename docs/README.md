@@ -12,6 +12,7 @@ This directory contains architecture and integration documentation for using gua
 - [integration.md](integration.md): Practical integration patterns for MCP server/client systems.
 - [oauth_integration.md](oauth_integration.md): mapping OAuth scopes to Guard policy and tool-gating decisions.
 - [integration_templates.md](integration_templates.md): copy-paste templates for MCP server/client and untrusted-input ingestion.
+- [privacy.md](privacy.md): pseudonymization at the model boundary, and the two policies that decide where a real value may be restored.
 - [configuration.md](configuration.md): Policy controls and deployment guidance.
 - [policy_tuning.md](policy_tuning.md): guidance for safely tuning policy strictness.
 - [troubleshooting.md](troubleshooting.md): common failure modes, fixes, and FAQ.

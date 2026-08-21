@@ -128,6 +128,16 @@ _GRAMMARS: list[_Grammar] = [
     # tokens whose body is exactly their minimum.
     _Grammar("GitHub fine-grained token", ("githubpat",), True, "_", False, 40, 120, "never"),
     _Grammar("GitLab personal access token", ("glpat",), True, "-_", False, 20, 60, "never"),
+    # ``npm`` needs randomness everywhere for the reason ``hf`` does, and more
+    # so: ``npm_config_registry``, ``npm_package_version`` and
+    # ``npm_lifecycle_event`` are environment variables every build script
+    # writes, and each begins at a token boundary AND supplies the separator,
+    # so mid-token randomness is never asked. Measured: ``mid_token`` takes the
+    # silent rate to 0 of 500 and labels 3 of 7 such identifiers plus enum.py;
+    # ``always`` labels none of them. The recall it gives up is small, because
+    # the entropy scan already found all but 12 of 500 on its own. What this
+    # entry buys is the name.
+    _Grammar("npm access token", ("npm",), True, "", False, 30, 60, "always"),
     # ``hf`` is two characters and compaction manufactures it constantly:
     # ``with_files`` compacts to ``withfiles``. The separator rule rejects that
     # one, but ``hf_hub_cache_directory`` supplies the separator and a token
@@ -149,6 +159,31 @@ _GRAMMARS: list[_Grammar] = [
 
 
 _PEM_RE = re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")
+
+#: The one credential here whose evidence is its key rather than its value.
+#:
+#: npm's legacy registry token is 32 to 40 hex characters and carries no
+#: prefix, so every grammar above is blind to it and so is the entropy scan:
+#: 32 hex characters decode to 16 bytes, 16 distinct byte values cap Shannon
+#: entropy at exactly log2(16) = 4.0 bits per byte, and the decode-then-scan
+#: rule asks for 4.5. That rule therefore cannot fire below 46 hex characters
+#: no matter how random the value is, which is why 500 of 500 at 32, 36 and 40
+#: went out silent and the vault passed every one.
+#:
+#: Lowering that bar is not the fix. A length-aware bar on the decoded form
+#: admits 16 random bytes, and it admits every git object id, MD5 digest and
+#: unhyphenated UUID with it, which on the host path is a refused document.
+#:
+#: So the key is the evidence instead. ``_authToken`` is npm's own config key,
+#: it does not appear in prose, and nothing has to be assumed about the shape
+#: of what follows it. The span covers the VALUE only, so the line keeps its
+#: key and the file still parses. ``$`` and ``{`` are outside the value class
+#: on purpose: ``_authToken=${NPM_TOKEN}`` is the documented way to write this
+#: safely, and refusing it would refuse the correct practice.
+_NPM_AUTH_RE = re.compile(
+    r"(?<![A-Za-z0-9])_authToken\s*=\s*([A-Za-z0-9+/=._~-]{20,})",
+    re.IGNORECASE,
+)
 
 #: How wide a run of non-body characters may be and still be read as an
 #: inserted split rather than a boundary between two things.
@@ -611,6 +646,8 @@ def _exact_findings(
     out: list[tuple[int, int, str]] = []
     for m in _PEM_RE.finditer(text):
         out.append((m.start(), m.end(), "Private key header"))
+    for m in _NPM_AUTH_RE.finditer(text):
+        out.append((m.start(1), m.end(1), "npm registry credential"))
 
     joined, cmap = pack if pack is not None else _packed(text)
     for g in _GRAMMARS:

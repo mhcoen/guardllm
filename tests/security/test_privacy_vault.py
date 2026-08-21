@@ -2579,6 +2579,7 @@ _SPLIT_FIXTURES = {
     "stripe_secret": "sk_live_" + "9Hc8JmQ2xR7vB4nZtK5yLd3E",
     "stripe_restricted": "rk_live_" + "4bW8cJ6yL3dEsGfHaPo1iUvQ",
     "stripe_webhook": "whsec_7K2mQ9vB4nZtR6wHc8J5yLd3EsGfKaPo",
+    "npm": "npm_R7kQm2XvB9nZtL4wHc6JyE1sPaGdUf3oIbNr",
 }
 
 
@@ -2656,6 +2657,7 @@ class TestPunctuationSplits:
             "Stripe secret key": _SPLIT_FIXTURES["stripe_secret"],
             "Stripe restricted key": _SPLIT_FIXTURES["stripe_restricted"],
             "Stripe webhook secret": _SPLIT_FIXTURES["stripe_webhook"],
+            "npm access token": _SPLIT_FIXTURES["npm"],
         }
         labels = {g.label for g in _GRAMMARS}
         for label, sample in samples.items():
@@ -3432,6 +3434,7 @@ class TestRecognitionAndAttribution:
             "Stripe secret key": "sk_live_",
             "Stripe restricted key": "rk_live_",
             "Stripe webhook secret": "whsec_",
+            "npm access token": "npm_",
             "Slack token": "xoxb-",
             "Bearer/JWT token": "Bearer ",
         }
@@ -4005,3 +4008,99 @@ class TestRegistryAdditions:
         ):
             for text in (name, f'path = "{name}"', f'os.environ["{name.upper()}"]'):
                 assert not _scan_secrets(text), f"{text!r} read as a credential"
+
+
+class TestNpmCredentials:
+    """npm ships two credentials and neither one had a rule.
+
+    The current token is ``npm_`` and 36 base62, which the entropy scan mostly
+    caught and never named. The legacy one is 32 to 40 hex characters with no
+    prefix at all, and nothing saw it: 500 of 500 went out silent at each of
+    those lengths and the vault passed every one.
+    """
+
+    _NPMRC = "//registry.npmjs.org/:_authToken="
+
+    def test_the_legacy_hex_token_is_found_by_its_key(self):
+        """Its value cannot carry the evidence, so the key does.
+
+        32 hex characters decode to 16 bytes, and 16 distinct byte values cap
+        Shannon entropy at exactly log2(16) = 4.0 bits per byte. The
+        decode-then-scan rule asks 4.5, so it cannot fire below 46 hex
+        characters however random the value is. This is the same
+        no-headroom-by-construction shape as a grammar whose minimum equals its
+        issued length, and no threshold change fixes it: a length-aware bar on
+        the decoded form admits 16 random bytes and every git object id, MD5
+        and unhyphenated UUID with them.
+        """
+        import random
+
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        rng = random.Random(2)
+        for size in (32, 36, 40, 48):
+            for _ in range(25):
+                value = "".join(rng.choice("0123456789abcdef") for _ in range(size))
+                text = self._NPMRC + value
+                spans, _labels = scan_secret_spans(text)
+                assert spans, f"{size} hex characters: nothing found"
+                assert "npm registry credential" in _scan_secrets(text)
+                assert not _vault().deidentify(text, deny_action="fail").allowed
+
+    def test_the_line_keeps_its_key(self):
+        """The span covers the value, so the file still parses.
+
+        A span that ate the key would leave a config line npm cannot read,
+        which is the same failure as a span crossing a JSON boundary.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        text = self._NPMRC + "abcdef0123456789abcdef0123456789"
+        spans, _labels = scan_secret_spans(text)
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert out.startswith(self._NPMRC), f"the key was consumed: {out!r}"
+        assert "abcdef" not in out, f"value survived: {out!r}"
+
+    def test_an_environment_placeholder_is_not_a_credential(self):
+        """It is the documented way to write this safely.
+
+        ``$`` and ``{`` sit outside the value class for exactly this reason.
+        Refusing the correct practice would push people back to the literal.
+
+        The placeholders here are all at least twenty characters. A shorter one
+        pins nothing: the rule ignores anything under twenty regardless of what
+        the value class admits, so ``${NPM_TOKEN}`` at twelve characters passes
+        whether ``$`` is excluded or not. The mutation sweep is what caught
+        that, on the first fixtures written for this test.
+        """
+        for benign in (
+            self._NPMRC + "${NPM_REGISTRY_AUTH_TOKEN}",
+            self._NPMRC + "$NPM_REGISTRY_AUTH_TOKEN",
+            self._NPMRC + "${NPM_CONFIG_REGISTRY_AUTH_TOKEN}",
+            self._NPMRC + "${{ secrets.NPM_PUBLISH_AUTH_TOKEN }}",
+            "const my_authToken = getAuthorizationTokenFromTheProvider()",
+            "_authToken=short",
+        ):
+            assert not _scan_secrets(benign), f"{benign!r} read as a credential"
+
+    def test_an_npm_environment_variable_is_not_a_token(self):
+        """Why that anchor requires randomness everywhere.
+
+        ``npm_config_registry``, ``npm_package_version`` and
+        ``npm_lifecycle_event`` are written by every build script, and each
+        begins at a token boundary AND supplies the separator, so the mid-token
+        rule is never asked. Measured: mid_token labels 3 of these 7 and
+        enum.py as well, always labels none.
+        """
+        for name in (
+            "npm_package_version_string_for_release",
+            "npm_config_registry_default_endpoint",
+            "npm_lifecycle_event_handler_name_value",
+            "process.env.npm_execpath_resolution",
+            "the npm_config_prefix_directory_setting",
+            "npm_package_dependencies_resolution_map",
+            "NPM_CONFIG_USERCONFIG_FILE_LOCATION_VAR",
+        ):
+            assert not _scan_secrets(name), f"{name!r} read as a credential"

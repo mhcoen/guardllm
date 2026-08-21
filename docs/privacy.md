@@ -169,6 +169,12 @@ Check `prepared.allowed` and `shown.allowed` before acting on either result.
 - **It does not protect a path that does not go through it.** Content the host
   sends to a provider without calling `deidentify` is not covered, in the same
   way the rest of GuardLLM governs the paths routed through it.
+- **It may replace a whole line, but only on an unambiguous finding.** When
+  credential material survives substitution, the vault replaces the line
+  carrying it rather than the document, and says so in `warnings`. A run that
+  is merely an alphabet in order is reported and never rewritten, because the
+  RFC 4648 Base32 alphabet is both a character table and a valid TOTP shared
+  secret, and destroying a line on that ambiguity loses data silently.
 
 ## Related
 

@@ -3585,6 +3585,12 @@ class TestRecognitionAndAttribution:
         direction, because a value can be indistinguishable from an alphabet
         only by being one.
 
+        "Never corrupted" was stated here before it was true of every path. A
+        second review found that the vault's residue sweep acted on the new
+        label and replaced the whole line, so the label carries its own name
+        now and a caller that rewrites content skips it. The neighbouring
+        test pins that; this one pins the span.
+
         Folding made three more styles of alphabet chart look like the plain
         and mathematical rows that already tripped this. A random value is
         sorted with a probability that rounds to nothing at these lengths, so
@@ -3619,6 +3625,37 @@ class TestRecognitionAndAttribution:
             assert spans == [], f"{chart[:12]!r} was spanned, so it would be redacted"
         # And a real high-entropy token is still one.
         assert _scan_secrets("PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52Zk")
+
+    def test_a_chart_is_never_rewritten_on_the_ingest_path_either(self):
+        """Reporting a chart must not licence destroying the line it sits on.
+
+        The first version of this fix gave a chart the generic high-entropy
+        label, and the vault's residue sweep acts on exactly what the egress
+        blocker reports. So `alphabet = abcdefghijklmnopqrstuvwxyz` came back
+        from sensitive ingest as `[redacted:credential]`, with nothing in
+        `findings` to say a line had been destroyed. A review caught it, and
+        it is the worse failure of the two: the leak this reporting was added
+        to close is loud at egress, and this was silent data loss.
+
+        A chart carries its own finding now. Both are reported, so a TOTP
+        secret written as the Base32 alphabet is still refused, and only the
+        unambiguous one licences a rewrite.
+        """
+        import dataclasses
+
+        from guardllm.security.types import SensitivityLevel
+
+        guard = Guard(privacy=_config())
+        ctx = dataclasses.replace(
+            Guard.context_document(document_id="d"), sensitivity=SensitivityLevel.SENSITIVE
+        )
+        doc = "alphabet = abcdefghijklmnopqrstuvwxyz\nkeep = this line"
+        assert doc in guard.process_inbound(doc, ctx).content, "the chart's line was rewritten"
+
+        # And the sweep still does its job on a value that is not ambiguous.
+        real = "key = sk-abcdefghijklmnopqrstuvwxyz1234\nkeep = this line"
+        swept = guard.process_inbound(real, ctx).content
+        assert "sk-abcdefghijklmnopqrstuvwxyz1234" not in swept, "a real key survived"
 
     def test_a_chart_that_is_also_a_secret_is_still_reported(self):
         """The Base32 alphabet in order is a valid TOTP shared secret.

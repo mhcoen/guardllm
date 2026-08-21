@@ -160,6 +160,26 @@ _GRAMMARS: list[_Grammar] = [
 
 _PEM_RE = re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")
 
+#: A run that is one stretch of an alphabet written straight through. Reported,
+#: because the RFC 4648 Base32 alphabet in order is also a valid TOTP shared
+#: secret and nothing can tell the two apart. Named separately from a generic
+#: high-entropy finding because the two mean different things to a caller that
+#: acts: a located credential can be replaced, whereas a run far more often a
+#: character table than a secret must not be. ``is_ambiguous_finding`` below is
+#: how a caller asks, rather than by matching this string.
+_AMBIGUOUS_ALPHABET = "Alphabet run (ambiguous: a character table or a secret)"
+
+
+def is_ambiguous_finding(label: str) -> bool:
+    """Is this finding too ambiguous to justify rewriting the text it came from?
+
+    A caller that only reports findings can ignore this. A caller that DESTROYS
+    content on one cannot: the vault's residue sweep replaces a whole line, and
+    doing that for an alphabet chart corrupts documents silently.
+    """
+    return label == _AMBIGUOUS_ALPHABET
+
+
 #: The one credential here whose evidence is its key rather than its value.
 #:
 #: npm's legacy registry token is 32 to 40 hex characters and carries no
@@ -1187,7 +1207,22 @@ def _scan_secrets(text: str) -> list[str]:
                 _ENTROPY_THRESHOLD, math.log2(len(token)) - _ENTROPY_LENGTH_MARGIN
             )
             if entropy >= effective_threshold:
-                label = f"High-entropy token ({entropy:.1f} bits)"
+                # A chart gets its own label rather than the generic one. Both
+                # are reported, so a TOTP secret written as the Base32 alphabet
+                # is still refused at egress, but the two are not
+                # interchangeable to a caller that ACTS on a finding: the
+                # vault's residue sweep replaces any line that scans as
+                # carrying credential material, and with one label it replaced
+                # `alphabet = abcdefghijklmnopqrstuvwxyz` outright. Destroying
+                # a line on a run that is far more often a character table
+                # than a secret is the corruption the whole span/label
+                # division exists to avoid, and it is silent, which is what
+                # makes it worse than the leak it was guarding against.
+                label = (
+                    _AMBIGUOUS_ALPHABET
+                    if _monotonic(token)
+                    else f"High-entropy token ({entropy:.1f} bits)"
+                )
                 if label not in found:
                     found.append(label)
                 continue

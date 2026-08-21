@@ -880,14 +880,28 @@ class PrivacyVault:
         split value, and because replacing the document was the failure this
         exists to avoid.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from guardllm.security.outbound_dlp import _scan_secrets, is_ambiguous_finding
 
-        if not _scan_secrets(content):
+        def actionable(text: str) -> bool:
+            """Findings that justify destroying the line they came from.
+
+            An alphabet chart is reported at egress, because the RFC 4648
+            Base32 alphabet in order is also a valid TOTP shared secret. It
+            must not be swept here: this replaces a whole line, and
+            ``alphabet = abcdefghijklmnopqrstuvwxyz`` became
+            ``[redacted:credential]`` with nothing in ``findings`` to say so.
+            Reporting an ambiguous run is safe in both directions; rewriting
+            on one is not, and rewriting silently is worse than the leak the
+            report was added to prevent.
+            """
+            return any(not is_ambiguous_finding(label) for label in _scan_secrets(text))
+
+        if not actionable(content):
             return content, 0
         swept = 0
         lines = content.split("\n")
         for i, line in enumerate(lines):
-            if _scan_secrets(line):
+            if actionable(line):
                 lines[i] = marker_for(PIIClass.CREDENTIAL)
                 swept += 1
         rebuilt = "\n".join(lines)
@@ -917,14 +931,19 @@ class PrivacyVault:
         look again. The bound is the line count, since every pass replaces at
         least one line and a marker does not scan.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from guardllm.security.outbound_dlp import _scan_secrets, is_ambiguous_finding
 
         lines = list(lines)
         swept = 0
         start = 0
 
         def scans(a: int, b: int) -> bool:
-            return bool(_scan_secrets("\n".join(lines[a:b])))
+            # The same question the per-line pass asks. An ambiguous alphabet
+            # run is reported but never justifies replacing the text it came
+            # from, and this path replaces whole runs of lines.
+            return any(
+                not is_ambiguous_finding(label) for label in _scan_secrets("\n".join(lines[a:b]))
+            )
 
         while start < len(lines):
             # Only the part after the last block is rescanned. Everything

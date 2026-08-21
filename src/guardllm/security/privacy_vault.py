@@ -169,7 +169,7 @@ def resolve_field(
     allowed = best[2]
     if allowed == REDACT:
         return FieldDecision("redact")
-    if isinstance(allowed, (frozenset, set, list, tuple)):
+    if isinstance(allowed, frozenset | set | list | tuple):
         if pii_class in allowed:
             return FieldDecision("restore")
         return FieldDecision(
@@ -216,7 +216,7 @@ def _iter_strings(
             if isinstance(k, str):
                 yield k
             yield from _iter_strings(v, max_depth, max_nodes, depth + 1, budget)
-    elif isinstance(node, (list, tuple, set)):
+    elif isinstance(node, list | tuple | set):
         for v in node:
             yield from _iter_strings(v, max_depth, max_nodes, depth + 1, budget)
 
@@ -1158,13 +1158,9 @@ class PrivacyVault:
             if isinstance(node, str):
                 return _resolve_leaf(node, segments)
             if isinstance(node, dict):
-                return {
-                    k: _walk(v, [*segments, str(k)], depth + 1) for k, v in node.items()
-                }
+                return {k: _walk(v, [*segments, str(k)], depth + 1) for k, v in node.items()}
             if isinstance(node, list):
-                return [
-                    _walk(v, [*segments, str(i)], depth + 1) for i, v in enumerate(node)
-                ]
+                return [_walk(v, [*segments, str(i)], depth + 1) for i, v in enumerate(node)]
             return node
 
         def _resolve_leaf(value: str, segments: list[str]) -> str:

@@ -1534,7 +1534,7 @@ class TestModuleIntegrity:
         tree = ast.parse(path.read_text())
         counts: collections.Counter = collections.Counter()
         for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            if isinstance(node, ast.FunctionDef | ast.ClassDef):
                 counts[node.name] += 1
             elif isinstance(node, ast.Assign):
                 for target in node.targets:
@@ -2563,17 +2563,21 @@ _SPLIT_FIXTURES = {
     # reason recorded above the GitHub fixture, and none of these is a live
     # credential: they are drawn from the documented shape of each format.
     "github_user": "ghu_T4vN8cRb2WmXqZ7hJ5yLd3EsGfKaPo9iUvBn",
-    "github_fine": (
-        "github_pat_11ABCDEFG0aB3cD4eF5gH_"
-        "6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN2oP"
-    ),
-    # These three are written as prefix plus body rather than whole. They are
-    # synthetic like the rest, but a contiguous live-format value in a
+    # The four below are written as prefix plus body rather than whole. They
+    # are synthetic like the rest, but a contiguous live-format value in a
     # committed file is what every secret scanner is built to find, including
     # the one guarding this repository, which refused the push that first
     # carried them. Splitting the literal keeps the file quiet for anyone who
     # clones it and runs a scanner over it. Nothing about the test changes:
     # the grammars are handed the joined value at runtime, anchor and all.
+    #
+    # Joined with ``+`` rather than by writing the halves adjacent. Adjacent
+    # string literals are one literal to the formatter, and ruff format duly
+    # welded this fixture back into a single 93 character token the moment it
+    # ran. An expression it leaves alone.
+    "github_fine": (
+        "github_pat_" + "11ABCDEFG0aB3cD4eF5gH_6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN2oP"
+    ),
     "gitlab": "glpat-" + "x7K2mQ9vB4nZtR6wHc8J",
     "huggingface": "hf_QmZ7vK2xR9tN4bW8cJ6yL3dEsGfHaPo1iUv",
     "stripe_secret": "sk_live_" + "9Hc8JmQ2xR7vB4nZtK5yLd3E",

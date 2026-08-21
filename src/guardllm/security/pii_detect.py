@@ -993,7 +993,7 @@ def _run_detector(detector: Detector, text: str) -> tuple[list[DetectedSpan], st
         return [], "detector rejected: missing a string `id`"
 
     declared = getattr(detector, "classes", None)
-    if not isinstance(declared, (frozenset, set)) or not declared:
+    if not isinstance(declared, frozenset | set) or not declared:
         return [], f"detector {detector_id!r} rejected: no declared `classes`"
 
     find = getattr(detector, "find", None)

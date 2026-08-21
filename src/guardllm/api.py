@@ -48,7 +48,7 @@ def _string_leaves(node: object) -> list[str]:
                 out.append(k)
             out.extend(_string_leaves(v))
         return out
-    if isinstance(node, (list, tuple, set)):
+    if isinstance(node, list | tuple | set):
         out = []
         for v in node:
             out.extend(_string_leaves(v))

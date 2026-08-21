@@ -15,6 +15,17 @@
 \documentclass[border=12pt]{standalone}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds}
+
+% Fill the page instead of leaving it transparent. Without this the PDF and the
+% SVG carry no background at all, which reads correctly on a white page and is
+% largely illegible on GitHub in dark mode: the figure's own text is near-black
+% and the window behind it is too. The diagram is designed on white, so it says
+% white rather than inheriting whatever sits behind it.
+%
+% NOT the standalone `bgcolor` option, which that class does not define: it is
+% accepted silently and dropped with an "Unused global option" warning, so the
+% rebuild looks like it worked and the background is still transparent.
+\pagecolor{white}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 

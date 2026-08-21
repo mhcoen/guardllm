@@ -7,6 +7,10 @@
 
 LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
+> **GuardLLM is not protecting LLMs. It is protecting the companies that use them.**
+>
+> GuardLLM assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate GuardLLM by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through GuardLLM.
+
 **[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
 [See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
@@ -150,6 +154,8 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 ## Benchmark Highlights
 
 GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
+
+**Detection is not the security boundary.** The text benchmark below measures one supporting signal, not GuardLLM's end-to-end security model.
 
 Text benchmark (prompt-injection detection, `3823` records). **These vendor figures are not
 currently reproducible from a tracked artifact.** The injection section of the checked-in

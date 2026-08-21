@@ -43,7 +43,10 @@ from functools import cache
 from typing import NamedTuple
 
 from guardllm.security.normalization import (
+    _BIDI_RE,
     _CONFUSABLE_TABLE,
+    _INVISIBLE_RE,
+    _TAG_CHAR_RE,
     MAX_OVERLAP_CHARS,
     compute_lcs_length,
     compute_ngram_overlap,
@@ -268,8 +271,26 @@ def _is_alnum(ch: str) -> bool:
     return ch.isascii() and ch.isalnum()
 
 
+def _invisible(ch: str) -> bool:
+    """A character with no width, which cannot be part of anything's meaning.
+
+    strip_invisibles removes these before the egress scan, and the span scanner
+    cannot, because removing them moves every index after each one. So they are
+    read as transparent instead: a body run passes through them and the span
+    covers them, which is right, since they sit INSIDE the value an attacker
+    put them in.
+    """
+    return bool(_INVISIBLE_RE.match(ch) or _TAG_CHAR_RE.match(ch) or _BIDI_RE.match(ch))
+
+
 def _is_body(ch: str, g: _Grammar) -> bool:
     """Is this character part of this grammar's body?"""
+    if _invisible(ch):
+        # Transparent, not terminal. A zero-width joiner driven into a token
+        # broke the body run there, so the span stopped at it and up to 29
+        # visible characters of the value were left in the text with nothing
+        # reported, 239 times in 700.
+        return True
     if not ch.isascii():
         return False
     if ch in g.body_extra:
@@ -917,18 +938,25 @@ def _monotonic(token: str) -> bool:
     if len(token) < 2:
         return False
     plain = token.lower()
-    rising = falling = True
-    previous = plain[0]
-    for char in plain[1:]:
-        step = ord(char) - ord(previous)
-        if step != 1:
-            rising = False
-        if step != -1:
-            falling = False
-        if not rising and not falling:
-            return False
-        previous = char
-    return rising or falling
+    # A chart may be damaged and still be a chart. Requiring every step to be
+    # exactly one was too narrow by as much as "sorted" was too broad: a row
+    # with a letter missing, a letter repeated, two letters swapped or a
+    # separator dropped in was no longer suppressed, and 142 of 214 such rows
+    # came back as false spans, every one of which the vault refuses. A few
+    # irregular steps is a damaged chart; a value that merely ascends has
+    # almost nothing but irregular steps.
+    # Three, which covers a missing letter, a repeat, a swap and a separator
+    # dropped in, and is far below what a value that merely ascends scores. A
+    # proportional allowance was tried and suppressed 10 of 500 sorted secrets;
+    # a fixed one suppresses none of 1,000.
+    allowed = 3
+    for direction in (1, -1):
+        irregular = sum(
+            ord(b) - ord(a) != direction for a, b in zip(plain, plain[1:], strict=False)
+        )
+        if irregular <= allowed:
+            return True
+    return False
 
 
 def _entropy_body(ch: str) -> bool:

@@ -3321,6 +3321,108 @@ class TestRecognitionAndAttribution:
             ):
                 assert not scan_secret_spans(text)[1], f"{name!r} read as a continuation"
 
+    def test_a_damaged_chart_is_still_a_chart(self):
+        """Requiring every step to be exactly one was as wrong as "sorted".
+
+        Sorted suppressed 1,000 of 1,000 high-entropy secrets. Consecutive
+        stopped suppressing a row with a letter missing, a letter repeated, two
+        letters swapped or a separator dropped in, and 142 of 214 such rows
+        came back as false spans, each of which the vault refuses. A few
+        irregular steps is a damaged chart; a value that merely ascends has
+        almost nothing but irregular steps.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import _monotonic, scan_secret_spans
+
+        for chart in (
+            "abcdefghijklmnopqrstuvwxyz",
+            "abcdefghijklmnoprstuvwxyz",  # a letter missing
+            "abcdefgghijklmnopqrstuvwxyz",  # a letter repeated
+            "abcdefghijklmnoqprstuvwxyz",  # two swapped
+            "abcdefghijklm-nopqrstuvwxyz",  # a separator dropped in
+            "zyxwvutsrqponmlkjihgfedcba",
+            "0123456789abcdefghijklmnopqrstuvwxyz",
+        ):
+            assert scan_secret_spans(chart)[0] == [], f"{chart[:14]!r} spanned"
+        # And the allowance is nowhere near what an ascending value scores.
+        # Drawn from base62, because a sorted sample of thirty from an alphabet
+        # of thirty-six leaves only six gaps and genuinely is a damaged chart.
+        # That is the limit of this rule and not a defect in it: a value can be
+        # indistinguishable from an alphabet only by being one.
+        rng = random.Random(21)
+        alphabet = string.ascii_letters + string.digits
+        for _ in range(200):
+            value = "".join(sorted(rng.sample(alphabet, 30)))
+            assert not _monotonic(value), f"{value!r} suppressed as a chart"
+
+    def test_an_invisible_character_does_not_end_a_value(self):
+        """It ended the body run, so the span stopped at it.
+
+        A zero-width joiner between every character of a token left the span
+        covering only part of it, and up to 29 visible characters stayed in the
+        text with nothing reported, 239 times in 700. strip_invisibles removes
+        these before the egress scan and the span scanner cannot, because
+        removing them moves every index after each one. They are transparent
+        instead, so the run passes through and the span covers them, which is
+        right: they sit inside the value.
+
+        Written over the whole registry rather than one fixture, because which
+        grammar leaks depends on how its body class and minimum interact with
+        the fragments the marks create, and a single value pins none of it.
+        """
+        import random
+        import string
+
+        from guardllm.security.outbound_dlp import (
+            _GRAMMARS,
+            _invisible,
+            scan_secret_spans,
+        )
+
+        rng = random.Random(932)
+        display = {
+            "OpenAI project key": "sk-proj-",
+            "OpenAI API key": "sk-",
+            "AWS access key": "AKIA",
+            "Google OAuth token": "ya29.",
+            "GitHub OAuth token": "gho_",
+            "GitHub personal access token": "ghp_",
+            "GitHub app token": "ghs_",
+            "GitHub refresh token": "ghr_",
+            "Slack token": "xoxb-",
+            "Bearer/JWT token": "Bearer ",
+        }
+        checked = 0
+        for grammar in _GRAMMARS:
+            alphabet = (
+                string.ascii_uppercase + string.digits
+                if grammar.upper_only
+                else string.ascii_letters + string.digits + grammar.body_extra
+            )
+            size = min(grammar.max_body, max(grammar.min_body + 12, 40))
+            secret = display[grammar.label] + "".join(rng.choice(alphabet) for _ in range(size))
+            if grammar.label not in _scan_secrets(secret):
+                continue
+            attacked = "\u200d".join(secret)
+            for text in (
+                '{"v":"' + attacked + '","tail":"keep"}',
+                "<v>" + attacked + "</v><tail>keep</tail>",
+            ):
+                checked += 1
+                spans, labels = scan_secret_spans(text)
+                out = text
+                for lo, hi in sorted(spans, reverse=True):
+                    out = out[:lo] + " " * (hi - lo) + out[hi:]
+                visible = "".join(c for c in out if not _invisible(c))
+                run = _longest_surviving_run(visible, secret)
+                assert not run or labels, (
+                    f"{grammar.label}: {run} visible characters left, not reported"
+                )
+                assert "keep" in out, "the record lost its other field"
+        assert checked >= 12, f"only {checked} grammars reached the assertion"
+
     def test_a_quoted_credential_at_the_end_of_a_file_does_not_crash(self):
         """The commonest shape there is, and it raised out of the scanner.
 
@@ -3445,14 +3547,17 @@ class TestRecognitionAndAttribution:
             out = _vault().deidentify(document, deny_action="marker")
             return time.perf_counter() - start, out.content
 
-        small, small_out = sweep(16)
-        large, large_out = sweep(64)
+        # Thirty-two against a hundred and twenty-eight: at sixteen and
+        # sixty-four the quadratic term is still small enough to hide under
+        # the bound below, and this test passed with the window growth removed.
+        small, small_out = sweep(32)
+        large, large_out = sweep(128)
         for content in (small_out, large_out):
             assert content != marker_for(PIIClass.CREDENTIAL), "whole document replaced"
             assert "spacer: value" in content, "every block replaced, not just residue"
         # Four times the blocks. Quadratic would be about sixteen times the
         # work; the bound is loose so this measures shape, not a machine.
-        assert large < small * 9, f"{small:.4f}s for 16, {large:.4f}s for 64"
+        assert large < small * 9, f"{small:.4f}s for 32, {large:.4f}s for 128"
 
     def test_a_long_run_is_judged_without_being_copied(self):
         """The sorted-run test walks; it does not pair.

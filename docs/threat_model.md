@@ -12,17 +12,15 @@ The aim is to be precise about *what GuardLLM is responsible for* so application
 
 A GuardLLM-using application is, abstractly:
 
-```
-   external sources                    LLM                 tools / sinks
-   (web, email, MCP,        +------------------------+
-    documents, calendar,    |                        |
-    KG extraction)  ───────►|       application      |───────► (model output,
-                            |                        |          tool calls,
-                            |   +----------------+   |          outbound payloads)
-                            |   |   GuardLLM     |   |
-                            |   +----------------+   |
-                            +------------------------+
-```
+![GuardLLM trust boundaries and the session-risk loop](diagrams/threat_model.svg)
+
+<sub>Source: [`diagrams/threat_model.tex`](diagrams/threat_model.tex). Rebuild with `pdflatex threat_model.tex && pdftocairo -svg threat_model.pdf threat_model.svg`.</sub>
+
+The diagram answers one question the tables below cannot: **what crosses each boundary, and what does not.** Three things are worth reading off it:
+
+- **Party crossings and internal gates are different kinds of thing.** Ingress, the model boundary, and egress are places where data changes hands. Authorization and integrity are decisions *inside* the trusted region: they admit or refuse a flow but never move data across a boundary, which is why they sit on the path rather than at an edge.
+- **The model is a separate party.** Every byte of every prompt leaves the application process, and no control inspects that crossing (T-IN13). Metadata crosses with it and is irreducible: volume, timing, topic, structure, and the tool inventory remain visible regardless of what the payload contains.
+- **The four edges on the session state are the loop.** Ingress writes labels; egress and the authorization gates read them; a high-confidence egress block writes escalation back. Because the gates read state that a *previous* cycle wrote, a block now tightens a later call in the same session. Content passes through the model; labels travel around it, which is why a decision at egress can still read what ingress established.
 
 GuardLLM sits on the data path between untrusted external sources and trusted decision points (the model, tool invocation, outbound destinations). Decisions downstream of ingress can refer back to source trust, provenance, and detection results, but these come from two separate places rather than from one object travelling end to end:
 
@@ -38,13 +36,13 @@ GuardLLM enforces a label discipline across four boundaries:
 1. **Ingress** - content enters from a typed source (`Guard.context_web`, `Guard.context_mcp_server`, etc.). The source determines initial `source_trust`. Content is sanitized, normalized, and wrapped in `<untrusted_content>` framing.
 2. **Authorization** - a tool call is admitted only when a structured `AuthorizationEvent` matches policy. Untrusted-content-derived prompts cannot synthesize their own `AuthorizationEvent`.
 3. **Integrity** - tool-call parameters are checked for consistency via `Guard.bind_request`. Verification recomputes the argument hash and compares it, the message hash, and the TTL against the recorded `Binding`, so any modification between binding and invocation is detected. This is an intra-process consistency check, not a cryptographic (keyed) binding: `Binding` objects are created and verified inside the trusted application process and are not designed to cross a trust boundary.
-4. **Egress** - outbound payloads are checked against provenance and DLP policy. Content tagged untrusted at ingress is detected when it tries to reappear in an outbound message.
+4. **Egress** - outbound payloads are checked against provenance and DLP policy. Content tagged untrusted at ingress is detected when it tries to reappear in an outbound message. *Scope limit:* "outbound payload" here means tool-call arguments and tool responses. Prompt content sent to an inference provider is a separate egress channel that no current control inspects; see T-IN13.
 
 *Future work:* if `Binding` objects ever need to cross a process boundary, the Integrity check would need to become a keyed HMAC (or signature) over `(tool, args_hash, message_hash, created_at, ttl)` verified against a server-held secret. This is not implemented today because bindings stay within the trusted process (A-AS5).
 
 ## Adversaries
 
-GuardLLM considers three adversary classes:
+GuardLLM considers four adversary classes. A1, A2, and A3 are manipulation adversaries: they act on the application to make it do something. A4 is not, and the difference matters for what a control can look like.
 
 ### A1. Untrusted Content Author
 
@@ -85,6 +83,18 @@ is the host's obligation, which is what "cannot break TLS" is carrying. Do not
 read binding as protection against replay performed downstream of the
 pre-dispatch check.
 
+### A4. Inference Provider
+
+Receives every prompt the application sends and returns every completion. Applies when the model runs outside the application process, which is the common deployment.
+
+**Goals**: none in the manipulation sense. A4 is honest-but-curious in the cryptographic meaning of the term: it follows the protocol and may learn from what it receives. That is an adversary model, not an exemption from one.
+
+**Capabilities**: sees prompt and completion content in full, including the isolation framing and the `source_id` carried in it; may retain content indefinitely; may be compelled to disclose it; may operate subprocessors in other jurisdictions. Irreducible metadata crosses regardless of payload: request volume, timing, topic, structure, and the tool inventory. A4 cannot modify the application or forge an `AuthorizationEvent`.
+
+**Why this is exfiltration, not a separate category.** Protected data reaching a third party is a confidentiality loss whether an attacker caused it or the design did. T-IN10 already treats leakage with no attacker behind it (internal detail in an exception message) as in scope, and nothing in the library conditions its egress checks on intent: `_scan_secrets` blocks a credential at egress without asking who put it there. What distinguishes A4 is not that it is benign. It is that the exfiltration rides the intended data path, so no anomaly exists for a detector to find, and the only available control is to not send the data. See T-IN13.
+
+**Third-party exposure.** Even where A4 behaves exactly as contracted, retained prompts are a target for whoever breaches the provider and a source for whoever subpoenas it. The disclosure creates attack surface that outlives the request.
+
 The application itself, the policy configuration, and the principal identity are **trusted**. GuardLLM does not defend against an attacker who can edit `PolicyConfig`, mint principal sessions, or run code in the application process.
 
 ## Threats In Scope (T-IN)
@@ -103,6 +113,7 @@ The application itself, the policy configuration, and the principal identity are
 | T-IN10| Internal detail leakage via exception messages                                           | `Guard.sanitize_exception`                                |
 | T-IN11| Detector evasion via low-cost obfuscation                                                | Multi-signal detector (composition penalty), normalization-before-detection |
 | T-IN12| Empty allowlist treated as allow-all                                                     | Empty allowlist denies by default                         |
+| T-IN13| Protected data exfiltrated to an external inference provider through the prompt itself   | **Not currently mitigated.** Prompt content is never passed to `Guard.check_outbound`, so L3/L4/L5 have no jurisdiction over it: the Egress boundary's scope limit above is exactly this gap. Unlike T-IN8 and T-IN9, this exfiltration rides the intended data path rather than an anomaly, so there is no signal for a detector to find and the only available control is to not send the data. Today this is a host obligation (do not place protected data in prompts bound for an external provider); a de-identification layer is planned |
 
 ## Threats Out of Scope (T-OUT)
 
@@ -131,7 +142,7 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 | A-AS6  | Time clocks are roughly synchronized for anti-replay windows                        | Anti-replay rejects legitimate calls or admits stale ones      |
 | A-AS7  | `<untrusted_content>` framing is preserved through to the model                     | Without framing the model sees untrusted text as system-level  |
 | A-AS8  | Only trusted application adapters construct `AuthorizationEvent`s                    | An attacker who can mint `AuthorizationEvent`s in-process holds authorization authority; the library validates event contents, not origin |
-| A-AS9  | The application calls `check_outbound` on every outbound channel, including the content carried in tool-call arguments, and enforces a block | Egress DLP, provenance, and canary checks never run on that channel, so untrusted or sensitive content leaves uninspected. `check_tool_call` gates the *action* (policy, rate limit, binding) and does not inspect argument content: gating a send does not inspect what is sent. A missed high-confidence DLP or canary block also means egress-feedback escalation never fires, so subsequent tool calls are not tightened |
+| A-AS9  | The application calls `check_outbound` on every outbound channel it *can*, including the content carried in tool-call arguments, and enforces a block. **Scope:** this covers tool-call arguments, tool responses, and outbound payloads. It does not cover the prompt sent to an inference provider, which is a channel `check_outbound` is not called on and could not usefully be called on, since blocking it would block the request itself. That gap is T-IN13, not an instance of this assumption being violated | Egress DLP, provenance, and canary checks never run on that channel, so untrusted or sensitive content leaves uninspected. `check_tool_call` gates the *action* (policy, rate limit, binding) and does not inspect argument content: gating a send does not inspect what is sent. A missed high-confidence DLP or canary block also means egress-feedback escalation never fires, so subsequent tool calls are not tightened |
 
 ## Defense-in-Depth Reminder
 

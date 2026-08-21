@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -271,6 +272,18 @@ class ProcessedContent:
     source_type: str = ""
     source_id: str = ""
     warnings: list[str] = field(default_factory=list)
+    #: L13 findings. Carries classes, offsets, and tokens, never values.
+    pii_findings: list = field(default_factory=list)
+    #: True when de-identification failed and ``content`` was withheld rather
+    #: than returned as plaintext. Hosts must not forward blocked content.
+    blocked: bool = False
+    #: A registered tier-3 detector did not run, so coverage is unknown rather
+    #: than clean. Typed so a host can adopt the stricter posture without
+    #: parsing warning text.
+    detection_incomplete: bool = False
+    #: True when a tier-3 detector was loaded. The documented sub-millisecond,
+    #: no-ML, no-network characteristics describe the built-in tiers only.
+    inference_used: bool = False
 
 
 @dataclass
@@ -364,3 +377,352 @@ class AuditEvent:
     session_id: str | None = None
     timestamp: float | None = None
     request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# L13: privacy vault
+# ---------------------------------------------------------------------------
+
+
+class PIIClass(Enum):
+    """Classes of direct identifier the vault recognizes.
+
+    PERSON and ADDRESS are reachable only through host-seeded values or a
+    registered tier-3 ``Detector``: the built-in tiers do not attempt them, because
+    finding a name in free text means inferring a label from content, which
+    this library does not do (see the two-input model in docs/threat_model.md).
+    """
+
+    EMAIL = "email"
+    PHONE = "phone"
+    SSN = "ssn"
+    CREDIT_CARD = "credit_card"
+    IBAN = "iban"
+    ROUTING_NUMBER = "routing_number"
+    IPV4 = "ipv4"
+    IPV6 = "ipv6"
+    MAC = "mac"
+    DATE_OF_BIRTH = "date_of_birth"
+    PASSPORT = "passport"
+    DRIVERS_LICENSE = "drivers_license"
+    NATIONAL_ID = "national_id"
+    MEDICAL_RECORD = "medical_record"
+    PERSON = "person"
+    ADDRESS = "address"
+    URL = "url"
+    #: API keys, tokens, and private keys. Always DENY: a model has no
+    #: legitimate use for a credential, and tokenizing one implies it can come
+    #: back, which is the wrong affordance entirely.
+    CREDENTIAL = "credential"
+
+
+class ClassPolicy(Enum):
+    """What happens to a class at the model boundary."""
+
+    DENY = "deny"  # must not cross in any form
+    TOKENIZE = "tokenize"  # substitute, restorable per field policy
+    ALLOW = "allow"  # cross unchanged (explicit host opt-in)
+
+
+class Destination(Enum):
+    """Where restored content is headed. Governs what may be re-identified."""
+
+    USER = "user"
+    TOOL = "tool"
+    EXTERNAL = "external"
+    LOG = "log"
+
+
+#: Sentinel for a field policy that deliberately withholds a value. Distinct
+#: from having no rule at all: silence means the policy does not cover the
+#: schema, which fails the call, while REDACT is a decision the author made.
+REDACT = "REDACT"
+
+
+#: Credential classes never cross the model boundary in any form. Tokenizing a
+#: credential implies it can come back, which is the wrong affordance: a model
+#: has no legitimate use for an API key. Driven by the same patterns L3 already
+#: scans for at egress (outbound_dlp._GRAMMARS) rather than a second
+#: list that drifts from it.
+DEFAULT_DENY_CLASSES: frozenset[PIIClass] = frozenset({PIIClass.CREDENTIAL})
+
+DEFAULT_TOKENIZE_CLASSES: frozenset[PIIClass] = frozenset(
+    {
+        PIIClass.EMAIL,
+        PIIClass.PHONE,
+        PIIClass.SSN,
+        PIIClass.CREDIT_CARD,
+        PIIClass.IBAN,
+        PIIClass.ROUTING_NUMBER,
+        PIIClass.MEDICAL_RECORD,
+        PIIClass.PASSPORT,
+        PIIClass.DRIVERS_LICENSE,
+        PIIClass.NATIONAL_ID,
+        PIIClass.DATE_OF_BIRTH,
+        PIIClass.PERSON,
+        PIIClass.ADDRESS,
+    }
+)
+
+
+@dataclass(frozen=True)
+class PIIFinding:
+    """One detected identifier. Carries no plaintext.
+
+    ``start``/``end`` locate the span in the text that was scanned, and
+    ``token`` is what replaced it. The original value lives only in the vault.
+    Keeping it off this object is deliberate: findings are returned to the
+    host and may be logged, and a finding that quoted its own value would
+    reintroduce the disclosure the substitution just prevented.
+    """
+
+    pii_class: PIIClass
+    start: int
+    end: int
+    token: str
+    inferred: bool = False  # True when a registered detector produced it
+
+
+@dataclass(frozen=True)
+class DetectedSpan:
+    """What a tier-3 detector returns: a located class, before substitution.
+
+    Distinct from ``PIIFinding``, which is what the library returns to the host
+    *after* substitution and therefore carries a ``token``. A detector runs
+    before any token exists, so the two cannot be the same type.
+
+    Carries no plaintext, for the same reason ``PIIFinding`` does not: a
+    detector's output reaches warnings and audit, and a span that quoted its own
+    value would reintroduce the disclosure substitution is about to prevent.
+    """
+
+    start: int
+    end: int
+    pii_class: PIIClass
+    #: Advisory only. Nothing gates on it; see the vault design, §7.2.3.
+    confidence: float | None = None
+
+
+@runtime_checkable
+class Detector(Protocol):
+    """Tier 3: host-supplied inference over free text.
+
+    The library ships tiers 1 and 2 (structural and host-seeded) and declines
+    to build a free-text name model. Any deployment needing person or address
+    coverage in free text registers a detector here.
+
+    Two conditions of registration, neither of which the library can enforce:
+
+    1. **A detector must not be a network client.** It receives raw plaintext,
+       before substitution, at every insertion point, which defeats every
+       provider-safe surface the vault otherwise maintains.
+    2. **A detector must not hang.** Detection sits on the path of every prompt,
+       so a detector that blocks forever is an availability failure in the
+       security layer. There is no enforced wall clock in v1: enforcing one on
+       synchronous in-process code requires a thread per call, and shipping an
+       unenforced budget described as enforced would be worse than shipping
+       none.
+
+    ``id`` appears in warnings and audit so an operator can see what was loaded.
+    ``classes`` is declared up front; a span naming a class outside it is
+    dropped, so a detector cannot widen its own remit at runtime.
+    """
+
+    id: str
+    classes: frozenset[PIIClass]
+
+    def find(self, text: str) -> Sequence[DetectedSpan]: ...
+
+
+# Resolution outcomes. Observable properties of a returned token, never claims
+# about intent: a string inside the correction radius of an issued codeword
+# resolves whether it was damaged or crafted, and once an entry is gone an
+# expired token is indistinguishable from one never issued.
+EXACT = "exact"
+CORRECTED = "corrected"
+UNKNOWN_VALID = "unknown_valid"  # well-formed codeword, not in the vault
+UNRESOLVABLE = "unresolvable"  # fails decode beyond the correction radius
+
+
+@dataclass
+class DeidentifyResult:
+    """Output of a de-identification pass.
+
+    ``content`` is safe to send to a model provider. The plaintext-to-token
+    map is deliberately absent: it aggregates every value detected in the call
+    and is more sensitive than the content it came from, so one traced result
+    object would defeat the feature. The map never leaves the vault.
+    """
+
+    content: str
+    findings: list[PIIFinding] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    denied: list[PIIClass] = field(default_factory=list)
+    allowed: bool = True
+    reason: str = "clean"
+    #: A registered tier-3 detector did not run, so coverage is unknown rather
+    #: than clean. Set on the untrusted-ingest path, which warns and continues;
+    #: the host-assembled path fails the call instead. A host that wants the
+    #: stricter posture on ingest escalates on this flag.
+    detection_incomplete: bool = False
+    #: True when any tier-3 detector ran. The documented sub-millisecond,
+    #: no-ML, no-network characteristics describe the built-in tiers only, and
+    #: do not hold for a deployment that registered a detector.
+    inference_used: bool = False
+
+
+@dataclass
+class ReidentifyResult:
+    """Output of a re-identification pass.
+
+    ``content`` holds restored plaintext, so it is excluded from ``repr`` and
+    must not be serialized into a log or trace (see the provider-safe surface
+    rules in the design notes).
+    """
+
+    allowed: bool
+    content: str = field(default="", repr=False)
+    reason: str = "clean"
+    restored: list[PIIClass] = field(default_factory=list)
+    withheld: list[PIIClass] = field(default_factory=list)
+    outcomes: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PreparedCall:
+    """A tool call whose tokens have been resolved, before authorization.
+
+    Stage 1 of the guarded flow. ``args`` holds fully restored plaintext and is
+    excluded from ``repr``. The host must build its ``AuthorizationEvent`` and
+    ``Binding`` over *these* arguments, because both bind exactly: a scope
+    authorized over a token fails against the restored value, and the binding
+    hash mismatches.
+    """
+
+    allowed: bool
+    tool: str
+    args: dict = field(default_factory=dict, repr=False)
+    reason: str = "prepared"
+    restored: list[PIIClass] = field(default_factory=list)
+    withheld: list[PIIClass] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PrivacyConfig:
+    """L13 configuration. ``Guard(privacy=None)`` leaves the layer off."""
+
+    #: Classes eligible for tokenization at the model boundary.
+    classes: frozenset[PIIClass] = DEFAULT_TOKENIZE_CLASSES
+    #: Per-class override of the model-boundary decision.
+    class_policy: dict[PIIClass, ClassPolicy] = field(default_factory=dict)
+    #: tool name -> {JSON-pointer-ish field path -> frozenset[PIIClass] | REDACT}
+    #: Lookup is per token occurrence: a field holding no token needs no rule.
+    restore_policy: dict[str, dict[str, object]] = field(default_factory=dict)
+    #: Destination -> classes restorable there. Every destination defaults to
+    #: nothing, including USER: a channel does not establish entitlement.
+    destination_policy: dict[Destination, frozenset[PIIClass]] = field(default_factory=dict)
+    #: Token resolution failures tolerated in one call before failing closed.
+    #: A damper on probing within a completion, not the security control: it
+    #: does not bound probing across completions. Payload entropy carries that.
+    max_unresolvable: int = 3
+    #: Hard capacity. Reaching it FAILS de-identification rather than evicting:
+    #: eviction would break resolution for tokens still live in the transcript,
+    #: turning a capacity problem into a correctness problem. Coupled to
+    #: token_codec.PAYLOAD_BITS, since the forgery bound is ~N/2^b.
+    vault_max_entries: int = 10_000
+    #: Structural bounds on one tool argument tree. Exceeding either FAILS the
+    #: call rather than truncating the walk: a subtree the walk did not reach
+    #: is a subtree whose tokens were never resolved, and dispatching a live
+    #: placeholder is worse than refusing the call.
+    #:
+    #: Depth catches a self-referential argument, which recursed until the
+    #: interpreter raised RecursionError out of prepare_args, and a nest
+    #: deeper than any real schema, which raised the same way with no cycle
+    #: present. The node budget catches what depth cannot see, which is
+    #: sharing: twenty-four levels of ``[x, x]`` is ninety bytes of input,
+    #: sixteen million nodes and nineteen seconds inside the guard.
+    max_arg_depth: int = 64
+    max_arg_nodes: int = 100_000
+    #: De-identify inbound content the host labelled SENSITIVE.
+    deidentify_sensitive_ingest: bool = True
+    #: Tier-3 detectors (§7.2). Registration order does not affect the outcome:
+    #: findings are unioned and then resolved structurally, so adding a detector
+    #: can never remove a finding another one produced.
+    detectors: tuple[Detector, ...] = ()
+    #: What to do with a run that is one stretch of an alphabet written
+    #: straight through. It cannot be told from a credential, because the RFC
+    #: 4648 Base32 alphabet in order IS a valid TOTP shared secret, and no
+    #: amount of looking at the value separates the two. So this is a policy
+    #: choice and not a detection problem, and both automatic answers were
+    #: tried and are wrong on their own: preserving the run returns a possible
+    #: credential in plaintext, and rewriting it destroys the character tables
+    #: that are the commoner case.
+    #:
+    #: ``"redact"`` (default) replaces the line carrying the run, exactly as
+    #: the ingress path already does for credential material whose extent it
+    #: could not recover. Nothing crosses in plaintext and the document is not
+    #: withheld. ``"deny"`` refuses the content outright, for a deployment that
+    #: would rather see the refusal. ``"allow"`` keeps the run, for a corpus
+    #: full of encoding tables, and is the only setting under which an
+    #: alphabet-shaped secret can reach a model provider.
+    ambiguous_alphabet_policy: str = "redact"
+
+    def __post_init__(self) -> None:
+        """Refuse a config that tries to weaken a mandatory-deny class.
+
+        ``class_policy`` is consulted before every other rule, so
+        ``{PIIClass.CREDENTIAL: ClassPolicy.ALLOW}`` used to win outright and a
+        recognized OpenAI key went out unchanged. Silently ignoring the entry
+        would be worse than the bug it fixes: the host would keep a line of
+        configuration it believes is in force. It raises instead, and
+        ``policy_for`` below independently refuses to return anything but DENY
+        for these classes, because an invariant this load-bearing should not
+        rest on a constructor a caller can sidestep with a direct mutation.
+        """
+        weakened = sorted(
+            c.value
+            for c, p in self.class_policy.items()
+            if c in DEFAULT_DENY_CLASSES and p is not ClassPolicy.DENY
+        )
+        if weakened:
+            raise ValueError(
+                "class_policy cannot weaken a mandatory-deny class: "
+                f"{', '.join(weakened)}. These are always denied at the model "
+                "boundary and the entry would have no effect."
+            )
+        if self.ambiguous_alphabet_policy not in {"redact", "deny", "allow"}:
+            raise ValueError(
+                "ambiguous_alphabet_policy must be 'redact', 'deny' or 'allow', "
+                f"not {self.ambiguous_alphabet_policy!r}."
+            )
+
+    def scanned_classes(self) -> frozenset[PIIClass]:
+        """Every class detection must look for.
+
+        The union of ``classes`` and any class named in ``class_policy``.
+        Detecting only ``classes`` would make an override such as
+        ``class_policy={PIIClass.IPV4: ClassPolicy.TOKENIZE}`` a no-op: the
+        policy is consulted, but nothing is ever found to consult it about.
+        """
+        extra = {c for c, p in self.class_policy.items() if p is not ClassPolicy.ALLOW}
+        return frozenset(self.classes | extra | DEFAULT_DENY_CLASSES)
+
+    def policy_for(self, pii_class: PIIClass) -> ClassPolicy:
+        """Resolve the model-boundary policy for one class.
+
+        Mandatory deny is checked FIRST, before any override. The constructor
+        already rejects a config that tries to weaken one of these, so reaching
+        this line means the mapping was mutated after construction; the answer
+        is the same either way, because a credential crossing to a model
+        provider is not a thing an override may authorize.
+        """
+        if pii_class in DEFAULT_DENY_CLASSES:
+            return ClassPolicy.DENY
+        override = self.class_policy.get(pii_class)
+        if override is not None:
+            return override
+        if pii_class in self.classes:
+            return ClassPolicy.TOKENIZE
+        return ClassPolicy.ALLOW

@@ -17,14 +17,43 @@ from guardllm.security.types import (
     AuthorizationEvent,
     Binding,
     ContentType,
+    DeidentifyResult,
+    Destination,
     GateResult,
     OutboundResult,
+    PIIClass,
     PolicyConfig,
+    PreparedCall,
+    PrivacyConfig,
     ProcessedContent,
+    ReidentifyResult,
     SecurityContext,
     TrustLevel,
 )
 from guardllm.security.validation import ValidationResult, validate_arguments
+
+
+def _string_leaves(node: object) -> list[str]:
+    """Every string leaf of an argument tree, including nested and array values.
+
+    Mirrors the traversal ``validation._walk_value`` already performs, so the
+    content check covers exactly what validation covers.
+    """
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        out: list[str] = []
+        for k, v in node.items():
+            if isinstance(k, str):
+                out.append(k)
+            out.extend(_string_leaves(v))
+        return out
+    if isinstance(node, list | tuple | set):
+        out = []
+        for v in node:
+            out.extend(_string_leaves(v))
+        return out
+    return []
 
 
 class Guard:
@@ -36,11 +65,13 @@ class Guard:
         canary_session_id: str | None = None,
         audit_logger: object | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
+        privacy: PrivacyConfig | None = None,
     ) -> None:
         self._pipeline = SecurityPipeline(
             audit_logger=audit_logger,
             canary_session_id=canary_session_id,
             principal_trust=principal_trust,
+            privacy=privacy,
         )
         self._action_gate = ActionGate()
         self._audit_logger = audit_logger
@@ -300,6 +331,123 @@ class Guard:
             )
         )
         return result
+
+    # ---------------------------------------------------------------
+    # L13: privacy vault
+    # ---------------------------------------------------------------
+
+    def seed_private_values(self, values: dict[str, PIIClass]) -> None:
+        """Register values the host already knows are private.
+
+        The mechanism for person names and street addresses. An application
+        with PII to protect got it from a database row and knows what it is,
+        so it declares it rather than having the library guess. Guessing would
+        mean inferring a label from content, which this library does not do.
+        """
+        vault = self._pipeline.vault
+        if vault is None:
+            raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
+        vault.seed(values)
+
+    def deidentify(self, content: str) -> DeidentifyResult:
+        """Replace identifiers in host-assembled content before it reaches a model.
+
+        The primary entry point. Host-owned sensitive content (a chart, a CRM
+        record, a ticket) never passes through ``process_inbound``, because it
+        is trusted and the host assembles it directly, so it needs its own
+        call. A DENY-class hit fails here rather than being marked: a
+        credential in a prompt the host built is a bug in the host.
+        """
+        vault = self._pipeline.vault
+        if vault is None:
+            raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
+        # Ingest the PLAINTEXT into the sensitive DLP buffer before
+        # substituting. A host calling this has already told us the content is
+        # sensitive, and without the ingest the contaminated-context control
+        # has nothing to compare against: the value would leave uninspected on
+        # any path the vault does not cover.
+        self._pipeline.ingest_sensitive(content)
+        result = vault.deidentify(content, deny_action="fail")
+        self._audit(
+            AuditEvent(
+                event_type="deidentified",
+                action_summary=result.reason,
+                warnings=result.warnings or None,
+            )
+        )
+        return result
+
+    def reidentify(
+        self,
+        content: str,
+        *,
+        destination: Destination,
+        allowed_classes: frozenset[PIIClass] | None = None,
+    ) -> ReidentifyResult:
+        """Resolve tokens in free text for one destination.
+
+        Every destination restores nothing by default, including ``USER``: the
+        channel does not establish the viewer's entitlement.
+        """
+        vault = self._pipeline.vault
+        if vault is None:
+            raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
+        result = vault.reidentify(content, destination=destination, allowed_classes=allowed_classes)
+        self._audit(
+            AuditEvent(
+                event_type="reidentified",
+                action_summary=result.reason,
+                warnings=result.warnings or None,
+            )
+        )
+        return result
+
+    def prepare_tool_call(
+        self,
+        tool: str,
+        args: dict,
+        context: SecurityContext,
+        *,
+        has_quoting_directive: bool = False,
+    ) -> PreparedCall:
+        """Stage 1 of the guarded flow: restore tokens, then content-check.
+
+        Must run before the host builds its ``AuthorizationEvent`` and
+        ``Binding``, because both bind exactly: a scope authorized over a token
+        fails against the restored value, and the binding hash mismatches. The
+        host dispatches ``PreparedCall.args``, and builds its authorization
+        over those same arguments.
+
+        The content check here is an early rejection, not the final decision.
+        Session state can change between preparation and dispatch, so stage 3
+        re-checks after the last await.
+        """
+        vault = self._pipeline.vault
+        if vault is None:
+            return PreparedCall(allowed=True, tool=tool, args=args, reason="privacy disabled")
+        prepared = vault.prepare_args(tool, args)
+        if not prepared.allowed:
+            self._audit(
+                AuditEvent(
+                    event_type="tool_call_prepare_denied",
+                    tool_name=tool,
+                    action_summary=prepared.reason,
+                )
+            )
+            return prepared
+        # L5/L3/L4 over every string leaf of the restored tree. Checking only
+        # the body would miss a canary in a subject line, a credential in a
+        # filename, or a protected value in nested metadata.
+        for leaf in _string_leaves(prepared.args):
+            outcome = self._pipeline.check_outbound_content(leaf, context, has_quoting_directive)
+            if not outcome.allowed:
+                return PreparedCall(
+                    allowed=False,
+                    tool=tool,
+                    reason=outcome.reason,
+                    warnings=prepared.warnings,
+                )
+        return prepared
 
     def check_outbound(
         self,

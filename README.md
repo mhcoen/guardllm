@@ -7,11 +7,19 @@
 
 LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
+> **GuardLLM is not protecting LLMs. It is protecting the companies that use them.**
+>
+> GuardLLM assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate GuardLLM by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through GuardLLM.
+
 **[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
 [A record asks for a write and a user authorizes one](https://mhcoen.github.io/guardllm/demo/guardllm_mcp_demo.html), against a third-party MCP tool surface.
 [See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
 ## How GuardLLM Works
+
+![GuardLLM trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
+
+Data changes hands at three party crossings: ingress, the model, and egress. Authorization and integrity are gates inside the trusted region, so they admit or refuse a flow and never move data across a boundary. The four edges on the retained session state are the loop. Ingress writes labels, the authorization gates and egress checks read them, and a high-confidence egress block writes escalation back, so a block now tightens a later call in the same session. Content passes through the model. Labels travel around it, which is why a decision at egress can still read what ingress recorded. The model crossing is the one no control inspects ([T-IN13](docs/threat_model.md)).
 
 GuardLLM is a lifecycle-aware security pipeline, not a collection of independent checks:
 
@@ -36,6 +44,12 @@ This is the architectural gap that point tools leave open. Individual tools like
 - Heuristic prompt injection detection (sub-millisecond, no external API calls)
 - Canary token detection for exfiltration signals
 
+**Privacy at the model boundary** (opt-in, see [docs/privacy.md](docs/privacy.md))
+- Pseudonymization before the prompt reaches the provider: personal data is replaced with an opaque token, and the real value is restored only where policy allows
+- Two independent deny-by-default gates: `restore_policy` per tool field, `destination_policy` per destination
+- Declared values and deterministic pattern detection, neither of which infers; a `Detector` protocol for anything else
+- Tokens carry an error-correcting check, so one mangled symbol is recovered and two are refused rather than resolved to the wrong value
+
 **Authorization & policy**
 - Policy-based tool authorization gates
 - Action gating (manual confirmation path for sensitive operations)
@@ -54,11 +68,38 @@ This is the architectural gap that point tools leave open. Individual tools like
 - Error sanitization (strip internal details from user-facing errors)
 - Structured audit logging hooks
 
+## Open source and commercial model
+
+> **Free scales with security. Paid scales with organizational complexity.**
+
+The deterministic security engine is MIT licensed, and security is not a paid upgrade. No commercial edition will unlock stronger enforcement, put a control behind a license, or meter protection by request volume, and enforcement never depends on license state. What commercial editions add is the organizational work that begins when many teams and many applications depend on that engine: durable evidence, fleet-wide policy management, enterprise identity, compliance reporting, integrations, and contractual support.
+
+A single team should be able to protect an application without paying. Organizations pay to operate, govern, and prove that protection across many applications.
+
+| | Free (MIT) | Team | Enterprise |
+|:--------------------------------------------------------------|:---:|:---:|:---:|
+| Security engine: injection, contamination, escalation, binding, replay, DLP, canaries | Included | Included | Included |
+| Privacy vault: pseudonymization at the model boundary, scoped restoration | Included | Included | Included |
+| Local policy configuration and enforcement | Included | Included | Included |
+| Structured audit events | Included | Included | Included |
+| Enforcement coverage | Every mediated request | Every mediated request | Every mediated request |
+| Gateway container, single instance | Included | Included | Included |
+| YAML configuration and trust mapping | Included | Included | Included |
+| Rego policy, authored and evaluated locally | Included | Included | Included |
+| Local session forensics viewer, ephemeral | Included | Included | Included |
+| Durable decision history, search, SIEM export | | Included | Included |
+| Vault persistence, key management, compliance and deletion evidence | | Included | Included |
+| Central policy distribution, versioning, staged rollout, drift detection | | | Included |
+| Enterprise identity: SSO, SAML, RBAC | | | Included |
+| SLA, indemnification, named support | | | Included |
+
 ## Security Disclaimer
 
 GuardLLM applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
 
 However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
+
+Production protection depends on mediating every relevant path through GuardLLM and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. See the [production checklist](docs/production_checklist.md) and the documented compatibility exceptions in [SECURITY.md](SECURITY.md).
 
 ## Get Started
 
@@ -162,6 +203,8 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 ## Benchmark Highlights
 
 GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
+
+**Detection is not the security boundary.** The text benchmark below measures one supporting signal, not GuardLLM's end-to-end security model.
 
 Text benchmark (prompt-injection detection, `3823` records). **These vendor figures are not
 currently reproducible from a tracked artifact.** The injection section of the checked-in

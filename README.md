@@ -70,7 +70,7 @@ This is the architectural gap that point tools leave open. Individual tools like
 
 ## Open source and commercial model
 
-> **Free scales with security. Paid scales with organizational complexity.**
+> **You never pay for more protection. You pay when more of the organization depends on it.**
 
 The deterministic security engine is MIT licensed, and security is not a paid upgrade. No commercial edition will unlock stronger enforcement, put a control behind a license, or meter protection by request volume, and enforcement never depends on license state. What commercial editions add is the organizational work that begins when many teams and many applications depend on that engine: durable evidence, fleet-wide policy management, enterprise identity, compliance reporting, integrations, and contractual support.
 

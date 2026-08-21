@@ -858,6 +858,22 @@ class PrivacyVault:
         # fragment without withholding the document, so a content author still
         # cannot suppress its own retrieval by embedding a split credential.
         if denied or found.unlocatable_credentials:
+            if cfg.ambiguous_alphabet_policy == "deny" and self._has_ambiguous_run(content):
+                # The deployment asked to see the refusal rather than a
+                # rewritten line. Nothing crosses either way; this is which
+                # failure the operator would rather be told about.
+                return DeidentifyResult(
+                    content="",
+                    warnings=warnings,
+                    denied=denied,
+                    allowed=False,
+                    reason=(
+                        "Ambiguous alphabet run: cannot be told from a credential, and "
+                        "ambiguous_alphabet_policy is 'deny'"
+                    ),
+                    detection_incomplete=found.detection_incomplete,
+                    inference_used=bool(cfg.detectors),
+                )
             content, swept = self._sweep_credential_residue(content)
             if swept:
                 warnings.append(f"Replaced {swept} line(s) still carrying credential material")
@@ -871,6 +887,13 @@ class PrivacyVault:
             inference_used=bool(cfg.detectors),
         )
 
+    @staticmethod
+    def _has_ambiguous_run(content: str) -> bool:
+        """Does anything left in ``content`` report as an alphabet run?"""
+        from guardllm.security.outbound_dlp import _scan_secrets, is_ambiguous_finding
+
+        return any(is_ambiguous_finding(label) for label in _scan_secrets(content))
+
     def _sweep_credential_residue(self, content: str) -> tuple[str, int]:
         """Replace any line still carrying credential material with a marker.
 
@@ -882,19 +905,27 @@ class PrivacyVault:
         """
         from guardllm.security.outbound_dlp import _scan_secrets, is_ambiguous_finding
 
-        def actionable(text: str) -> bool:
-            """Findings that justify destroying the line they came from.
+        keep_ambiguous = self._config.ambiguous_alphabet_policy == "allow"
 
-            An alphabet chart is reported at egress, because the RFC 4648
-            Base32 alphabet in order is also a valid TOTP shared secret. It
-            must not be swept here: this replaces a whole line, and
-            ``alphabet = abcdefghijklmnopqrstuvwxyz`` became
-            ``[redacted:credential]`` with nothing in ``findings`` to say so.
-            Reporting an ambiguous run is safe in both directions; rewriting
-            on one is not, and rewriting silently is worse than the leak the
-            report was added to prevent.
+        def actionable(text: str) -> bool:
+            """Findings that justify replacing the line they came from.
+
+            An alphabet run is ambiguous by construction, so what happens to
+            it is `ambiguous_alphabet_policy` and not a rule this function can
+            derive. Under the default it is swept like any other credential
+            material whose extent could not be recovered, which is what this
+            path already does and why it exists. Only `"allow"` keeps it, and
+            only there can an alphabet-shaped secret reach a provider.
+
+            Both automatic answers were tried and both were wrong. Sweeping
+            unconditionally turned `alphabet = abcdefghijklmnopqrstuvwxyz`
+            into `[redacted:credential]`. Never sweeping returned a whole TOTP
+            shared secret with `blocked=False`.
             """
-            return any(not is_ambiguous_finding(label) for label in _scan_secrets(text))
+            return any(
+                not (keep_ambiguous and is_ambiguous_finding(label))
+                for label in _scan_secrets(text)
+            )
 
         if not actionable(content):
             return content, 0
@@ -937,12 +968,15 @@ class PrivacyVault:
         swept = 0
         start = 0
 
+        keep_ambiguous = self._config.ambiguous_alphabet_policy == "allow"
+
         def scans(a: int, b: int) -> bool:
-            # The same question the per-line pass asks. An ambiguous alphabet
-            # run is reported but never justifies replacing the text it came
-            # from, and this path replaces whole runs of lines.
+            # The same question the per-line pass asks, under the same policy.
+            # This path replaces whole RUNS of lines, so answering it
+            # differently here would be the more destructive divergence.
             return any(
-                not is_ambiguous_finding(label) for label in _scan_secrets("\n".join(lines[a:b]))
+                not (keep_ambiguous and is_ambiguous_finding(label))
+                for label in _scan_secrets("\n".join(lines[a:b]))
             )
 
         while start < len(lines):

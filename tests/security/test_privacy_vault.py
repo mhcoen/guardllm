@@ -3626,36 +3626,59 @@ class TestRecognitionAndAttribution:
         # And a real high-entropy token is still one.
         assert _scan_secrets("PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52Zk")
 
-    def test_a_chart_is_never_rewritten_on_the_ingest_path_either(self):
-        """Reporting a chart must not licence destroying the line it sits on.
+    def test_the_ambiguous_alphabet_policy_decides_and_never_leaks_by_default(self):
+        """No automatic rule can hold both halves, so this is configuration.
 
-        The first version of this fix gave a chart the generic high-entropy
-        label, and the vault's residue sweep acts on exactly what the egress
-        blocker reports. So `alphabet = abcdefghijklmnopqrstuvwxyz` came back
-        from sensitive ingest as `[redacted:credential]`, with nothing in
-        `findings` to say a line had been destroyed. A review caught it, and
-        it is the worse failure of the two: the leak this reporting was added
-        to close is loud at egress, and this was silent data loss.
+        Three rounds of review found the two automatic answers in turn. Erasing
+        an alphabet run let a TOTP shared secret out of check_outbound with
+        reason="clean". Reporting it made the residue sweep replace
+        `alphabet = abcdefghijklmnopqrstuvwxyz` outright. Never sweeping it
+        returned the whole secret from sensitive ingest with blocked=False.
 
-        A chart carries its own finding now. Both are reported, so a TOTP
-        secret written as the Base32 alphabet is still refused, and only the
-        unambiguous one licences a rewrite.
+        The RFC 4648 Base32 alphabet in order IS a valid TOTP shared secret.
+        Nothing that looks at the value can separate the two, so what happens
+        to one is the deployment's choice. What is NOT a choice is the default
+        returning a possible credential in plaintext.
         """
         import dataclasses
 
         from guardllm.security.types import SensitivityLevel
 
-        guard = Guard(privacy=_config())
-        ctx = dataclasses.replace(
-            Guard.context_document(document_id="d"), sensitivity=SensitivityLevel.SENSITIVE
-        )
-        doc = "alphabet = abcdefghijklmnopqrstuvwxyz\nkeep = this line"
-        assert doc in guard.process_inbound(doc, ctx).content, "the chart's line was rewritten"
+        secret = "234567ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        doc = f"TOTP_SHARED_SECRET = {secret}"
+        chart = "alphabet = abcdefghijklmnopqrstuvwxyz\nkeep = this line"
 
-        # And the sweep still does its job on a value that is not ambiguous.
+        def ingest(policy: str, text: str):
+            guard = Guard(privacy=_config(ambiguous_alphabet_policy=policy))
+            ctx = dataclasses.replace(
+                Guard.context_document(document_id="d"),
+                sensitivity=SensitivityLevel.SENSITIVE,
+            )
+            return guard.process_inbound(text, ctx)
+
+        # The default replaces the line, exactly as this path already does for
+        # credential material whose extent it could not recover.
+        assert secret not in ingest("redact", doc).content
+        assert not ingest("redact", doc).blocked, "redact withholds the document"
+
+        # deny refuses instead, for a deployment that would rather be told.
+        denied = ingest("deny", doc)
+        assert denied.blocked and secret not in denied.content
+
+        # allow is the ONLY setting under which the value crosses, and a host
+        # that sets it has chosen that for a corpus full of encoding tables.
+        allowed = ingest("allow", chart)
+        assert chart in allowed.content, "allow did not preserve the table"
+
+        # Whatever the policy, an unambiguous credential is still swept.
         real = "key = sk-abcdefghijklmnopqrstuvwxyz1234\nkeep = this line"
-        swept = guard.process_inbound(real, ctx).content
-        assert "sk-abcdefghijklmnopqrstuvwxyz1234" not in swept, "a real key survived"
+        for policy in ("redact", "deny", "allow"):
+            assert "sk-abcdefghijklmnopqrstuvwxyz1234" not in ingest(policy, real).content
+
+    def test_an_unknown_ambiguous_alphabet_policy_is_refused(self):
+        """A typo must not fall through to the permissive arm."""
+        with pytest.raises(ValueError, match="ambiguous_alphabet_policy"):
+            PrivacyConfig(ambiguous_alphabet_policy="allowed")
 
     def test_a_chart_that_is_also_a_secret_is_still_reported(self):
         """The Base32 alphabet in order is a valid TOTP shared secret.

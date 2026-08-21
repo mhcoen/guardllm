@@ -4,6 +4,23 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
+<!-- toc:start -->
+<details markdown="1">
+<summary>On this page</summary>
+
+- [Enabling it](#enabling-it)
+- [What gets detected](#what-gets-detected)
+- [Tokens](#tokens)
+- [Restoring into tool arguments](#restoring-into-tool-arguments)
+- [Restoring into free text](#restoring-into-free-text)
+- [Failing closed](#failing-closed)
+- [Alphabet runs, and the one thing you may have to choose](#alphabet-runs-and-the-one-thing-you-may-have-to-choose)
+- [What this does not do](#what-this-does-not-do)
+- [Related](#related)
+
+</details>
+<!-- toc:end -->
+
 Personal data that reaches a model provider has left your control, whatever the
 provider's retention policy says. The privacy vault replaces it with an opaque
 token before the prompt is sent, and puts the real value back only where your
@@ -157,6 +174,29 @@ one:
 
 Check `prepared.allowed` and `shown.allowed` before acting on either result.
 
+## Alphabet runs, and the one thing you may have to choose
+
+`234567ABCDEFGHIJKLMNOPQRSTUVWXYZ` is the RFC 4648 Base32 alphabet. It is also
+a perfectly ordinary TOTP shared secret, and people paste it into config files
+as one. Nothing that looks at the value can tell those apart, so what happens
+to a run that is one stretch of an alphabet is a policy setting:
+
+```python
+PrivacyConfig(ambiguous_alphabet_policy="redact")  # the default
+```
+
+- **`redact`** replaces the line carrying the run, exactly as this path
+  already does for credential material whose extent it could not recover.
+  Nothing crosses in plaintext and the document is not withheld.
+- **`deny`** refuses the content instead, for a deployment that would rather
+  see the refusal than a rewritten line.
+- **`allow`** keeps the run, for a corpus full of encoding tables. This is the
+  only setting under which an alphabet-shaped secret can reach a provider, so
+  it is a decision rather than a default.
+
+Egress is not configurable here: `check_outbound` reports the run whatever this
+is set to, so a value of this shape never leaves quietly.
+
 ## What this does not do
 
 - **It does not find what no tier detects.** A name or a street address with no
@@ -169,12 +209,9 @@ Check `prepared.allowed` and `shown.allowed` before acting on either result.
 - **It does not protect a path that does not go through it.** Content the host
   sends to a provider without calling `deidentify` is not covered, in the same
   way the rest of GuardLLM governs the paths routed through it.
-- **It may replace a whole line, but only on an unambiguous finding.** When
-  credential material survives substitution, the vault replaces the line
-  carrying it rather than the document, and says so in `warnings`. A run that
-  is merely an alphabet in order is reported and never rewritten, because the
-  RFC 4648 Base32 alphabet is both a character table and a valid TOTP shared
-  secret, and destroying a line on that ambiguity loses data silently.
+- **It may replace a whole line.** When credential material survives
+  substitution, the vault replaces the line carrying it rather than the
+  document, and says so in `warnings`.
 
 ## Related
 

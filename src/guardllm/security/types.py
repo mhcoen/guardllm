@@ -651,6 +651,23 @@ class PrivacyConfig:
     #: findings are unioned and then resolved structurally, so adding a detector
     #: can never remove a finding another one produced.
     detectors: tuple[Detector, ...] = ()
+    #: What to do with a run that is one stretch of an alphabet written
+    #: straight through. It cannot be told from a credential, because the RFC
+    #: 4648 Base32 alphabet in order IS a valid TOTP shared secret, and no
+    #: amount of looking at the value separates the two. So this is a policy
+    #: choice and not a detection problem, and both automatic answers were
+    #: tried and are wrong on their own: preserving the run returns a possible
+    #: credential in plaintext, and rewriting it destroys the character tables
+    #: that are the commoner case.
+    #:
+    #: ``"redact"`` (default) replaces the line carrying the run, exactly as
+    #: the ingress path already does for credential material whose extent it
+    #: could not recover. Nothing crosses in plaintext and the document is not
+    #: withheld. ``"deny"`` refuses the content outright, for a deployment that
+    #: would rather see the refusal. ``"allow"`` keeps the run, for a corpus
+    #: full of encoding tables, and is the only setting under which an
+    #: alphabet-shaped secret can reach a model provider.
+    ambiguous_alphabet_policy: str = "redact"
 
     def __post_init__(self) -> None:
         """Refuse a config that tries to weaken a mandatory-deny class.
@@ -674,6 +691,11 @@ class PrivacyConfig:
                 "class_policy cannot weaken a mandatory-deny class: "
                 f"{', '.join(weakened)}. These are always denied at the model "
                 "boundary and the entry would have no effect."
+            )
+        if self.ambiguous_alphabet_policy not in {"redact", "deny", "allow"}:
+            raise ValueError(
+                "ambiguous_alphabet_policy must be 'redact', 'deny' or 'allow', "
+                f"not {self.ambiguous_alphabet_policy!r}."
             )
 
     def scanned_classes(self) -> frozenset[PIIClass]:

@@ -179,18 +179,46 @@ def resolve_field(
     return FieldDecision("fail", f"malformed restoration rule for field '{path}'")
 
 
-def _iter_strings(node: object):
-    """Yield every string leaf of an argument tree."""
+class _ArgTreeTooComplex(Exception):
+    """A tool argument tree exceeded its depth or node bound."""
+
+
+def _iter_strings(
+    node: object,
+    max_depth: int,
+    max_nodes: int,
+    depth: int = 0,
+    budget: list[int] | None = None,
+):
+    """Yield every string leaf of an argument tree, within bounds.
+
+    Bounded separately from the substitution walk in ``prepare_args``, because
+    the two do not cover the same containers: that walk returns a tuple or a
+    set unchanged, so a nest built out of those is one level deep to it and
+    five thousand levels deep here.
+
+    Truncating is not an option. This walk is what catches a token whose
+    framing the model damaged, so a leaf it never reaches is a corrupted
+    dispatch that nothing else is looking for. It raises instead, and the
+    caller turns that into a refusal.
+    """
+    if budget is None:
+        budget = [max_nodes]
+    if depth > max_depth:
+        raise _ArgTreeTooComplex(f"Tool argument tree is deeper than {max_depth}")
+    budget[0] -= 1
+    if budget[0] < 0:
+        raise _ArgTreeTooComplex(f"Tool argument tree exceeds {max_nodes} nodes")
     if isinstance(node, str):
         yield node
     elif isinstance(node, dict):
         for k, v in node.items():
             if isinstance(k, str):
                 yield k
-            yield from _iter_strings(v)
+            yield from _iter_strings(v, max_depth, max_nodes, depth + 1, budget)
     elif isinstance(node, (list, tuple, set)):
         for v in node:
-            yield from _iter_strings(v)
+            yield from _iter_strings(v, max_depth, max_nodes, depth + 1, budget)
 
 
 # ---------------------------------------------------------------------------
@@ -1107,16 +1135,36 @@ class PrivacyVault:
         failure: str | None = None
         unresolvable = 0
 
-        def _walk(node: object, segments: list[str]) -> object:
-            nonlocal failure, unresolvable
+        nodes_left = cfg.max_arg_nodes
+
+        def _walk(node: object, segments: list[str], depth: int = 0) -> object:
+            nonlocal failure, unresolvable, nodes_left
             if failure is not None:
+                return node
+            # Bounds first, and both of them fail the call rather than
+            # returning the subtree unwalked. A self-referential argument
+            # recursed here until the interpreter raised RecursionError out of
+            # prepare_args; five thousand nested dicts did the same with no
+            # cycle present; and sharing needs the node budget rather than the
+            # depth one, because twenty-four levels of [x, x] is ninety bytes
+            # of input, sixteen million nodes and nineteen seconds.
+            if depth > cfg.max_arg_depth:
+                failure = f"Tool argument tree is deeper than {cfg.max_arg_depth}"
+                return node
+            nodes_left -= 1
+            if nodes_left < 0:
+                failure = f"Tool argument tree exceeds {cfg.max_arg_nodes} nodes"
                 return node
             if isinstance(node, str):
                 return _resolve_leaf(node, segments)
             if isinstance(node, dict):
-                return {k: _walk(v, [*segments, str(k)]) for k, v in node.items()}
+                return {
+                    k: _walk(v, [*segments, str(k)], depth + 1) for k, v in node.items()
+                }
             if isinstance(node, list):
-                return [_walk(v, [*segments, str(i)]) for i, v in enumerate(node)]
+                return [
+                    _walk(v, [*segments, str(i)], depth + 1) for i, v in enumerate(node)
+                ]
             return node
 
         def _resolve_leaf(value: str, segments: list[str]) -> str:
@@ -1156,10 +1204,13 @@ class PrivacyVault:
         # tool argument that is not enough, because one surviving opener is a
         # corrupted dispatch. Unconditional.
         if failure is None:
-            for leaf in _iter_strings(new_args):
-                if self._has_stray_issued_payload(leaf):
-                    failure = "Damaged privacy token framing in tool arguments"
-                    break
+            try:
+                for leaf in _iter_strings(new_args, cfg.max_arg_depth, cfg.max_arg_nodes):
+                    if self._has_stray_issued_payload(leaf):
+                        failure = "Damaged privacy token framing in tool arguments"
+                        break
+            except _ArgTreeTooComplex as exc:
+                failure = str(exc)
 
         if failure is not None:
             return PreparedCall(allowed=False, tool=tool, reason=failure, warnings=warnings)

@@ -3757,3 +3757,129 @@ class TestRecognitionAndAttribution:
         for lo, hi in sorted(spans, reverse=True):
             out = out[:lo] + " " * (hi - lo) + out[hi:]
         assert _longest_surviving_run(out, self._SECRET) == 0
+
+
+# ---------------------------------------------------------------------------
+# Argument tree bounds: the walk is over host-supplied structure
+# ---------------------------------------------------------------------------
+
+
+class TestArgumentTreeBounds:
+    """prepare_args walks a tree the host hands it, so the tree is input.
+
+    Both walks were unbounded and neither could see a cycle. Three shapes,
+    all of them a few bytes of input, took the guard out: a self-referential
+    dict and a five thousand deep nest each raised RecursionError through
+    prepare_args, and twenty-four levels of ``[x, x]`` spent nineteen seconds
+    building sixteen million nodes.
+
+    Every one of them must come back as a refusal. Returning the subtree
+    unwalked would be worse than the crash: a subtree the walk did not reach
+    is a subtree whose tokens were never resolved, which dispatches a live
+    placeholder to the tool.
+    """
+
+    def test_a_self_referential_argument_is_refused_not_raised(self):
+        v = _vault()
+        cyclic: dict[str, object] = {"subject": "hello"}
+        cyclic["self"] = cyclic
+        p = v.prepare_args("gmail_send_email", cyclic)
+        assert not p.allowed
+        assert "deeper than" in p.reason
+
+    def test_a_deep_nest_with_no_cycle_is_refused_too(self):
+        """The cycle is one way to reach the limit and not the interesting one.
+
+        A tree can be perfectly acyclic and still deeper than the interpreter
+        will recurse, and a host that builds arguments from model output can
+        produce one without any adversary involved.
+        """
+        v = _vault()
+        node: object = {"subject": "leaf"}
+        for _ in range(5_000):
+            node = {"a": node}
+        p = v.prepare_args("gmail_send_email", node)
+        assert not p.allowed
+        assert "deeper than" in p.reason
+
+    def test_a_tuple_nest_is_bounded_by_the_other_walk(self):
+        """The substitution walk never sees this one.
+
+        It returns a tuple or a set unchanged, so a nest built out of those is
+        one level deep to it. The stray-token walk below it descends all of
+        them, which is why that walk carries its own bound rather than
+        trusting the first one to have checked.
+        """
+        v = _vault()
+        node: object = ("leaf",)
+        for _ in range(5_000):
+            node = (node,)
+        p = v.prepare_args("gmail_send_email", {"subject": node})
+        assert not p.allowed
+        assert "deeper than" in p.reason
+
+    def test_a_shared_subtree_is_bounded_by_nodes_not_depth(self):
+        """Depth cannot see sharing, and sharing is the cheap attack.
+
+        Twenty-four levels of ``[x, x]`` is ninety bytes of input and sixteen
+        million nodes, at depth twenty-four. A depth bound of sixty-four
+        passes it happily; unbounded it took 18.7 seconds.
+
+        Twenty-four rather than a larger number on purpose: with the node
+        budget disabled this test has to FAIL rather than hang, or it takes
+        the mutation sweep with it.
+        """
+        import time
+
+        v = _vault()
+        node: object = ["leaf"]
+        for _ in range(24):
+            node = [node, node]
+        start = time.perf_counter()
+        p = v.prepare_args("gmail_send_email", {"subject": node})
+        elapsed = time.perf_counter() - start
+        assert not p.allowed
+        assert "nodes" in p.reason
+        assert elapsed < 1.0, f"bounded walk still took {elapsed:.1f}s"
+
+    def test_a_shared_tuple_subtree_is_bounded_in_the_second_walk(self):
+        """Same attack, aimed at the walk that has no substitution to do.
+
+        The substitution walk returns a tuple unchanged, so it charges two
+        nodes for this whole tree and its budget never fires. The stray-token
+        walk descends every one of the sixteen million. Its budget is the only
+        thing here, which is why it is a separate bound and not an assumption
+        that the first walk already looked.
+        """
+        import time
+
+        v = _vault()
+        node: object = ("leaf",)
+        for _ in range(24):
+            node = (node, node)
+        start = time.perf_counter()
+        p = v.prepare_args("gmail_send_email", {"subject": node})
+        elapsed = time.perf_counter() - start
+        assert not p.allowed
+        assert "nodes" in p.reason
+        assert elapsed < 1.0, f"bounded walk still took {elapsed:.1f}s"
+
+    def test_an_ordinary_nested_call_is_not_refused(self):
+        """The bounds have to be invisible to a real argument tree.
+
+        A refusal here is the same outage as a crash, arriving politely, so
+        this is the half of the rule that stops the numbers being tightened
+        until they bite.
+        """
+        v = _vault()
+        token = v.deidentify(f"mail {EMAIL}").findings[0].token
+        p = v.prepare_args(
+            "gmail_send_email",
+            {
+                "to": [{"address": token} for _ in range(200)],
+                "subject": "Status",
+                "meta": {"a": {"b": {"c": {"d": {"e": ["deep", "enough", {"f": 1}]}}}}},
+            },
+        )
+        assert p.allowed, p.reason
+        assert p.args["to"][0]["address"] == EMAIL

@@ -632,6 +632,19 @@ class PrivacyConfig:
     #: turning a capacity problem into a correctness problem. Coupled to
     #: token_codec.PAYLOAD_BITS, since the forgery bound is ~N/2^b.
     vault_max_entries: int = 10_000
+    #: Structural bounds on one tool argument tree. Exceeding either FAILS the
+    #: call rather than truncating the walk: a subtree the walk did not reach
+    #: is a subtree whose tokens were never resolved, and dispatching a live
+    #: placeholder is worse than refusing the call.
+    #:
+    #: Depth catches a self-referential argument, which recursed until the
+    #: interpreter raised RecursionError out of prepare_args, and a nest
+    #: deeper than any real schema, which raised the same way with no cycle
+    #: present. The node budget catches what depth cannot see, which is
+    #: sharing: twenty-four levels of ``[x, x]`` is ninety bytes of input,
+    #: sixteen million nodes and nineteen seconds inside the guard.
+    max_arg_depth: int = 64
+    max_arg_nodes: int = 100_000
     #: De-identify inbound content the host labelled SENSITIVE.
     deidentify_sensitive_ingest: bool = True
     #: Tier-3 detectors (§7.2). Registration order does not affect the outcome:

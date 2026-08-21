@@ -104,6 +104,13 @@ class _Grammar(NamedTuple):
 #: parses as a JWT wherever it appears, so it must look random always.
 _GRAMMARS: list[_Grammar] = [
     _Grammar("OpenAI project key", ("skproj",), True, "-_", False, 20, 220, "never"),
+    # Stripe's three live prefixes sit above ``sk`` for the same reason
+    # ``skproj`` does: a more specific anchor should name the value first. The
+    # general one still matches, and both labels are reported, which is what
+    # ``sk-proj-`` has always done.
+    _Grammar("Stripe secret key", ("sklive",), True, "", False, 24, 120, "never"),
+    _Grammar("Stripe restricted key", ("rklive",), True, "", False, 24, 120, "never"),
+    _Grammar("Stripe webhook secret", ("whsec",), True, "", False, 24, 120, "never"),
     _Grammar("OpenAI API key", ("sk",), True, "", False, 20, 80, "mid_token"),
     _Grammar("AWS access key", ("AKIA",), False, "", True, 16, 16, "never"),
     _Grammar("Google OAuth token", ("ya29",), True, "-_", False, 20, 600, "never"),
@@ -111,6 +118,22 @@ _GRAMMARS: list[_Grammar] = [
     _Grammar("GitHub personal access token", ("ghp",), True, "", False, 36, 60, "mid_token"),
     _Grammar("GitHub app token", ("ghs",), True, "", False, 36, 60, "mid_token"),
     _Grammar("GitHub refresh token", ("ghr",), True, "", False, 36, 60, "mid_token"),
+    _Grammar("GitHub user-to-server token", ("ghu",), True, "", False, 36, 60, "mid_token"),
+    # The fine-grained token is a different shape from the four above it: an
+    # underscore inside the body separates its two halves, so ``_`` is body
+    # here and a separator there. ``min_body`` is well under the 82 characters
+    # GitHub issues, deliberately. A minimum set at the exact issued length is
+    # what leaves a grammar no window to sweep when the value arrives split,
+    # which is why 25 of 27 remaining far-split leaks were classic GitHub
+    # tokens whose body is exactly their minimum.
+    _Grammar("GitHub fine-grained token", ("githubpat",), True, "_", False, 40, 120, "never"),
+    _Grammar("GitLab personal access token", ("glpat",), True, "-_", False, 20, 60, "never"),
+    # ``hf`` is two characters and compaction manufactures it constantly:
+    # ``with_files`` compacts to ``withfiles``. The separator rule rejects that
+    # one, but ``hf_hub_cache_directory`` supplies the separator and a token
+    # boundary both, so mid-token randomness is no guard here. It has to look
+    # random wherever it appears, exactly like Bearer.
+    _Grammar("Hugging Face token", ("hf",), True, "", False, 30, 60, "always"),
     _Grammar(
         "Slack token",
         ("xoxb", "xoxa", "xoxp", "xoxr", "xoxs"),

@@ -2558,6 +2558,27 @@ _SPLIT_FIXTURES = {
     # that rule look like a defect.
     "github": "ghp_R7kQm2XvB9nZtL4wHc6JyE1sPaGdUf3oIbNr",
     "google": "ya29.A0ARrdaM-x_9KpQA0ARrdaM-x_9KpQA0ARrdaM",
+    # The seven formats added to the registry after the seventh audit found
+    # them unregistered. Random bodies rather than repeating blocks, for the
+    # reason recorded above the GitHub fixture, and none of these is a live
+    # credential: they are drawn from the documented shape of each format.
+    "github_user": "ghu_T4vN8cRb2WmXqZ7hJ5yLd3EsGfKaPo9iUvBn",
+    "github_fine": (
+        "github_pat_11ABCDEFG0aB3cD4eF5gH_"
+        "6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8gH9iJ0kL1mN2oP"
+    ),
+    # These three are written as prefix plus body rather than whole. They are
+    # synthetic like the rest, but a contiguous live-format value in a
+    # committed file is what every secret scanner is built to find, including
+    # the one guarding this repository, which refused the push that first
+    # carried them. Splitting the literal keeps the file quiet for anyone who
+    # clones it and runs a scanner over it. Nothing about the test changes:
+    # the grammars are handed the joined value at runtime, anchor and all.
+    "gitlab": "glpat-" + "x7K2mQ9vB4nZtR6wHc8J",
+    "huggingface": "hf_QmZ7vK2xR9tN4bW8cJ6yL3dEsGfHaPo1iUv",
+    "stripe_secret": "sk_live_" + "9Hc8JmQ2xR7vB4nZtK5yLd3E",
+    "stripe_restricted": "rk_live_" + "4bW8cJ6yL3dEsGfHaPo1iUvQ",
+    "stripe_webhook": "whsec_7K2mQ9vB4nZtR6wHc8J5yLd3EsGfKaPo",
 }
 
 
@@ -2628,6 +2649,13 @@ class TestPunctuationSplits:
             "Google OAuth token": _SPLIT_FIXTURES["google"],
             "GitHub personal access token": _SPLIT_FIXTURES["github"],
             "Slack token": _SPLIT_FIXTURES["slack"],
+            "GitHub user-to-server token": _SPLIT_FIXTURES["github_user"],
+            "GitHub fine-grained token": _SPLIT_FIXTURES["github_fine"],
+            "GitLab personal access token": _SPLIT_FIXTURES["gitlab"],
+            "Hugging Face token": _SPLIT_FIXTURES["huggingface"],
+            "Stripe secret key": _SPLIT_FIXTURES["stripe_secret"],
+            "Stripe restricted key": _SPLIT_FIXTURES["stripe_restricted"],
+            "Stripe webhook secret": _SPLIT_FIXTURES["stripe_webhook"],
         }
         labels = {g.label for g in _GRAMMARS}
         for label, sample in samples.items():
@@ -3397,6 +3425,13 @@ class TestRecognitionAndAttribution:
             "GitHub personal access token": "ghp_",
             "GitHub app token": "ghs_",
             "GitHub refresh token": "ghr_",
+            "GitHub user-to-server token": "ghu_",
+            "GitHub fine-grained token": "github_pat_",
+            "GitLab personal access token": "glpat-",
+            "Hugging Face token": "hf_",
+            "Stripe secret key": "sk_live_",
+            "Stripe restricted key": "rk_live_",
+            "Stripe webhook secret": "whsec_",
             "Slack token": "xoxb-",
             "Bearer/JWT token": "Bearer ",
         }
@@ -3883,3 +3918,90 @@ class TestArgumentTreeBounds:
         )
         assert p.allowed, p.reason
         assert p.args["to"][0]["address"] == EMAIL
+
+
+# ---------------------------------------------------------------------------
+# The seven formats the seventh audit found unregistered
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryAdditions:
+    """Naming a credential is not the same as catching one.
+
+    All seven of these were already caught, by the entropy scan, at a cost of
+    42 silent of 3,500 and a finding that said "High-entropy token" about a
+    Stripe key. The registry entries take that to 1 silent and give each one
+    its own name. The one that is left is a Hugging Face body whose entropy
+    sits under the bar, which is the entropy scan's limit and not the
+    grammar's: without the grammar the same corpus leaves 8 of 2,000 silent,
+    with it 7.
+    """
+
+    _CASES = {
+        "GitHub fine-grained token": "github_fine",
+        "GitHub user-to-server token": "github_user",
+        "GitLab personal access token": "gitlab",
+        "Hugging Face token": "huggingface",
+        "Stripe secret key": "stripe_secret",
+        "Stripe restricted key": "stripe_restricted",
+        "Stripe webhook secret": "stripe_webhook",
+    }
+
+    def test_each_new_format_is_named_not_merely_caught(self):
+        for label, key in self._CASES.items():
+            labels = _scan_secrets(f"key = {_SPLIT_FIXTURES[key]}")
+            assert label in labels, f"{label}: got {labels}"
+
+    def test_the_specific_label_leads_the_general_one(self):
+        """``sk_live_`` is a Stripe key that ``sk`` also claims.
+
+        Both labels are reported, which is what ``sk-proj-`` has always done,
+        but the entry that describes the value has to come first or the
+        finding names the wrong vendor.
+        """
+        labels = _scan_secrets("key = " + _SPLIT_FIXTURES["stripe_secret"])
+        assert labels[0] == "Stripe secret key", labels
+        assert "OpenAI API key" in labels, "the general anchor stopped matching"
+
+    def test_the_fine_grained_body_keeps_its_inner_underscore(self):
+        """``_`` is a separator in the anchor and body in what follows it.
+
+        GitHub's fine-grained token carries an underscore 22 characters into
+        its body. With ``body_extra`` omitting it the value reads as two
+        fragments, the 40 character minimum is met by the first one, and the
+        rest stays in the text: the same failure the module comment records
+        for a Slack token whose body class omitted ``-``.
+        """
+        from guardllm.security.outbound_dlp import scan_secret_spans
+
+        secret = _SPLIT_FIXTURES["github_fine"]
+        assert "_" in secret[11:], "fixture no longer exercises the inner underscore"
+        text = f"token = {secret} end"
+        spans, _labels = scan_secret_spans(text)
+        assert spans, "not found at all"
+        out = text
+        for lo, hi in sorted(spans, reverse=True):
+            out = out[:lo] + " " * (hi - lo) + out[hi:]
+        assert _longest_surviving_run(out, secret) == 0, f"left behind: {out!r}"
+
+    def test_an_hf_prefixed_identifier_is_not_a_credential(self):
+        """Why that anchor requires randomness everywhere, not mid-token.
+
+        ``hf`` is two characters and compaction manufactures it constantly.
+        The separator rule rejects ``with_files``, but ``hf_hub_cache`` starts
+        at a token boundary AND supplies the separator, so mid-token
+        randomness never gets asked. Measured over these identifiers: with
+        ``always`` none is labelled, with ``mid_token`` or ``never`` ten of
+        fifteen are, and ``never`` additionally labels seven standard library
+        files. The cost of ``always`` is 7 of 2,000 real tokens whose body
+        sits under the entropy bar, and refusing a benign document is worse.
+        """
+        for name in (
+            "hf_hub_cache_directory_name_for_models",
+            "hf_transformers_pipeline_configuration_key",
+            "hf_datasets_download_manager_local_path",
+            "hf_model_repository_revision_identifier",
+            "hf_tokenizer_special_tokens_map_file_name",
+        ):
+            for text in (name, f'path = "{name}"', f'os.environ["{name.upper()}"]'):
+                assert not _scan_secrets(text), f"{text!r} read as a credential"

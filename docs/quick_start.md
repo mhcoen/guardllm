@@ -9,8 +9,12 @@ This guide is for integrating `guardllm` quickly into any LLM-based app, not onl
 ## 1) Install and Sanity Check
 
 ```bash
-pip install guardllm
+pip install git+https://github.com/mhcoen/guardllm.git
 ```
+
+Install from source, not PyPI: the published `guardllm` package is 1.1.0 and predates the
+session-risk feedback loop and the 1.2.0 hardening. To modify the library or run the
+tutorials, clone it and use `pip install -e '.[dev]'` instead.
 
 Optional (from source checkout) benchmark sanity check:
 

@@ -35,6 +35,7 @@ exclude:
   - dist/
   - local/
   - paper/
+  - peers/
   - scripts/
   - src/
   - tests/

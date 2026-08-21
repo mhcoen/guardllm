@@ -12,6 +12,7 @@ LLM applications routinely process untrusted content (web results, emails, docum
 > GuardLLM assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate GuardLLM by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through GuardLLM.
 
 **[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
+[A record asks for a write and a user authorizes one](https://mhcoen.github.io/guardllm/demo/guardllm_mcp_demo.html), against a third-party MCP tool surface.
 [See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
 ## How GuardLLM Works
@@ -102,9 +103,24 @@ Production protection depends on mediating every relevant path through GuardLLM 
 
 ## Get Started
 
+Install the current version from source:
+
 ```bash
-pip install guardllm
+pip install git+https://github.com/mhcoen/guardllm.git
 ```
+
+To modify the library, run the tests, or work through the tutorials, clone it instead:
+
+```bash
+git clone https://github.com/mhcoen/guardllm.git
+cd guardllm
+pip install -e '.[dev]'
+```
+
+> **Do not install from PyPI.** The published `guardllm` package is 1.1.0 and predates
+> both the session-risk feedback loop this README describes and the detector, DLP, canary,
+> and isolation hardening in 1.2.0. Install from source until a current release is
+> published.
 
 1. Follow the quick-start guide: [docs/quick_start.md](docs/quick_start.md)
 2. Work through a [tutorial](tutorials/README.md). Each is a page to read and a script to run:

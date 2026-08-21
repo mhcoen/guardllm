@@ -265,6 +265,7 @@ def _markdown_files() -> list[Path]:
         ".venv312",
         "devel",
         "local",
+        "peers",
         "dist",
         "artifacts",
         "paper",

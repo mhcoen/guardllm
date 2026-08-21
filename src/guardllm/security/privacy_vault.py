@@ -230,10 +230,6 @@ def _iter_strings(
 #: damaged GuardLLM token from unrelated text that merely looks similar.
 _CLASS_NAMES = frozenset(c.name for c in PIIClass)
 
-#: Crockford folding for the fast scan: case-insensitive, with I/L to 1 and
-#: O to 0, matching what the decoder does before it looks at anything else.
-_CROCKFORD_FOLD_TABLE = str.maketrans("ILOilo", "110110")
-
 
 def _within_edits(a: str, b: str, limit: int) -> bool:
     """Bounded Levenshtein, exiting as soon as every cell exceeds ``limit``."""

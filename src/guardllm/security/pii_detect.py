@@ -619,13 +619,6 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
     ),
 )
 
-_BY_GROUP: dict[str, DetectorSpec] = {d.group: d for d in _DETECTORS}
-
-#: One compiled alternation, one pass over the input. Validators run only on
-#: whatever this produces, never over the whole text, which is what keeps the
-#: added cost proportional to the number of candidates rather than the length.
-_COMBINED = re.compile("|".join(f"(?P<{d.group}>{d.pattern})" for d in _DETECTORS))
-
 
 #: Maps every group name in a compiled alternation, both the detector group and
 #: its optional inner value group, to the spec and the value group to read.
@@ -644,12 +637,16 @@ def _group_info(pattern: re.Pattern[str]) -> dict[str, tuple[DetectorSpec, str |
     return info
 
 
-_GROUP_INFO = _group_info(_COMBINED)
-
 #: Compiling only the requested classes skips whole detectors rather than
 #: matching and discarding them. The default class set omits IPv4, IPv6, MAC,
 #: and URL, which is four of fifteen alternatives and two of the more expensive
 #: ones. Cached because a session's class set does not change between calls.
+#:
+#: This replaced a single alternation over every detector, compiled at import.
+#: That one, its group map, and a by-group index of the registry were left
+#: behind unreferenced when the cache landed, and are gone: one compiled
+#: alternation nothing consulted, built at import for every process that
+#: imported the module.
 _SUBSET_CACHE: dict[frozenset[PIIClass], tuple[re.Pattern[str], dict]] = {}
 
 

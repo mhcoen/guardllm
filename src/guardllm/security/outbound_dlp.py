@@ -965,6 +965,13 @@ def _entropy_spans(text: str) -> list[tuple[int, int]]:
                     reached = max(reached, span[1])
                     out.append(span)
             except ValueError:
+                # The two guards above should make this unreachable: an even
+                # length of characters `fromhex` accepts. It is caught anyway
+                # because the alternative is a scanner that raises out of the
+                # egress path on some input nobody anticipated, and a token
+                # this pass cannot decode is one the entropy test above already
+                # declined. Not finding a second reason to report it is the
+                # correct outcome, so there is nothing to do here.
                 pass
     return out
 

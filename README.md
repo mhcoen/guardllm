@@ -61,11 +61,36 @@ This is the architectural gap that point tools leave open. Individual tools like
 - Error sanitization (strip internal details from user-facing errors)
 - Structured audit logging hooks
 
+## Open source and commercial model
+
+> **Free scales with security. Paid scales with organizational complexity.**
+
+The deterministic security engine is MIT licensed, and security is not a paid upgrade. No commercial edition will unlock stronger enforcement, put a control behind a license, or meter protection by request volume, and enforcement never depends on license state. What commercial editions add is the organizational work that begins when many teams and many applications depend on that engine: durable evidence, fleet-wide policy management, enterprise identity, compliance reporting, integrations, and contractual support.
+
+A single team should be able to protect an application without paying. Organizations pay to operate, govern, and prove that protection across many applications.
+
+| | Free (MIT) | Team | Enterprise |
+|:--------------------------------------------------------------|:---:|:---:|:---:|
+| Security engine: injection, contamination, escalation, binding, replay, DLP, canaries | Included | Included | Included |
+| Privacy vault: pseudonymization at the model boundary, scoped restoration | Included | Included | Included |
+| Local policy configuration and enforcement | Included | Included | Included |
+| Structured audit events | Included | Included | Included |
+| Enforcement coverage | Every mediated request | Every mediated request | Every mediated request |
+| Durable decision history, search, SIEM export | | Planned | Planned |
+| Vault persistence, key management, compliance and deletion evidence | | Planned | Planned |
+| Central policy distribution, versioning, staged rollout, drift detection | | | Planned |
+| Enterprise identity: SSO, SAML, RBAC | | | Planned |
+| SLA, indemnification, named support | | | Planned |
+
+Every row marked Included is in the library today. Rows marked Planned are the product being built around it, and none of them changes what the engine enforces.
+
 ## Security Disclaimer
 
 GuardLLM applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
 
 However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
+
+Production protection depends on mediating every relevant path through GuardLLM and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. See the [production checklist](docs/production_checklist.md) and the documented compatibility exceptions in [SECURITY.md](SECURITY.md).
 
 ## Get Started
 

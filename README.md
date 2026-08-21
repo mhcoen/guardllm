@@ -76,13 +76,15 @@ A single team should be able to protect an application without paying. Organizat
 | Local policy configuration and enforcement | Included | Included | Included |
 | Structured audit events | Included | Included | Included |
 | Enforcement coverage | Every mediated request | Every mediated request | Every mediated request |
-| Durable decision history, search, SIEM export | | Planned | Planned |
-| Vault persistence, key management, compliance and deletion evidence | | Planned | Planned |
-| Central policy distribution, versioning, staged rollout, drift detection | | | Planned |
-| Enterprise identity: SSO, SAML, RBAC | | | Planned |
-| SLA, indemnification, named support | | | Planned |
-
-Every row marked Included is in the library today. Rows marked Planned are the product being built around it, and none of them changes what the engine enforces.
+| Gateway container, single instance | Included | Included | Included |
+| YAML configuration and trust mapping | Included | Included | Included |
+| Rego policy, authored and evaluated locally | Included | Included | Included |
+| Local session forensics viewer, ephemeral | Included | Included | Included |
+| Durable decision history, search, SIEM export | | Included | Included |
+| Vault persistence, key management, compliance and deletion evidence | | Included | Included |
+| Central policy distribution, versioning, staged rollout, drift detection | | | Included |
+| Enterprise identity: SSO, SAML, RBAC | | | Included |
+| SLA, indemnification, named support | | | Included |
 
 ## Security Disclaimer
 

@@ -17,18 +17,23 @@ this document runs and no other GuardLLM verdict changes.
 ```python
 from guardllm import Guard
 from guardllm.security.types import (
-    PrivacyConfig, PIIClass, Destination, REDACT,
+    PrivacyConfig,
+    PIIClass,
+    Destination,
+    REDACT,
 )
 
-guard = Guard(privacy=PrivacyConfig(
-    restore_policy={
-        "send_email": {
-            "/to/*/address": frozenset({PIIClass.EMAIL}),
-            "/body": REDACT,
-        }
-    },
-    destination_policy={Destination.USER: frozenset({PIIClass.EMAIL})},
-))
+guard = Guard(
+    privacy=PrivacyConfig(
+        restore_policy={
+            "send_email": {
+                "/to/*/address": frozenset({PIIClass.EMAIL}),
+                "/body": REDACT,
+            }
+        },
+        destination_policy={Destination.USER: frozenset({PIIClass.EMAIL})},
+    )
+)
 ```
 
 Both policies are consulted per occurrence, and both deny by default. A field
@@ -68,9 +73,7 @@ undetected otherwise rather than being guessed at.
 `deidentify` returns the rewritten content and a finding per occurrence:
 
 ```python
-result = guard.deidentify(
-    "Email jane@example.invalid about the Q3 review for Jane Ellsworth."
-)
+result = guard.deidentify("Email jane@example.invalid about the Q3 review for Jane Ellsworth.")
 # result.content:
 #   Email [[GL:EMAIL:CSMRT5X32NSFT09]] about the Q3 review
 #   for [[GL:PERSON:W5TW61AVNDJ7DYR]].
@@ -78,10 +81,10 @@ result = guard.deidentify(
 
 The payloads above are illustrative: they are issued per session, so your own
 run prints different ones. The same value tokenizes to the same token within a
-session, so a model can reason about "the same person" without ever seeing who. The payload carries a
-Reed-Solomon check: a model that transcribes one symbol wrong has its token
-corrected, and two wrong symbols are refused rather than resolved to somebody
-else's value.
+session, so a model can reason about "the same person" without ever seeing who.
+The payload carries a Reed-Solomon check: a model that transcribes one symbol
+wrong has its token corrected, and two wrong symbols are refused rather than
+resolved to somebody else's value.
 
 Send `result.content` to the model. Never send the original.
 

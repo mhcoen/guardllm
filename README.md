@@ -50,6 +50,13 @@ This is the architectural gap that point tools leave open. Individual tools like
 - Declared values and deterministic pattern detection, neither of which infers; a `Detector` protocol for anything else
 - Tokens carry an error-correcting check, so one mangled symbol is recovered and two are refused rather than resolved to the wrong value
 
+**Deployment**
+- Run as a library, or as an OpenAI-compatible proxy that runs the checks itself: an application changes only its `base_url` and makes no GuardLLM calls ([docs/gateway.md](docs/gateway.md))
+- Policy as a YAML file for a deployment with nowhere to put a Python object; unknown keys and wrong types are refused rather than defaulted ([docs/configuration.md](docs/configuration.md))
+- Access rules in Rego, evaluated in process through wasmtime with no network call. A GuardLLM deny is final and the policy is never consulted; Rego only ever narrows ([docs/rego.md](docs/rego.md))
+- Session forensics viewer showing one session's decision chain, so a refusal several turns after the ingest that caused it reads as one sequence
+- Diagnostic bundle for a support ticket, which refuses to write rather than carry credential material it cannot remove exactly ([docs/support.md](docs/support.md))
+
 **Authorization & policy**
 - Policy-based tool authorization gates
 - Action gating (manual confirmation path for sensitive operations)
@@ -197,6 +204,18 @@ More examples: [docs/quick_start.md](docs/quick_start.md) | [examples/03_web_sea
 **Outbound & error**
 - `Guard.check_outbound(...)`: DLP and provenance copy controls
 - `Guard.sanitize_exception(...)`: strip internal details from errors
+
+**Privacy vault** (only when constructed with `privacy=PrivacyConfig(...)`)
+- `Guard.seed_private_values(...)`: declare values from an already-authenticated session
+- `Guard.deidentify(...)`: tokenize personal data before the prompt reaches the provider
+- `Guard.reidentify(...)`: restore real values for one destination; `allowed_classes` narrows and never widens
+- `Guard.prepare_tool_call(...)`: resolve tokens in tool arguments, before the authorization event and binding are built
+
+**Outside the facade**
+- `guardllm.config.load_policy(path)`: build a `PolicyConfig` from YAML
+- `guardllm.policy.RegoPolicy(path)`: evaluate a compiled Rego policy locally
+- `guardllm.support.write_bundle(path)`, or `python -m guardllm.support`: write a diagnostic bundle
+- `python -m guardllm.gateway`: run the proxy
 
 ## Benchmark Highlights
 

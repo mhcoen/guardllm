@@ -13,7 +13,9 @@ from guardllm import Guard
 ```
 
 Constructor:
-- `Guard(canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED)`
+- `Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None)`
+
+All arguments are keyword-only. `privacy` is what constructs the vault; without it nothing in the privacy section below runs and no existing verdict changes.
 
 Canary provisioning and lifecycle:
 - `guard.canary_token -> str | None`: read-only token for trusted host code to place in private model context.
@@ -57,12 +59,36 @@ Recommended pattern for write-capable tools:
 - For heightened scrutiny, pass `context_has_web_derived=True` to include the hardcoded warning context in the confirmation payload.
 - `guard_tool_call` escalates to confirmation automatically (even without `require_confirmation=True`) when policy requires it: `auto_confirm_destructive` for destructive tools, `context_has_web_derived=True` under `escalation_gate_enabled`, or a principal at or below `confirm_all_below`. Escalation fails closed with no handler.
 
+## Privacy Vault (opt-in)
+
+Available only when the guard was constructed with `privacy=PrivacyConfig(...)`. The first three raise `ValueError` without it rather than returning something that looks like a result; `prepare_tool_call` instead passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
+
+- `guard.seed_private_values(values: dict[str, PIIClass]) -> None`: declare values from a session the host has already authenticated. Exact by construction, since nothing is inferred.
+- `guard.deidentify(content: str) -> DeidentifyResult`: replace personal data with opaque tokens before the content reaches a model provider.
+- `guard.reidentify(content: str, *, destination: Destination, allowed_classes: frozenset[PIIClass] | None = None) -> ReidentifyResult`: restore real values for one destination. `allowed_classes` **narrows** and never widens: it intersects with `destination_policy` rather than replacing it.
+- `guard.prepare_tool_call(tool: str, args: dict, context: SecurityContext, *, has_quoting_directive: bool = False) -> PreparedCall`: resolve tokens in tool arguments under `restore_policy`. Call it **before** building the authorization event and binding, because both bind exact bytes and a scope authorized over a token fails against the restored value.
+
+Both restore paths are deny-by-default: a field or destination with no rule restores nothing. See [privacy.md](privacy.md).
+
+## Beyond the Guard Facade
+
+`Guard` is the stable facade, and these are the other supported entry points.
+
+- **Policy files.** `guardllm.config.load_policy(path)` and `parse_policy(text)` build a `PolicyConfig` from YAML, for a deployment with nowhere to put a Python object. Needs the `yaml` extra. Refuses unknown keys and wrong types rather than falling back to a default. Optional `version:` key, `POLICY_FILE_VERSION == 1`. See [configuration.md](configuration.md).
+- **Rego policies.** `guardllm.policy.RegoPolicy(path)`, `build_input(...)`, `decide(...)`, and `POLICY_INPUT_VERSION`. Evaluated in process through wasmtime, with no network. A GuardLLM deny is final and the policy is never consulted; Rego only ever narrows. Needs the `rego` extra. See [rego.md](rego.md).
+- **Diagnostics.** `guardllm.support.build_bundle(...)`, `render_bundle(...)`, `write_bundle(path, ...)`, and `python -m guardllm.support`. Raises `UnsafeBundleError` rather than writing a bundle holding credential material it cannot remove exactly. See [support.md](support.md).
+- **Gateway.** `python -m guardllm.gateway` presents an OpenAI-compatible endpoint that runs the checks itself, so an application changes only its `base_url`. See [gateway.md](gateway.md).
+- **Audit sinks.** `AuditLogger(log_path=..., stream=...)`. `stream=sys.stdout` is the intended argument in a container, and is flushed per event.
+
 ## Return Objects
 
 - `ProcessedContent`: sanitized content, warnings, source metadata.
 - `GateResult`: allow/deny decision and reason for tool execution, plus non-blocking rate-limit `anomalies` (burst, novel recipient).
 - `OutboundResult`: allow/deny decision and exfiltration/provenance indicators, `canary_detected`, plus non-blocking rate-limit `anomalies`.
 - `ValidationResult`: argument validation pass/fail with field-level details.
+- `DeidentifyResult`: tokenized `content`, the `findings` behind it, `denied` classes, `allowed`, `reason`, and `detection_incomplete` when coverage was known to be partial.
+- `ReidentifyResult`: restored content and what was withheld.
+- `PreparedCall`: the arguments with tokens resolved, `allowed`, and `reason`. Fails closed: an unresolvable or damaged token refuses the call rather than dispatching a partially resolved one.
 
 ## Minimal End-to-End Example
 

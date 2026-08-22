@@ -27,6 +27,10 @@
   - [Method: `check_outbound`](#method-check_outbound)
   - [Method: `validate_tool_args`](#method-validate_tool_args)
   - [Method: `sanitize_exception`](#method-sanitize_exception)
+  - [Method: `seed_private_values`](#method-seed_private_values)
+  - [Method: `deidentify`](#method-deidentify)
+  - [Method: `reidentify`](#method-reidentify)
+  - [Method: `prepare_tool_call`](#method-prepare_tool_call)
   - [Async Method: `confirm_action`](#async-method-confirm_action)
   - [Async Method: `guard_tool_call`](#async-method-guard_tool_call)
 - [Type Specification](#type-specification)
@@ -61,6 +65,8 @@ This document is the complete public API contract for GuardLLM (`guardllm`) as i
 - Public package export surface: `guardllm.Guard`
 - Stability target: `Guard` methods and the data types referenced below.
 - Internal modules under `guardllm.security.*` are implementation details unless explicitly referenced in this spec.
+- The privacy types are public and referenced here, but are imported from `guardllm.security.types` rather than from the package root: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DeidentifyResult`, `PreparedCall`.
+- Three supported modules sit outside the `Guard` facade: `guardllm.config` (policy files), `guardllm.policy` (Rego), and `guardllm.support` (diagnostic bundles). Each has its own page under [docs](README.md).
 
 ## Public Export
 
@@ -91,13 +97,14 @@ callers need them for annotations and construction:
 ### Constructor
 
 ```python
-Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED)
+Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None)
 ```
 
 Parameters:
 - `canary_session_id`: optional session identifier used to generate a canary token for exfiltration detection checks.
 - `audit_logger`: optional logger object. If it has `.log(event)` it receives `AuditEvent` records emitted by Guard methods.
 - `principal_trust`: session-level caller trust (default `UNTRUSTED`). Accepts `TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`.
+- `privacy`: optional `PrivacyConfig`. Constructs the pseudonymization vault. Omitted, none of the four privacy methods below runs and no other verdict changes.
 
 Behavior:
 - Initializes security pipeline and action gate.
@@ -362,6 +369,69 @@ Return payload shape:
 ```python
 {"error": {"code": str, "message": str}}
 ```
+
+### Method: `seed_private_values`
+
+```python
+guard.seed_private_values(values: dict[str, PIIClass]) -> None
+```
+
+Parameters:
+- `values`: a mapping from a literal value to the class it belongs to, taken from a session the host has already authenticated.
+
+Behavior:
+- Registers values for exact detection. Nothing is inferred, so precision here is a property of the host's own authentication rather than of a detector.
+- Raises `ValueError` when the guard was constructed without `privacy`.
+
+### Method: `deidentify`
+
+```python
+guard.deidentify(content: str) -> DeidentifyResult
+```
+
+Behavior:
+- Replaces detected personal data with opaque tokens before the content reaches a model provider.
+- Detection runs two tiers that do not infer: declared values seeded above, and deterministic patterns (email, phone, SSN, credit card by Luhn, IBAN, routing number, passport, driver's licence, national identity number, medical record number, date of birth). A third tier is reachable through the `Detector` protocol.
+- Sets `DeidentifyResult.detection_incomplete` when the vault knows its own coverage was partial. It cannot report what nothing looked for.
+- Refuses rather than partially tokenizing when a bound is exceeded: `vault_max_entries`, `max_arg_depth`, `max_arg_nodes`.
+- Raises `ValueError` when the guard was constructed without `privacy`.
+
+### Method: `reidentify`
+
+```python
+guard.reidentify(
+    content: str,
+    *,
+    destination: Destination,
+    allowed_classes: frozenset[PIIClass] | None = None,
+) -> ReidentifyResult
+```
+
+Parameters:
+- `destination`: the destination whose `destination_policy` entry decides which classes may be restored. A destination with no rule restores nothing.
+- `allowed_classes`: optional further restriction. It **intersects** with `destination_policy` and never replaces it, so it can only narrow. Passing a class the destination does not permit does not restore it.
+
+Behavior:
+- Deny-by-default. Restores only classes permitted by both the destination policy and, when given, `allowed_classes`.
+- Raises `ValueError` when the guard was constructed without `privacy`.
+
+### Method: `prepare_tool_call`
+
+```python
+guard.prepare_tool_call(
+    tool: str,
+    args: dict,
+    context: SecurityContext,
+    *,
+    has_quoting_directive: bool = False,
+) -> PreparedCall
+```
+
+Behavior:
+- Resolves tokens in tool arguments under `restore_policy`, which is keyed by tool and field path. A field with no rule restores nothing.
+- **Ordering requirement.** Call this before building the `AuthorizationEvent` and `Binding`. Both bind exact bytes, so a scope authorized over a token fails against the restored value and the binding hash mismatches.
+- Fails closed. An unresolvable token, a token whose framing the model damaged, an unresolvable count past `max_unresolvable`, or an argument tree past `max_arg_depth` or `max_arg_nodes` refuses the call rather than dispatching a partially resolved one.
+- Unlike the three above, this does **not** raise without `privacy`. It passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
 
 ### Async Method: `confirm_action`
 

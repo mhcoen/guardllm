@@ -40,6 +40,22 @@ GuardLLM enforces a label discipline across four boundaries:
 
 *Future work:* if `Binding` objects ever need to cross a process boundary, the Integrity check would need to become a keyed HMAC (or signature) over `(tool, args_hash, message_hash, created_at, ttl)` verified against a server-held secret. This is not implemented today because bindings stay within the trusted process (A-AS5).
 
+## Deployment Shapes
+
+GuardLLM runs in two shapes, and they differ in where the trust boundary falls.
+
+**As a library, in process.** The host imports `Guard` and calls it. Everything above applies directly, and the assumptions A-AS1, A-AS2 and A-AS9 are host obligations because only the host knows which paths exist.
+
+**As a gateway, as a proxy.** `guardllm.gateway` presents an OpenAI-compatible endpoint, so an application changes its `base_url` and makes no GuardLLM calls at all. That removes A-AS1, A-AS2 and A-AS9 as things the application can forget: a `tool` role message is ingested as untrusted content, the reply is checked on the way back, and neither is optional. Provenance is taken from the channel (message role, tool name) and never from content, so "nothing is inferred from content" survives the move into a proxy.
+
+Three properties of that shape are worth stating because they are not obvious:
+
+- **The gateway never holds an upstream key.** The client's `Authorization` header is forwarded verbatim and is never read, stored, or logged. A proxy that demanded its own provider key would be a different liability.
+- **Session state is keyed by a client-supplied header.** `X-GuardLLM-Session` selects the session whose contamination, escalation and decision chain a request joins. Generated ids are `uuid4().hex`, but an id the gateway does not hold is honoured as the id of a *new* session, so the header is what identifies a session and nothing else does. See A-AS10.
+- **The diagnostic endpoints are unauthenticated and enumerate sessions.** `GET /sessions` and `GET /forensics` list every live session id. The gateway ships no authentication of its own. See A-AS11.
+
+The gateway is the single-instance tier: state is in memory, replicas do not share it, and streaming responses are not inspected incrementally.
+
 ## Adversaries
 
 GuardLLM considers four adversary classes. A1, A2, and A3 are manipulation adversaries: they act on the application to make it do something. A4 is not, and the difference matters for what a control can look like.
@@ -113,7 +129,7 @@ The application itself, the policy configuration, and the principal identity are
 | T-IN10| Internal detail leakage via exception messages                                           | `Guard.sanitize_exception`                                |
 | T-IN11| Detector evasion via low-cost obfuscation                                                | Multi-signal detector (composition penalty), normalization-before-detection |
 | T-IN12| Empty allowlist treated as allow-all                                                     | Empty allowlist denies by default                         |
-| T-IN13| Protected data exfiltrated to an external inference provider through the prompt itself   | **Not currently mitigated.** Prompt content is never passed to `Guard.check_outbound`, so L3/L4/L5 have no jurisdiction over it: the Egress boundary's scope limit above is exactly this gap. Unlike T-IN8 and T-IN9, this exfiltration rides the intended data path rather than an anomaly, so there is no signal for a detector to find and the only available control is to not send the data. Today this is a host obligation (do not place protected data in prompts bound for an external provider); a de-identification layer is planned |
+| T-IN13| Protected data exfiltrated to an external inference provider through the prompt itself   | **Partially mitigated, opt-in.** The de-identification layer this row once described as planned now exists: `Guard(..., privacy=PrivacyConfig(...))` replaces personal data with an opaque token before the prompt reaches the provider and restores the real value only where `restore_policy` and `destination_policy` both allow it, each deny-by-default. The limits are the point. It runs only when the host opts in and only over text the host passes to `deidentify`; it covers what declared values and deterministic patterns find, and reports `detection_incomplete` when it knows its own coverage was partial rather than implying it was total; and it does not infer, so a name in free text is reachable only through a seeded value or a registered `Detector`. Prompt content is still never passed to `check_outbound`, so L3/L4/L5 continue to have no jurisdiction over that channel and the Egress scope limit above is unchanged. What remains a host obligation is narrower than before: not "do not place protected data in prompts" but "declare what is protected, or accept what pattern detection reaches". See [privacy.md](privacy.md) |
 
 ## Threats Out of Scope (T-OUT)
 
@@ -127,6 +143,7 @@ The application itself, the policy configuration, and the principal identity are
 | T-OUT6 | Adversarial perturbation of LLM weights (model supply-chain)                         | Layer above GuardLLM; use trusted model sources.                                 |
 | T-OUT7 | Vulnerabilities in `beautifulsoup4`, `confusables`, or other runtime deps           | Tracked via Dependabot and pip-audit; CVEs fixed by upgrading, not patched in GuardLLM. |
 | T-OUT8 | Detection of human-targeted social engineering not aimed at the model                | Not a content-injection threat.                                                  |
+| T-OUT9 | Authentication and access control on the gateway's own HTTP surface                 | The gateway is designed to run inside the trust boundary of the application it serves, behind that deployment's existing authentication, and deliberately ships none of its own. Access control at the port is A-AS11. |
 
 ## Assumptions
 
@@ -143,6 +160,8 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 | A-AS7  | `<untrusted_content>` framing is preserved through to the model                     | Without framing the model sees untrusted text as system-level  |
 | A-AS8  | Only trusted application adapters construct `AuthorizationEvent`s                    | An attacker who can mint `AuthorizationEvent`s in-process holds authorization authority; the library validates event contents, not origin |
 | A-AS9  | The application calls `check_outbound` on every outbound channel it *can*, including the content carried in tool-call arguments, and enforces a block. **Scope:** this covers tool-call arguments, tool responses, and outbound payloads. It does not cover the prompt sent to an inference provider, which is a channel `check_outbound` is not called on and could not usefully be called on, since blocking it would block the request itself. That gap is T-IN13, not an instance of this assumption being violated | Egress DLP, provenance, and canary checks never run on that channel, so untrusted or sensitive content leaves uninspected. `check_tool_call` gates the *action* (policy, rate limit, binding) and does not inspect argument content: gating a send does not inspect what is sent. A missed high-confidence DLP or canary block also means egress-feedback escalation never fires, so subsequent tool calls are not tightened |
+| A-AS10 | **Gateway only.** `X-GuardLLM-Session` is treated as a bearer credential by the client and by any intermediary that can see it | A party holding a session id joins that session: it inherits the session's contamination and escalation state, contributes decisions to its chain, and can read that chain through `GET /sessions/<id>`, `GET /forensics/<id>` and `GET /support/<id>`. Joining a contaminated session only ever tightens what the joiner may do, so this is a disclosure and interference risk rather than a way to escape enforcement |
+| A-AS11 | **Gateway only.** The gateway's HTTP port is reachable only by the applications it serves | The gateway ships no authentication. `GET /sessions` and `GET /forensics` list every live session id, so a party that can reach the port can enumerate sessions rather than having to guess a `uuid4`, and then read or join any of them per A-AS10. Put the port behind whatever authentication the deployment already runs; do not publish it |
 
 ## Defense-in-Depth Reminder
 

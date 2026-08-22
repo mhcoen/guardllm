@@ -46,7 +46,7 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 | L10 Validation | Implemented | `validate_tool_args(...)`, `guard_tool_call(validate=True)` |
 | L11 Request Binding | Implemented | `bind_request(...)`, `check_tool_call(...)`, `guard_tool_call(...)` |
 | L12 Action Gate | Implemented | `confirm_action(...)`, `guard_tool_call(..., require_confirmation=True)` |
-| Audit Logging | Implemented | `Guard(audit_logger=...)` emits security events |
+| Audit Logging | Implemented | `Guard(audit_logger=AuditLogger(log_path=..., stream=...))` emits security events as JSON lines to a file, a stream, or both |
 
 ## Unified Pipeline
 

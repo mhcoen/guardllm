@@ -653,3 +653,74 @@ def test_context_factory_principal_trust_defaults_untrusted():
     """Backward compatible: factories still default to UNTRUSTED."""
     assert Guard.context_web(source_id="ddg").principal_trust is TrustLevel.UNTRUSTED
     assert Guard.context_mcp_client(client_id="c").principal_trust is TrustLevel.UNTRUSTED
+
+
+class _UnflushableStream:
+    """A stream that only reveals what was flushed, like a pipe under a collector.
+
+    ``write`` stages, ``flush`` commits, and ``committed`` is what a reader on
+    the other end would actually see. A sink that writes without flushing looks
+    identical to a working one against StringIO and delivers nothing here,
+    which is the whole failure this stands in for.
+    """
+
+    def __init__(self) -> None:
+        self._staged: list[str] = []
+        self.committed = ""
+
+    def write(self, text: str) -> int:
+        self._staged.append(text)
+        return len(text)
+
+    def flush(self) -> None:
+        self.committed += "".join(self._staged)
+        self._staged.clear()
+
+
+def test_audit_events_reach_a_stream_as_json_lines(tmp_path):
+    """The stdout sink: emitting is free, storing them is the host's problem.
+
+    A container has no file worth mounting, so the deployment reads the
+    process's output. One JSON object per line is what a collector expects.
+    """
+    import io
+    import json
+
+    stream = io.StringIO()
+    path = tmp_path / "nested" / "audit.jsonl"
+    log = AuditLogger(log_path=path, stream=stream)
+
+    log.log_quick("dlp_block", tool_name="send", session_id="s1")
+    log.log_quick("canary_detected", session_id="s1")
+
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 2
+    assert [json.loads(line)["event_type"] for line in lines] == [
+        "dlp_block",
+        "canary_detected",
+    ]
+    # The two sinks must not be able to disagree about what was recorded.
+    assert path.read_text() == stream.getvalue()
+    # And the in-memory store is unaffected by either.
+    assert len(log.get_events()) == 2
+
+
+def test_audit_stream_is_flushed_per_event(tmp_path):
+    """Without the flush the sink is invisible in the deployment it is for.
+
+    Python block-buffers a stream that is not a terminal, and under a collector
+    stdout is always a pipe. An unflushed event sits in the buffer while the
+    process runs and is lost if it dies, which is when the trail matters most.
+    """
+    stream = _UnflushableStream()
+    log = AuditLogger(stream=stream)
+    log.log_quick("dlp_block", session_id="s1")
+    assert stream.committed, "the event was written but never flushed"
+    assert stream.committed.endswith("\n")
+
+
+def test_audit_logger_writes_nothing_without_a_sink():
+    """The default is still memory only, so existing hosts see no new output."""
+    log = AuditLogger()
+    log.log_quick("dlp_block", session_id="s1")
+    assert len(log.get_events()) == 1

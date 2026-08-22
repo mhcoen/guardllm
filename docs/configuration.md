@@ -6,6 +6,53 @@
 
 guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
 
+## Policy from a file
+
+A deployment behind a process boundary has nowhere to put a Python dataclass,
+so `PolicyConfig` can be read from YAML. Needs PyYAML, which is not in the core
+install: `pip install 'guardllm[yaml]'`.
+
+```python
+from guardllm.config import load_policy
+
+policy = load_policy("policy.yaml")
+ctx = Guard.context_mcp_server(server_id="mail", policy=policy)
+```
+
+```yaml
+policy:
+  enable_destructive: false
+  server_default_deny: true
+  tool_allowlist: [search_knowledge, read_file]
+  untrusted_deny_tools: [send_email]
+  confirm_all_below: semi_trusted
+  contaminated_tool_policy: deny
+  capability_scopes:
+    search_knowledge: {scope: read}
+  rate_limit_overrides:
+    untrusted: {emails_per_hour: 10}
+  source_gate_overrides:
+    - source_type: web
+      source_trust: untrusted
+      policy: quarantine
+```
+
+The loader refuses rather than guesses, because a setting that is silently not
+in force is worse than one you cannot write:
+
+- **An unknown key is an error**, with a suggestion. `enable_destrucive: true`
+  does not leave destructive tools disabled while you believe otherwise.
+- **A value of the wrong type is an error.** YAML reads `off` and `no` as
+  false, but `"false"` is a non-empty string and therefore truthy, so
+  `enable_destructive: "false"` is refused rather than coerced.
+- **Absent is not empty.** `tool_allowlist:` unset means no allowlist;
+  `tool_allowlist: []` denies every tool. Same for `capability_scopes`.
+- **`directive_patterns` is refused**, because the policy engine does not read
+  it and a file should not be able to express a rule that does nothing.
+
+Only `PolicyConfig` is loadable. `PrivacyConfig` holds detector instances and
+class-to-policy mappings that a file cannot name, so it stays a Python object.
+
 ## PolicyConfig
 
 `PolicyConfig` fields:

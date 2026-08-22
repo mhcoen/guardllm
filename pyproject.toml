@@ -21,6 +21,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
+  # `yaml` is exercised by the policy-file tests, so a dev install gets it.
+  "pyyaml>=6.0",
+]
+# Reading a policy from a file, for a deployment that has no Python object to
+# put one in. Optional because the library itself never needs it: a host that
+# builds PolicyConfig in code should not carry a parser it does not call.
+yaml = [
+  "pyyaml>=6.0",
 ]
 # Lint tooling is pinned so a new release cannot turn CI red on an unchanged
 # commit. Dependabot tracks these and opens a PR when a version moves, so the

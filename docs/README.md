@@ -13,6 +13,7 @@ This directory contains architecture and integration documentation for using gua
 - [oauth_integration.md](oauth_integration.md): mapping OAuth scopes to Guard policy and tool-gating decisions.
 - [integration_templates.md](integration_templates.md): copy-paste templates for MCP server/client and untrusted-input ingestion.
 - [gateway.md](gateway.md): the OpenAI-compatible proxy that runs the checks itself, so an application changes only its `base_url`.
+- [rego.md](rego.md): writing an access policy in Rego against the session facts GuardLLM computes, evaluated locally.
 - [privacy.md](privacy.md): pseudonymization at the model boundary, and the two policies that decide where a real value may be restored.
 - [configuration.md](configuration.md): Policy controls and deployment guidance.
 - [policy_tuning.md](policy_tuning.md): guidance for safely tuning policy strictness.

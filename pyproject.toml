@@ -23,12 +23,23 @@ dev = [
   "pytest>=8.0",
   # `yaml` is exercised by the policy-file tests, so a dev install gets it.
   "pyyaml>=6.0",
+  # Likewise wasmtime, for the Rego tests. The `opa` compiler is a separate
+  # matter: it is a Go binary rather than a wheel, so CI installs it in its own
+  # step and the tests skip the compile-and-run cases when it is absent.
+  "wasmtime>=25.0",
 ]
 # Reading a policy from a file, for a deployment that has no Python object to
 # put one in. Optional because the library itself never needs it: a host that
 # builds PolicyConfig in code should not carry a parser it does not call.
 yaml = [
   "pyyaml>=6.0",
+]
+# Evaluating a Rego policy in process. Optional because it is a policy backend,
+# not a control: everything the library enforces works without it. The WASM
+# runtime is the only dependency; the `opa` binary is a build-time tool for
+# whoever compiles the policy, never a runtime one.
+rego = [
+  "wasmtime>=25.0",
 ]
 # Lint tooling is pinned so a new release cannot turn CI red on an unchanged
 # commit. Dependabot tracks these and opens a PR when a version moves, so the

@@ -26,6 +26,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
 
+      # The Rego tests compile a policy fixture from its .rego source rather
+      # than committing an opaque .wasm blob to a security repository. That
+      # needs the OPA compiler, which is a Go binary and not a wheel. Pinned
+      # like every other tool here so a new release cannot turn CI red on an
+      # unchanged commit. Without this step those tests skip, which would mean
+      # the WASM path is never exercised anywhere automatic.
+      - name: Install OPA
+        run: |
+          curl -fsSL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v1.14.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version
+
       - name: Run tests
         run: |
           pytest -q

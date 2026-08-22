@@ -17,29 +17,55 @@ from typing import Any
 
 from guardllm.gateway.forensics import Chain
 
+#: Colours are tokens with a dark-mode override rather than fixed values.
+#: The first version hardcoded greys picked against white, and on a dark theme
+#: the muted text landed near 2.9:1 contrast, under the 4.5:1 AA floor. The
+#: accent pairs are lightened in dark mode for the same reason: #1565c0 on a
+#: near-black background is legible as a badge fill and not as text.
 _STYLE = """
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a; --muted: #5c5c5c; --faint: #767676;
+  --rule: #8884;
+  --ok-fg: #1b5e20; --ok-bg: #2e7d3222;
+  --info-fg: #0d47a1; --info-bg: #1565c022;
+  --warn-fg: #b34700; --warn-bg: #e6510022;
+  --stop-fg: #fff; --stop-bg: #c62828;
+  --link: #0d47a1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e8; --muted: #b0b0b0; --faint: #9a9a9a;
+    --rule: #fff3;
+    --ok-fg: #81c995; --ok-bg: #81c99522;
+    --info-fg: #8ab4f8; --info-bg: #8ab4f822;
+    --warn-fg: #fcad70; --warn-bg: #fcad7022;
+    --stop-fg: #fff; --stop-bg: #d93025;
+    --link: #8ab4f8;
+  }
+}
 body { font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; margin: 2rem auto;
-       max-width: 60rem; padding: 0 1rem; }
+       max-width: 60rem; padding: 0 1rem; color: var(--fg); }
 h1 { font-size: 1.3rem; margin-bottom: .25rem; }
-.sub { color: #666; margin-top: 0; font-size: .9rem; }
+.sub { color: var(--muted); margin-top: 0; font-size: .9rem; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8883;
+th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--rule);
          vertical-align: top; }
 th { font-weight: 600; font-size: .8rem; text-transform: uppercase;
-     letter-spacing: .04em; color: #666; }
-td.n { color: #999; width: 2rem; text-align: right; }
+     letter-spacing: .04em; color: var(--muted); }
+td.n { color: var(--faint); width: 2rem; text-align: right; }
 code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .badge { display: inline-block; padding: .1rem .45rem; border-radius: .25rem;
          font-size: .78rem; font-weight: 600; }
-.blocked { background: #c62828; color: #fff; }
-.allowed { background: #2e7d3222; color: #2e7d32; }
-.recorded { background: #1565c022; color: #1565c0; }
+.blocked { background: var(--stop-bg); color: var(--stop-fg); }
+.allowed { background: var(--ok-bg); color: var(--ok-fg); }
+.recorded { background: var(--info-bg); color: var(--info-fg); }
 .flag { font-size: .78rem; padding: .1rem .4rem; border-radius: .25rem;
-        background: #e6510022; color: #e65100; margin-left: .3rem; }
-.off { color: #bbb; background: none; }
-.empty { color: #666; font-style: italic; margin-top: 1.5rem; }
-a { color: #1565c0; }
+        background: var(--warn-bg); color: var(--warn-fg); margin-left: .3rem; }
+.off { color: var(--faint); background: none; }
+.empty { color: var(--muted); font-style: italic; margin-top: 1.5rem; }
+.at { color: var(--faint); font-size: .78rem; }
+a { color: var(--link); }
 """
 
 
@@ -80,7 +106,7 @@ def render_chain(session_id: str, chain: Chain) -> str:
                 f"{html.escape(step.outcome)}</span> "
                 f"{_flags(step.contaminated, step.escalated)}</td>"
                 f"<td>{html.escape(step.reason)}"
-                f'<div style="color:#999;font-size:.78rem">+{step.at - first:.1f}s</div>'
+                f'<div class="at">+{step.at - first:.1f}s</div>'
                 "</td></tr>"
             )
     blocked = sum(1 for s in steps if s.outcome == "blocked")

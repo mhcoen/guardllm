@@ -555,3 +555,71 @@ class TestViewerHttp:
             assert json.loads(caught.value.read())["error"]["session_id"] == "inspect-me"
         finally:
             gateway.shutdown()
+
+
+class TestViewerContrast:
+    """The page is served in whatever theme the reader has.
+
+    The first version set `color-scheme: light dark` and then hardcoded greys
+    chosen against white, so on a dark theme the muted text sat at 2.9:1,
+    under the 4.5:1 AA floor. Caught by looking at it in a browser, not by any
+    test, so here is the test.
+    """
+
+    @staticmethod
+    def _ratio(fg: str, bg: str) -> float:
+        def lum(value: str) -> float:
+            value = value.lstrip("#")
+            if len(value) == 3:
+                value = "".join(c * 2 for c in value)
+
+            def channel(pair: str) -> float:
+                v = int(pair, 16) / 255
+                return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+            r, g, b = channel(value[0:2]), channel(value[2:4]), channel(value[4:6])
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        hi, lo = max(lum(fg), lum(bg)), min(lum(fg), lum(bg))
+        return (hi + 0.05) / (lo + 0.05)
+
+    def test_every_foreground_token_clears_aa_in_both_themes(self):
+        """Each colour is checked against the surface it actually sits on.
+
+        The badge backgrounds carry an alpha of 22 (~13%), so their text
+        effectively sits on the page background. `--stop-bg` is the one opaque
+        fill, so `--stop-fg` is checked against it: measuring white against the
+        page instead gives 1:1 and says nothing, which is what the first
+        version of this test did.
+        """
+        import re
+
+        from guardllm.gateway.viewer import _STYLE
+
+        dark_start = _STYLE.index("prefers-color-scheme: dark")
+        blocks = (
+            (_STYLE[:dark_start], "#ffffff", "light"),
+            (_STYLE[dark_start:], "#1e1e1e", "dark"),
+        )
+
+        for block, page, label in blocks:
+            tokens = dict(re.findall(r"--([\w-]+):\s*(#[0-9a-f]{3,8})", block))
+            assert tokens, f"{label}: no tokens found"
+
+            on_page = ["fg", "muted", "faint", "link", "ok-fg", "info-fg", "warn-fg"]
+            for name in on_page:
+                ratio = self._ratio(tokens[name], page)
+                assert ratio >= 4.5, f"{label} --{name} is {ratio:.2f}:1 on the page, under AA"
+
+            # The one opaque badge: its text is checked against its own fill.
+            ratio = self._ratio(tokens["stop-fg"], tokens["stop-bg"])
+            assert ratio >= 4.5, f"{label} --stop-fg is {ratio:.2f}:1 on --stop-bg, under AA"
+
+    def test_no_colour_is_hardcoded_outside_the_token_block(self):
+        """A colour written inline cannot adapt to the reader's theme."""
+        import re
+
+        from guardllm.gateway.viewer import _STYLE
+
+        body = _STYLE[_STYLE.index("body {") :]
+        assert not re.search(r":\s*#[0-9a-f]{3,6}", body), "a literal colour escaped the tokens"

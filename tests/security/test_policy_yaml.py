@@ -152,3 +152,47 @@ class TestPolicyFileRefuses:
         with pytest.raises(Exception) as caught:
             parse_policy("policy: !!python/object/apply:os.system ['echo pwned']")
         assert "python/object" in str(caught.value) or "could not determine" in str(caught.value)
+
+
+class TestPolicyFileVersion:
+    """The format is a long-lived interface, so it carries a version.
+
+    A customer-hosted deployment runs a release for years and cannot be forced
+    forward, which makes the dangerous direction an OLD build reading a NEW
+    file: without a version it would see settings it does not implement, reject
+    them as unknown keys, and report a typo when the truth is that the
+    operator's policy is not being enforced as written.
+    """
+
+    def test_an_absent_version_means_the_first_one(self):
+        """No boilerplate is required of anyone, and old files keep working."""
+        assert parse_policy("policy: {server_default_deny: true}").server_default_deny is True
+        assert parse_policy("version: 1\npolicy: {server_default_deny: true}").server_default_deny
+
+    def test_a_newer_file_is_refused_and_says_to_upgrade(self):
+        """The remedy is a newer GuardLLM, not an edited file."""
+        with pytest.raises(ValueError, match="newer than this build"):
+            parse_policy("version: 2\npolicy: {}")
+        with pytest.raises(ValueError, match="Upgrade guardllm"):
+            parse_policy("version: 99\npolicy: {}")
+
+    def test_a_retired_version_is_refused_differently(self):
+        """The opposite gap, and the opposite remedy: migrate the file."""
+        with pytest.raises(ValueError, match="no longer supported"):
+            parse_policy("version: 0\npolicy: {}")
+
+    def test_the_version_must_be_an_integer(self):
+        with pytest.raises(ValueError, match="must be an integer"):
+            parse_policy('version: "1"\npolicy: {}')
+        # bool subclasses int, and `version: true` is not version 1.
+        with pytest.raises(ValueError, match="got bool"):
+            parse_policy("version: true\npolicy: {}")
+
+    def test_version_is_a_permitted_top_level_key(self):
+        """It must not trip the unknown-key refusal that guards typos."""
+        from guardllm.config import POLICY_FILE_VERSION
+
+        assert POLICY_FILE_VERSION == 1
+        parse_policy(f"version: {POLICY_FILE_VERSION}\npolicy:")
+        with pytest.raises(ValueError, match="unknown top-level key"):
+            parse_policy("verison: 1\npolicy: {}")

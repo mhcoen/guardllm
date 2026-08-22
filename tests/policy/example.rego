@@ -34,3 +34,14 @@ deny contains msg if {
     not "admin" in input.user.roles
     msg := "delete_account requires the admin role"
 }
+
+# A rule that branches on the document version rather than breaking across an
+# increment. This is what the version field is for: a policy written today
+# keeps working when a field is added tomorrow, and can opt into new facts
+# only where it knows they exist.
+deny contains msg if {
+    input.version >= 1
+    input.tool == "export_all"
+    input.guardllm.session_contaminated
+    msg := "no bulk export from a contaminated session"
+}

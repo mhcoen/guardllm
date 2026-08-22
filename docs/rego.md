@@ -22,6 +22,7 @@ That makes the input document the real interface, more than the OPA wiring:
 
 ```json
 {
+  "version": 1,
   "user":  {"id": "alice", "roles": ["support"]},
   "tool":  "wire_funds",
   "args":  {"amount": 100},
@@ -72,6 +73,27 @@ if not verdict.allowed:
 
 The entrypoint returns deny messages, so an empty result is an allow. A bundle
 or a bare `policy.wasm` both load.
+
+## The stability contract
+
+Your rules live in your repository and your deployment runs a release for
+years, so this document is the longest-lived interface in the product. Within a
+version, **fields are only ever added**. None is removed, renamed, or given a
+new meaning; that requires an increment.
+
+`input.version` travels inside the document so a rule can branch on it and keep
+working across an increment rather than failing at the first changed field:
+
+```rego
+deny contains msg if {
+    input.version >= 1
+    input.tool == "export_all"
+    input.guardllm.session_contaminated
+    msg := "no bulk export from a contaminated session"
+}
+```
+
+`guardllm.policy.POLICY_INPUT_VERSION` is the current value.
 
 ## Ordering
 

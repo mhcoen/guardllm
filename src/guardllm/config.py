@@ -37,7 +37,25 @@ from guardllm.security.types import (
     TrustLevel,
 )
 
-__all__ = ["load_policy", "parse_policy"]
+__all__ = ["POLICY_FILE_VERSION", "SUPPORTED_POLICY_FILE_VERSIONS", "load_policy", "parse_policy"]
+
+#: The policy-file format this build writes and understands.
+#:
+#: Versioned because a customer-hosted deployment runs a release for years and
+#: cannot be forced forward, so this format is a long-lived interface rather
+#: than an implementation detail. The direction that needs guarding is an OLD
+#: build reading a NEW file: it would otherwise see settings it does not
+#: implement, reject them as unknown keys, and report a typo when the truth is
+#: that the operator's policy is not being enforced as written.
+#:
+#: Within a version, settings may be ADDED. None is ever removed, renamed, or
+#: given a new meaning; that requires an increment.
+POLICY_FILE_VERSION = 1
+
+#: Every version this build accepts. An absent ``version:`` means 1, so files
+#: written before the key existed keep working and no boilerplate is required
+#: of anyone. An unrecognized version is refused rather than guessed at.
+SUPPORTED_POLICY_FILE_VERSIONS = frozenset({1})
 
 
 def _yaml():
@@ -242,22 +260,52 @@ def _build(data: object) -> PolicyConfig:
     return PolicyConfig(**kwargs)
 
 
+def _check_version(document: dict[str, Any]) -> None:
+    """Refuse a file this build cannot read, and say which way the gap runs.
+
+    The two directions fail differently and the message has to distinguish
+    them, because the remedy is opposite: a newer file needs a newer GuardLLM,
+    a retired version needs the file migrating.
+    """
+    if "version" not in document:
+        return  # absent means 1: files written before the key keep working
+    version = document["version"]
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError(f"policy file: version must be an integer, got {type(version).__name__}")
+    if version in SUPPORTED_POLICY_FILE_VERSIONS:
+        return
+    if version > POLICY_FILE_VERSION:
+        raise ValueError(
+            f"policy file: version {version} is newer than this build understands "
+            f"(supports {sorted(SUPPORTED_POLICY_FILE_VERSIONS)}). Upgrade guardllm "
+            "rather than editing the file: settings it adds would otherwise be "
+            "silently unenforced."
+        )
+    raise ValueError(
+        f"policy file: version {version} is no longer supported "
+        f"(supports {sorted(SUPPORTED_POLICY_FILE_VERSIONS)})."
+    )
+
+
 def parse_policy(text: str) -> PolicyConfig:
     """Build a PolicyConfig from YAML text.
 
-    The document is a mapping with a single ``policy`` key, so a future section
-    can be added without changing the shape of every file already written.
+    The document is a mapping with a ``policy`` key and an optional ``version``,
+    so a future section can be added without changing the shape of every file
+    already written.
     """
     document = _yaml().safe_load(text)
     if document is None:
         return PolicyConfig()
     if not isinstance(document, dict):
         raise ValueError(f"policy file: expected a mapping, got {type(document).__name__}")
-    unknown = set(document) - {"policy"}
+    unknown = set(document) - {"policy", "version"}
     if unknown:
         raise ValueError(
-            f"policy file: unknown top-level key(s) {sorted(unknown)}; expected 'policy'"
+            f"policy file: unknown top-level key(s) {sorted(unknown)}; "
+            "expected 'policy' and optionally 'version'"
         )
+    _check_version(document)
     return _build(document.get("policy"))
 
 

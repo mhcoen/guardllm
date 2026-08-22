@@ -28,7 +28,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-__all__ = ["RegoPolicy", "PolicyDecision", "build_input"]
+__all__ = ["POLICY_INPUT_VERSION", "RegoPolicy", "PolicyDecision", "build_input"]
+
+#: The version of the input document a policy is written against.
+#:
+#: This is the interface with the longest life in the product. A customer's
+#: Rego rules live in their repository, not ours, and a customer-hosted
+#: deployment runs a release for years, so a field cannot be renamed once
+#: anyone has read it. The version travels inside the document rather than
+#: alongside it, so a policy can branch on ``input.version`` and keep working
+#: across an increment instead of failing at the first changed field.
+#:
+#: The contract within a version: fields may be ADDED, and a policy that does
+#: not read them is unaffected. No field is removed, renamed, or given a new
+#: meaning. Anything else increments this.
+POLICY_INPUT_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -70,6 +84,9 @@ def build_input(
     so the schema has one definition. A policy is written against this shape,
     so changing it silently would break rules a customer has already deployed.
 
+    ``version`` is ``POLICY_INPUT_VERSION`` and lets a policy branch rather than
+    break across an increment. Within a version, fields are only ever added.
+
     ``user.roles`` is always present, as a list, even when the host supplied no
     user at all. That is not tidiness. In Rego an undefined reference makes the
     whole rule body undefined, so ``not "admin" in input.user.roles`` against a
@@ -82,6 +99,7 @@ def build_input(
     identity = dict(user or {})
     identity.setdefault("roles", [])
     return {
+        "version": POLICY_INPUT_VERSION,
         "user": identity,
         "tool": tool,
         "args": args or {},

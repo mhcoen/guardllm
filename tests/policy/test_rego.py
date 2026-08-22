@@ -218,3 +218,39 @@ class TestLoadErrors:
             archive.add(_HERE / "example.rego", arcname="/example.rego")
         with pytest.raises(ValueError, match="no policy.wasm"):
             RegoPolicy(empty)
+
+
+class TestInputVersion:
+    """The interface with the longest life: a customer's rules live in their repo.
+
+    A field cannot be renamed once anyone has read it, and a customer-hosted
+    deployment runs a release for years. The version travels inside the
+    document so a policy can branch on it and keep working across an increment,
+    rather than failing at the first changed field.
+    """
+
+    def test_the_document_carries_its_version(self):
+        from guardllm.policy import POLICY_INPUT_VERSION
+
+        assert POLICY_INPUT_VERSION == 1
+        assert build_input(tool="x")["version"] == POLICY_INPUT_VERSION
+
+    def test_the_version_does_not_disturb_the_rest_of_the_schema(self):
+        doc = build_input(tool="x")
+        assert set(doc) == {"version", "user", "tool", "args", "guardllm"}
+
+    @_needs_opa
+    def test_a_policy_can_branch_on_it(self, policy):
+        """What the field is for, exercised by a rule that reads it.
+
+        A rule gated on `input.version >= 1` fires today and would keep firing
+        after an increment, which is the whole point: adding a fact must not
+        break a policy that does not know about it.
+        """
+        denied = policy.evaluate(build_input(tool="export_all", contaminated=True))
+        assert denied.allowed is False
+        assert "bulk export" in denied.reason
+        # The gate is on the session fact, not merely on the version.
+        assert policy.evaluate(build_input(tool="export_all")).allowed is True
+        # And the rules written before the version existed are unaffected.
+        assert policy.evaluate(build_input(tool="wire_funds", contaminated=True)).allowed is False

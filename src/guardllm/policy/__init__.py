@@ -5,6 +5,18 @@ always run first. This is the seam where an external policy language narrows an
 already-permitted call.
 """
 
-from guardllm.policy.rego import PolicyDecision, RegoPolicy, build_input, decide
+from guardllm.policy.rego import (
+    POLICY_INPUT_VERSION,
+    PolicyDecision,
+    RegoPolicy,
+    build_input,
+    decide,
+)
 
-__all__ = ["PolicyDecision", "RegoPolicy", "build_input", "decide"]
+__all__ = [
+    "POLICY_INPUT_VERSION",
+    "PolicyDecision",
+    "RegoPolicy",
+    "build_input",
+    "decide",
+]

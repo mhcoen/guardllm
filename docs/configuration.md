@@ -20,6 +20,7 @@ ctx = Guard.context_mcp_server(server_id="mail", policy=policy)
 ```
 
 ```yaml
+version: 1          # optional; absent means 1
 policy:
   enable_destructive: false
   server_default_deny: true
@@ -49,6 +50,16 @@ in force is worse than one you cannot write:
   `tool_allowlist: []` denies every tool. Same for `capability_scopes`.
 - **`directive_patterns` is refused**, because the policy engine does not read
   it and a file should not be able to express a rule that does nothing.
+
+The optional `version` key exists because a deployment runs a release for years
+and cannot be forced forward, so this format is a long-lived interface. Within a
+version settings are only ever added; none is removed, renamed, or given a new
+meaning. An absent version means 1, so no file needs the boilerplate. A version
+this build does not know is refused, and the message distinguishes the two
+directions because the remedies are opposite: a newer file needs a newer
+GuardLLM, while a retired version needs the file migrating. Without that, an old
+build reading a new file would reject its settings as unknown keys and report a
+typo, when the truth is that the operator's policy is not being enforced.
 
 Only `PolicyConfig` is loadable. `PrivacyConfig` holds detector instances and
 class-to-policy mappings that a file cannot name, so it stays a Python object.

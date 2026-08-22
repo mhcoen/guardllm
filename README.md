@@ -31,6 +31,8 @@ GuardLLM is a lifecycle-aware security pipeline, not a collection of independent
 
 This is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the [published surface evidence](benchmarks/published/surface_controls.md), while GuardLLM reaches 100%, because a decision late in the session can still read what an earlier stage recorded. That is a measurement of one composition, not a proof that no composition could be built to do it.
 
+That is not an argument against those tools, and GuardLLM replaces none of them. It computes the facts they have no way to learn and hands them over: `guardllm.policy.build_input` gives a Rego rule `session_contaminated`, `session_escalated`, `injection_detected` and the rest, so a policy can say that a session which ingested untrusted content may not move money. OPA cannot express that on its own, not because it is a weak policy engine but because nothing else in the stack computes the fact the rule has to read. See [docs/rego.md](docs/rego.md).
+
 ## Features
 
 **Session-risk propagation (cross-stage)**

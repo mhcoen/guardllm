@@ -1,0 +1,18 @@
+# Deny by default, then name what the image needs. The Dockerfile copies four
+# things, so those are the four exceptions.
+#
+# An allowlist rather than a list of exclusions, for the same reason the policy
+# layer works that way: a new directory added to the repo is excluded by
+# default rather than silently joining the build context. `local/` holds
+# pricing, strategy and design notes, and `artifacts/` and `benchmarks/` are
+# over 1.8G between them; none of it belongs anywhere near an image.
+#
+# BuildKit already sends only the files a COPY needs, so today this changes
+# nothing. It matters for the classic builder, for a remote or CI builder where
+# the context crosses a network, and for the day someone writes `COPY . .`.
+*
+
+!pyproject.toml
+!README.md
+!LICENSE
+!src

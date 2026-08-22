@@ -23,6 +23,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 
 from guardllm import Guard
+from guardllm.gateway.forensics import Chain
 
 
 class SessionStore:
@@ -52,11 +53,11 @@ class SessionStore:
             time_source = time.monotonic
         self._now = time_source
         self._lock = threading.Lock()
-        # id -> (guard, last_used). Ordered by recency of use; oldest first.
-        self._entries: OrderedDict[str, tuple[Guard, float]] = OrderedDict()
+        # id -> (guard, chain, last_used). Ordered by recency; oldest first.
+        self._entries: OrderedDict[str, tuple[Guard, Chain, float]] = OrderedDict()
 
-    def get(self, session_id: str | None) -> tuple[str, Guard]:
-        """Return a live ``(session_id, Guard)``, creating one if needed.
+    def get(self, session_id: str | None) -> tuple[str, Guard, Chain]:
+        """Return a live ``(session_id, Guard, Chain)``, creating it if needed.
 
         A ``None`` or empty id is a MISS, not a lookup key: it returns a fresh
         session under a generated id rather than a shared one, because a
@@ -72,30 +73,30 @@ class SessionStore:
             self._evict_expired(now)
             hit = self._entries.get(session_id)
             if hit is not None:
-                guard, _ = hit
-                self._entries[session_id] = (guard, now)
+                guard, chain, _ = hit
+                self._entries[session_id] = (guard, chain, now)
                 self._entries.move_to_end(session_id)
-                return session_id, guard
+                return session_id, guard, chain
             # A client-supplied id that we do not hold is honoured as the id of
             # a NEW session, so the client keeps a stable handle across the TTL
             # gap. It is still a fresh Guard, never resurrected state.
-            guard = self._make_guard()
-            self._insert(session_id, guard, now)
-            return session_id, guard
+            guard, chain = self._make_guard(), Chain()
+            self._insert(session_id, guard, chain, now)
+            return session_id, guard, chain
 
-    def _new(self, now: float) -> tuple[str, Guard]:
+    def _new(self, now: float) -> tuple[str, Guard, Chain]:
         import uuid
 
         session_id = uuid.uuid4().hex
-        guard = self._make_guard()
+        guard, chain = self._make_guard(), Chain()
         with self._lock:
             self._evict_expired(now)
-            self._insert(session_id, guard, now)
-        return session_id, guard
+            self._insert(session_id, guard, chain, now)
+        return session_id, guard, chain
 
-    def _insert(self, session_id: str, guard: Guard, now: float) -> None:
+    def _insert(self, session_id: str, guard: Guard, chain: Chain, now: float) -> None:
         # Caller holds the lock, except _new which takes it around this.
-        self._entries[session_id] = (guard, now)
+        self._entries[session_id] = (guard, chain, now)
         self._entries.move_to_end(session_id)
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)  # evict least-recently-used
@@ -106,10 +107,37 @@ class SessionStore:
         # scanning the whole map.
         ttl = self._ttl
         while self._entries:
-            sid, (_guard, seen) = next(iter(self._entries.items()))
+            sid, (_guard, _chain, seen) = next(iter(self._entries.items()))
             if now - seen <= ttl:
                 break
             del self._entries[sid]
+
+    def chain(self, session_id: str) -> Chain | None:
+        """The decision chain for a live session, or None if it is not held.
+
+        A lookup, never a create: the viewer must not conjure a session as a
+        side effect of someone opening a URL.
+        """
+        with self._lock:
+            hit = self._entries.get(session_id)
+            return hit[1] if hit is not None else None
+
+    def listing(self) -> list[dict[str, object]]:
+        """Every live session, newest use first, for the viewer's index."""
+        with self._lock:
+            rows = [
+                {
+                    "session_id": sid,
+                    "steps": len(chain),
+                    "blocked": sum(1 for s in chain.steps if s.outcome == "blocked"),
+                    "contaminated": chain.steps[-1].contaminated if len(chain) else False,
+                    "escalated": chain.steps[-1].escalated if len(chain) else False,
+                    "idle_seconds": round(self._now() - seen, 1),
+                }
+                for sid, (_guard, chain, seen) in self._entries.items()
+            ]
+        rows.reverse()  # most-recently-used first
+        return rows
 
     def __len__(self) -> int:
         with self._lock:

@@ -69,6 +69,30 @@ in configuration.
 `GUARDLLM_POLICY` points at a YAML policy file; see
 [configuration.md](configuration.md) for its shape.
 
+## Seeing the decision chain
+
+`GET /forensics` lists live sessions; `GET /forensics/<session-id>` shows one
+session's decisions in order, with the state each left behind:
+
+```
+1. ingest     web_search   recorded  [contaminated]  untrusted content ingested
+2. egress     model        allowed   [contaminated]  clean
+3. tool_call  wire_funds   BLOCKED   [contaminated]  Tool call denied: session contaminated=deny
+```
+
+Step 3 is only explicable by step 1, and they arrived in different requests.
+That is the thing a per-request log cannot show and the reason this view
+exists: a content filter produces a list of independent verdicts, while the
+fact that carries forward is what GuardLLM adds.
+
+The same data is available as JSON at `GET /sessions` and
+`GET /sessions/<session-id>` for scripting.
+
+The page holds no content: a step names the stage, the tool or source it
+concerned, and the verdict. It fetches nothing, has no JavaScript, and renders
+offline. Sessions are in memory and lost on restart; retention, search and
+history across restarts are the console, not this.
+
 ## Failure behaviour
 
 The gateway fails closed and loud. A blocked request or response becomes an

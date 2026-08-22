@@ -105,7 +105,19 @@ def _message_text(message: dict[str, Any]) -> str:
     return ""
 
 
-def inspect_request(body: dict[str, Any], guard: Guard, cfg: GatewayConfig) -> None:
+def _record(chain: Any, stage: str, detail: str, outcome: str, reason: str, guard: Guard) -> None:
+    """Append to the decision chain if one is being kept.
+
+    Optional so the core stays usable without a viewer attached, and so a
+    recording failure can never turn into a security decision.
+    """
+    if chain is not None:
+        chain.record(stage=stage, detail=detail, outcome=outcome, reason=reason, guard=guard)
+
+
+def inspect_request(
+    body: dict[str, Any], guard: Guard, cfg: GatewayConfig, chain: Any = None
+) -> None:
     """Run every tool-result message through inbound ingest.
 
     Mutates session state (contamination, provenance) and raises
@@ -129,14 +141,19 @@ def inspect_request(body: dict[str, Any], guard: Guard, cfg: GatewayConfig) -> N
         ctx = _tool_result_context(cfg, name)
         result = guard.process_inbound(text, ctx)
         if result.blocked:
-            raise GatewayRefused(
-                "ingest",
-                f"tool result from {name!r} withheld: "
-                + "; ".join(result.warnings or ["de-identification failed"]),
+            reason = f"tool result from {name!r} withheld: " + "; ".join(
+                result.warnings or ["de-identification failed"]
             )
+            _record(chain, "ingest", name, "blocked", reason, guard)
+            raise GatewayRefused("ingest", reason)
+        # Recorded even when nothing was blocked, because THIS is the step a
+        # later refusal points back to: the moment the session was labelled.
+        _record(chain, "ingest", name, "recorded", "untrusted content ingested", guard)
 
 
-def inspect_response(completion: dict[str, Any], guard: Guard, cfg: GatewayConfig) -> None:
+def inspect_response(
+    completion: dict[str, Any], guard: Guard, cfg: GatewayConfig, chain: Any = None
+) -> None:
     """Check the model's tool calls and final text against session state.
 
     Raises ``GatewayRefused`` on the first block. Runs after
@@ -169,12 +186,16 @@ def inspect_response(completion: dict[str, Any], guard: Guard, cfg: GatewayConfi
             if not isinstance(args, dict):
                 args = {"_value": args}
             gate = guard.check_tool_call(name, args, egress)
+            outcome = "allowed" if gate.allowed else "blocked"
+            _record(chain, "tool_call", name, outcome, gate.reason, guard)
             if not gate.allowed:
                 raise GatewayRefused("tool_call", f"{name}: {gate.reason}")
 
         text = _message_text(message)
         if text:
             out = guard.check_outbound(text, egress)
+            outcome = "allowed" if out.allowed else "blocked"
+            _record(chain, "egress", "model", outcome, out.reason, guard)
             if not out.allowed:
                 raise GatewayRefused("egress", out.reason)
 
@@ -203,8 +224,8 @@ def guard_chat_completion(
     checked BEFORE the upstream call, so a blocked tool result never reaches
     the model; the response is checked after.
     """
-    resolved_id, guard = store.get(session_id)
-    inspect_request(body, guard, cfg)
+    resolved_id, guard, chain = store.get(session_id)
+    inspect_request(body, guard, cfg, chain)
     completion = call_upstream(body)
-    inspect_response(completion, guard, cfg)
+    inspect_response(completion, guard, cfg, chain)
     return _Decision(session_id=resolved_id, completion=completion)

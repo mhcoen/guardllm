@@ -23,6 +23,7 @@ from typing import Any
 
 from guardllm.gateway.proxy import GatewayConfig, GatewayRefused, guard_chat_completion
 from guardllm.gateway.session import SessionStore
+from guardllm.gateway.viewer import render_chain, render_index, render_missing
 
 _SESSION_HEADER = "X-GuardLLM-Session"
 _MAX_BODY_BYTES = 8 * 1024 * 1024  # a chat request past 8MB is not a real one
@@ -93,11 +94,42 @@ class _Handler(BaseHTTPRequestHandler):
             err["stage"] = stage
         self._send_json(status, {"error": err})
 
+    def _send_html(self, status: int, html: str) -> None:
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
-        if self.path == "/healthz":
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path == "/healthz":
             self._send_json(200, {"status": "ok", "sessions": len(self.store)})
-        else:
-            self._error(404, "not found")
+            return
+        if path == "/sessions":
+            self._send_json(200, {"sessions": self.store.listing()})
+            return
+        if path.startswith("/sessions/"):
+            session_id = urllib.parse.unquote(path[len("/sessions/") :])
+            chain = self.store.chain(session_id)
+            if chain is None:
+                self._error(404, f"no live session {session_id!r}")
+                return
+            self._send_json(200, {"session_id": session_id, **chain.as_dict()})
+            return
+        if path == "/forensics":
+            self._send_html(200, render_index(self.store.listing()))
+            return
+        if path.startswith("/forensics/"):
+            session_id = urllib.parse.unquote(path[len("/forensics/") :])
+            chain = self.store.chain(session_id)
+            if chain is None:
+                self._send_html(404, render_missing(session_id))
+                return
+            self._send_html(200, render_chain(session_id, chain))
+            return
+        self._error(404, "not found")
 
     def do_POST(self) -> None:
         if self.path.rstrip("/") != "/v1/chat/completions":

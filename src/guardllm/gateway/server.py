@@ -24,6 +24,7 @@ from typing import Any
 from guardllm.gateway.proxy import GatewayConfig, GatewayRefused, guard_chat_completion
 from guardllm.gateway.session import SessionStore
 from guardllm.gateway.viewer import render_chain, render_index, render_missing
+from guardllm.support import UnsafeBundleError, build_bundle, render_bundle
 
 _SESSION_HEADER = "X-GuardLLM-Session"
 _MAX_BODY_BYTES = 8 * 1024 * 1024  # a chat request past 8MB is not a real one
@@ -146,7 +147,44 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._send_html(200, render_chain(session_id, chain))
             return
+        if path == "/support" or path.startswith("/support/"):
+            self._support(path)
+            return
         self._error(404, "not found")
+
+    def _support(self, path: str) -> None:
+        """A diagnostic bundle, so a container can be diagnosed by curl.
+
+        The operator running this gateway cannot be asked to reproduce a
+        problem locally, and nobody here can reach their network. Everything
+        support needs comes out of one request.
+
+        A session id includes that session's decision chain, which is the part
+        that explains a refusal several turns after the ingest that caused it.
+        """
+        chain = None
+        if path.startswith("/support/"):
+            session_id = urllib.parse.unquote(path[len("/support/") :])
+            chain = self.store.chain(session_id)
+            if chain is None:
+                self._error(404, f"no live session {session_id!r}")
+                return
+        try:
+            text = render_bundle(
+                build_bundle(policy=self.cfg.policy, chain=chain, deployment="gateway")
+            )
+        except UnsafeBundleError as exc:
+            # Refusing is the designed answer, so it is a 409 rather than a
+            # 500: nothing failed, the bundle was declined because it could not
+            # be cleaned.
+            self._error(409, str(exc))
+            return
+        body = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:
         if self.path.rstrip("/") != "/v1/chat/completions":

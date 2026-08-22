@@ -15,6 +15,7 @@ This directory contains architecture and integration documentation for using gua
 - [gateway.md](gateway.md): the OpenAI-compatible proxy that runs the checks itself, so an application changes only its `base_url`.
 - [rego.md](rego.md): writing an access policy in Rego against the session facts GuardLLM computes, evaluated locally.
 - [privacy.md](privacy.md): pseudonymization at the model boundary, and the two policies that decide where a real value may be restored.
+- [support.md](support.md): the diagnostic bundle a customer-hosted deployment produces for a support ticket, and what it refuses to carry.
 - [configuration.md](configuration.md): Policy controls and deployment guidance.
 - [policy_tuning.md](policy_tuning.md): guidance for safely tuning policy strictness.
 - [troubleshooting.md](troubleshooting.md): common failure modes, fixes, and FAQ.

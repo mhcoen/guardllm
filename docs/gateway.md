@@ -93,6 +93,19 @@ concerned, and the verdict. It fetches nothing, has no JavaScript, and renders
 offline. Sessions are in memory and lost on restart; retention, search and
 history across restarts are the console, not this.
 
+## Diagnostics
+
+`GET /support` returns a diagnostic bundle as JSON, and
+`GET /support/<session-id>` includes that session's decision chain. It is the
+whole of what a support ticket needs from a deployment nobody outside your
+network can reach: the resolved policy with the settings that differ from the
+default named, versions, and whether the optional extras can actually be
+imported. It carries no message content, reports `GUARDLLM_*` variables by name
+and never by value, and is scanned for credentials before it is returned. A
+credential it recognizes but cannot replace exactly makes the endpoint answer
+`409` rather than return a file that looks cleaned and is not. See
+[support.md](support.md).
+
 ## Failure behaviour
 
 The gateway fails closed and loud. A blocked request or response becomes an

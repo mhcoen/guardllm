@@ -623,3 +623,87 @@ class TestViewerContrast:
 
         body = _STYLE[_STYLE.index("body {") :]
         assert not re.search(r":\s*#[0-9a-f]{3,6}", body), "a literal colour escaped the tokens"
+
+
+class TestSupportBundleOverHTTP:
+    """A container is diagnosed by whoever runs it, over curl.
+
+    Nobody here can reach the customer's network, and the operator cannot be
+    asked to reproduce the problem locally, so everything support needs has to
+    come out of one request against the gateway they already have running.
+    """
+
+    def test_the_endpoint_returns_a_bundle(self, running_gateway):
+        gw_url, _ = running_gateway
+        resp = urllib.request.urlopen(gw_url + "/support", timeout=5)
+        assert resp.headers["Content-Type"] == "application/json"
+        bundle = json.loads(resp.read())
+        assert bundle["guardllm"]["deployment"] == "gateway"
+        assert bundle["environment"]["python"]
+        assert bundle["decision_chain"] is None
+
+    def test_a_session_id_includes_that_session_s_chain(self, running_gateway):
+        """The half that explains a refusal by something several turns older."""
+        gw_url, _ = running_gateway
+        req = urllib.request.Request(
+            gw_url + "/v1/chat/completions",
+            data=json.dumps(
+                {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+
+        bundle = json.loads(
+            urllib.request.urlopen(gw_url + "/support/" + session_id, timeout=5).read()
+        )
+        assert bundle["decision_chain"]["step_count"] >= 1
+
+    def test_an_unknown_session_is_a_404(self, running_gateway):
+        gw_url, _ = running_gateway
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(gw_url + "/support/nope", timeout=5)
+        assert caught.value.code == 404
+
+    def test_no_message_content_reaches_the_bundle(self, running_gateway):
+        """The same rule the chain follows, checked through the whole stack."""
+        gw_url, _ = running_gateway
+        marker = "zqx-distinctive-prompt-text-zqx"
+        req = urllib.request.Request(
+            gw_url + "/v1/chat/completions",
+            data=json.dumps(
+                {"model": "m", "messages": [{"role": "user", "content": marker}]}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+        text = urllib.request.urlopen(gw_url + "/support/" + session_id, timeout=5).read().decode()
+        assert marker not in text
+
+    def test_a_refusal_is_a_409_rather_than_a_500(self):
+        """Nothing failed. The bundle was declined because it could not be
+        cleaned, so it is a conflict rather than a server error."""
+        from guardllm.security.types import PolicyConfig
+
+        upstream = ThreadingHTTPServer(("127.0.0.1", 0), _FakeUpstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        # The RFC 4648 Base32 alphabet: recognized as credential material that
+        # no span can safely replace.
+        cfg = GatewayConfig(
+            upstream_base_url=f"http://127.0.0.1:{upstream.server_address[1]}/v1",
+            policy=PolicyConfig(client_id="234567ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        )
+        gateway = make_server("127.0.0.1", 0, store=_store(), cfg=cfg)
+        threading.Thread(target=gateway.serve_forever, daemon=True).start()
+        try:
+            with pytest.raises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{gateway.server_address[1]}/support", timeout=5
+                )
+            assert caught.value.code == 409
+            assert "cannot be removed exactly" in caught.value.read().decode()
+        finally:
+            gateway.shutdown()
+            upstream.shutdown()

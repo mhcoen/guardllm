@@ -522,3 +522,36 @@ class TestViewerHttp:
             with pytest.raises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(gw_url + path, timeout=5)
             assert caught.value.code == 404
+
+    def test_a_refusal_still_returns_the_session_id(self):
+        """A refusal is the case you most want to inspect.
+
+        Without the id on the error there is no handle to look the chain up by,
+        which made the viewer useless for exactly the request that needed it.
+
+        Uses its own gateway pointed at a dead port, so the refusal is
+        guaranteed. The first version of this test reused the fixture whose
+        upstream answers 200, so the assertions sat inside an except block that
+        never ran and it passed for the wrong reason.
+        """
+        cfg = GatewayConfig(upstream_base_url="http://127.0.0.1:9/v1")
+        gateway = make_server("127.0.0.1", 0, store=_store(), cfg=cfg)
+        threading.Thread(target=gateway.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{gateway.server_address[1]}/v1/chat/completions"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps({"messages": [{"role": "user", "content": "hi"}]}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-GuardLLM-Session": "inspect-me",
+                },
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(req, timeout=5)
+            assert caught.value.code == 502
+            assert caught.value.headers.get("X-GuardLLM-Session") == "inspect-me"
+            assert json.loads(caught.value.read())["error"]["session_id"] == "inspect-me"
+        finally:
+            gateway.shutdown()

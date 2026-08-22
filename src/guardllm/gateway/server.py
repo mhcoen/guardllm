@@ -79,20 +79,37 @@ class _Handler(BaseHTTPRequestHandler):
         # duplicate it and leak addresses into container logs.
         pass
 
-    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+    def _send_json(
+        self, status: int, payload: dict[str, Any], *, session_id: str | None = None
+    ) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        if session_id is not None:
+            self.send_header(_SESSION_HEADER, session_id)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def _error(self, status: int, message: str, *, stage: str | None = None) -> None:
+    def _error(
+        self,
+        status: int,
+        message: str,
+        *,
+        stage: str | None = None,
+        session_id: str | None = None,
+    ) -> None:
         # OpenAI-shaped error envelope, so an OpenAI client surfaces it normally.
         err: dict[str, Any] = {"message": message, "type": "guardllm_gateway"}
         if stage is not None:
             err["stage"] = stage
-        self._send_json(status, {"error": err})
+        if session_id is not None:
+            # The session header goes on refusals too. A refusal is the case an
+            # operator most wants to inspect, and without the id there is no
+            # handle to look the chain up by, which made the viewer useless for
+            # exactly the request that needed it.
+            err["session_id"] = session_id
+        self._send_json(status, {"error": err}, session_id=session_id)
 
     def _send_html(self, status: int, html: str) -> None:
         body = html.encode("utf-8")
@@ -152,18 +169,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._error(400, "request body is not a JSON object")
             return
 
-        session_id = self.headers.get(_SESSION_HEADER)
+        # Resolved here rather than inside the guarded call, so the id exists on
+        # every exit path including a refusal. store.get is idempotent for a
+        # known id, so the call below returns this same session.
+        resolved_id, _guard, _chain = self.store.get(self.headers.get(_SESSION_HEADER))
         call = _upstream_caller(self.cfg, self.headers.get("Authorization"))
         try:
             decision = guard_chat_completion(
-                body, session_id=session_id, store=self.store, cfg=self.cfg, call_upstream=call
+                body, session_id=resolved_id, store=self.store, cfg=self.cfg, call_upstream=call
             )
         except GatewayRefused as refused:
             # Fail closed and loud: the client gets an error, never an altered
             # or silently-passed completion. There is deliberately no fail-open
             # path, because the one thing a security proxy must never do is
             # forward traffic it could not inspect.
-            self._error(refused.status, refused.reason, stage=refused.stage)
+            self._error(refused.status, refused.reason, stage=refused.stage, session_id=resolved_id)
             return
 
         self.send_response(200)

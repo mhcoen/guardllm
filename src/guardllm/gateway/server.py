@@ -29,6 +29,29 @@ from guardllm.support import UnsafeBundleError, build_bundle, render_bundle
 _SESSION_HEADER = "X-GuardLLM-Session"
 _MAX_BODY_BYTES = 8 * 1024 * 1024  # a chat request past 8MB is not a real one
 
+#: The same cap for the upstream response. A model completion past this is not
+#: a real one, and read() with no bound lets a compromised or malfunctioning
+#: upstream allocate arbitrary gateway memory before a single check has run.
+_MAX_UPSTREAM_BYTES = 8 * 1024 * 1024
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuse every 3xx from the upstream instead of following it.
+
+    urllib follows redirects by default and resends the request headers to the
+    new location, so a 302 from the model API to an unrelated origin would
+    carry the client's Authorization there. The gateway forwards a bearer token
+    it does not own; letting a redirect choose where that token goes hands it
+    to whoever controls the upstream's redirect target. A model completions
+    endpoint has no legitimate reason to redirect, so this is refused rather
+    than followed same-origin: the narrower rule is the one that cannot leak.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: N802
+        raise urllib.error.HTTPError(
+            req.full_url, code, f"upstream redirected to {newurl!r}; refused", headers, fp
+        )
+
 
 def _upstream_caller(cfg: GatewayConfig, auth_header: str | None):
     """Build the function the core calls to reach the model API.
@@ -44,6 +67,8 @@ def _upstream_caller(cfg: GatewayConfig, auth_header: str | None):
     if urllib.parse.urlparse(url).scheme not in ("http", "https"):
         raise ValueError(f"upstream must be an http(s) URL, got {cfg.upstream_base_url!r}")
 
+    _opener = urllib.request.build_opener(_NoRedirects)
+
     def call(body: dict[str, Any]) -> dict[str, Any]:
         data = json.dumps(body).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -53,11 +78,21 @@ def _upstream_caller(cfg: GatewayConfig, auth_header: str | None):
         # the file:/custom-scheme risk both linters flag here cannot occur.
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310  # nosec B310
-                return json.loads(resp.read().decode("utf-8"))
+            with _opener.open(req, timeout=120) as resp:  # noqa: S310  # nosec B310
+                # One byte past the cap, then reject: read(cap) alone cannot
+                # tell a body exactly at the cap from one that was truncated.
+                raw = resp.read(_MAX_UPSTREAM_BYTES + 1)
+                if len(raw) > _MAX_UPSTREAM_BYTES:
+                    raise GatewayRefused(
+                        "upstream",
+                        f"model API response exceeds {_MAX_UPSTREAM_BYTES} bytes",
+                        status=502,
+                    )
+                return json.loads(raw.decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            # The model API refused (bad key, rate limit). Surface its status
-            # and body rather than dressing it as a gateway decision.
+            # The model API refused (bad key, rate limit), or a redirect was
+            # refused above. Surface its status rather than dressing it as a
+            # gateway decision.
             raise GatewayRefused(
                 "upstream", f"model API returned {exc.code}", status=exc.code
             ) from exc

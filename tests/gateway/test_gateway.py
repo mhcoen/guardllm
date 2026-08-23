@@ -948,3 +948,91 @@ class TestArgumentEgressQuota:
         with pytest.raises(GatewayRefused, match="Secret pattern"):
             inspect_response(self._send(0, body=_SECRET), guard, GatewayConfig())
         assert guard._pipeline.session_escalated
+
+
+class TestUpstreamCall:
+    """The gateway forwards a bearer token it does not own and reads a body it
+    did not produce. Both need bounding."""
+
+    def _serve(self, handler):
+        from http.server import HTTPServer
+
+        server = HTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server
+
+    def test_a_redirect_is_refused_and_the_token_does_not_follow(self):
+        """A 302 from the model API would resend Authorization to the new
+        origin. urllib follows redirects by default; the gateway must not."""
+        from http.server import BaseHTTPRequestHandler
+
+        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
+        from guardllm.gateway.server import _upstream_caller
+
+        seen = {}
+
+        class Sink(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                seen["auth"] = self.headers.get("Authorization")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok": true}')
+
+            def log_message(self, *a):
+                pass
+
+        sink = self._serve(Sink)
+
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                self.send_response(302)
+                self.send_header(
+                    "Location", f"http://127.0.0.1:{sink.server_port}/chat/completions"
+                )
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        redirect = self._serve(Redirect)
+        call = _upstream_caller(
+            GatewayConfig(upstream_base_url=f"http://127.0.0.1:{redirect.server_port}"),
+            "Bearer SECRET",
+        )
+        with pytest.raises(GatewayRefused):
+            call({"messages": []})
+        assert seen.get("auth") is None  # the token never reached the second origin
+
+    def test_an_oversized_upstream_body_is_refused(self, monkeypatch):
+        """The cap is shrunk rather than the body grown: an 8MB socket write
+        over loopback is slow and, under suite load, sometimes errors before
+        delivery, which would test the connection path instead of the cap. A
+        tiny cap against an ordinary small response tests the exact branch
+        deterministically and with no large allocation."""
+        from http.server import BaseHTTPRequestHandler
+
+        from guardllm.gateway import server as server_mod
+        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
+        from guardllm.gateway.server import _upstream_caller
+
+        monkeypatch.setattr(server_mod, "_MAX_UPSTREAM_BYTES", 4)
+
+        class Small(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                body = b'{"choices": []}'  # ordinary, but longer than 4 bytes
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        small = self._serve(Small)
+        call = _upstream_caller(
+            GatewayConfig(upstream_base_url=f"http://127.0.0.1:{small.server_port}"), None
+        )
+        with pytest.raises(GatewayRefused, match="exceeds"):
+            call({"messages": []})

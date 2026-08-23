@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import unicodedata
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -1080,6 +1081,55 @@ def credential_spans(text: str) -> tuple[list[tuple[int, int]], list[str]]:
     return scan_secret_spans(text)
 
 
+def _normalize_for_detection(text: str) -> tuple[str, list[int] | None]:
+    """Fold Unicode digits and drop invisible characters for the regex pass.
+
+    Two evasions defeat detection that runs on raw text, and both are the same
+    shape: the pattern is written for ASCII and the identifier is not.
+
+    - A zero-width space inside ``jane<ZWSP>@example.com`` breaks the email
+      pattern, so the address reached the model with no finding.
+    - Arabic-Indic digits are ``isdigit()``-true but are not ``[0-9]``, so a
+      PAN written in them never matched the credit-card pattern, and the Luhn
+      validator's ``ord(ch) - 48`` was ASCII-only regardless.
+
+    Returns ``(normalized, offsets)`` where ``offsets[k]`` is the ORIGINAL
+    index of ``normalized[k]``. Detection runs on the normalized copy and every
+    span is mapped back through ``offsets``, so a match spanning a removed
+    invisible maps to an original span that still contains it: substitution
+    cuts the whole run, token and hidden character together, and no orphan is
+    left behind.
+
+    The transform is per character, so the map is exact: a decimal digit
+    becomes one ASCII digit (length preserved), a format character (category
+    ``Cf``: zero-width, bidi, tag-plane, soft hyphen) is dropped, anything else
+    is kept. Deliberately not NFC or confusable folding, which are the outbound
+    normalizer's job and are not length-per-character; this closes exactly the
+    two evasion classes above and nothing that would complicate the offset map.
+
+    ``offsets`` is ``None`` when nothing changed, the ASCII fast path, so an
+    all-ASCII document runs the detector on itself with no allocation.
+    """
+    out: list[str] = []
+    offsets: list[int] = []
+    changed = False
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch) == "Cf":
+            changed = True
+            continue
+        digit = unicodedata.decimal(ch, None)
+        if digit is not None and ch != str(digit):
+            out.append(str(digit))
+            offsets.append(i)
+            changed = True
+        else:
+            out.append(ch)
+            offsets.append(i)
+    if not changed:
+        return text, None
+    return "".join(out), offsets
+
+
 def detect(
     text: str,
     *,
@@ -1102,7 +1152,20 @@ def detect(
     matches: list[RawMatch] = []
     compiled, group_info = _compiled_for(classes)
 
-    for m in compiled.finditer(text):
+    # The structural detectors run on a normalized copy, so a Unicode-digit PAN
+    # and an invisible-split identifier are seen. Spans are mapped straight back
+    # to original coordinates; everything below this block is in original space.
+    scan_text, offsets = _normalize_for_detection(text)
+
+    def _to_original(start: int, end: int) -> tuple[int, int]:
+        if offsets is None:
+            return start, end
+        # end is exclusive; map the last included index and add one. A match
+        # spanning a dropped invisible maps to an original span that still
+        # contains it, so substitution cuts the hidden character too.
+        return offsets[start], offsets[end - 1] + 1
+
+    for m in compiled.finditer(scan_text):
         info = group_info.get(m.lastgroup or "")
         if info is None:
             continue
@@ -1114,19 +1177,29 @@ def detect(
         # alternation (labelled compact SSN vs. separated SSN). When that
         # branch did not participate, fall back to the whole match instead of
         # dropping the hit, which would silently disable the other form.
-        value = m.group(value_group) if value_group is not None else None
-        if value is not None:
+        norm_value = m.group(value_group) if value_group is not None else None
+        if norm_value is not None:
             start, end = m.start(value_group), m.end(value_group)
         else:
-            start, end, value = m.start(), m.end(), m.group()
+            start, end, norm_value = m.start(), m.end(), m.group()
+        start, end = _to_original(start, end)
+        # Validate on the normalized value (ASCII digits, so Luhn is defined),
+        # but store the original substring so the token replaces exactly the
+        # characters that were there, Unicode digits and all.
         if masked and _is_masked(start, end):
             continue
-        if spec.validator is not None and not spec.validator(value):
+        if spec.validator is not None and not spec.validator(norm_value):
             continue
-        matches.append(RawMatch(spec.pii_class, start, end, value))
+        matches.append(RawMatch(spec.pii_class, start, end, text[start:end]))
 
     unlocatable_credentials: list[str] = []
     if PIIClass.CREDENTIAL in classes:
+        # On original text, not the normalized copy: the credential scanner has
+        # its own invisible handling that separates a secret split by a
+        # zero-width character from ordinary prose split by one. Feeding it the
+        # stripped copy merged joined prose into one long run and read it as a
+        # high-entropy token. The regex pass above is where the invisible and
+        # Unicode-digit evasions live; credentials are already covered.
         spans, unlocatable_credentials = credential_spans(text)
         for start, end in spans:
             if not _is_masked(start, end):

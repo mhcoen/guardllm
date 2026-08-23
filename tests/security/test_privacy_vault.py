@@ -4278,3 +4278,56 @@ class TestPolicyCannotBeWidened:
             )
             is ClassPolicy.DENY
         )
+
+
+class TestUnicodeEvasionAtTheBoundary:
+    """Detection ran on raw text, so an identifier written in non-ASCII form
+    crossed to the model with no finding. Both evasions are the same shape: an
+    ASCII pattern and an identifier that is not ASCII."""
+
+    def test_an_invisible_split_email_is_detected(self):
+        """`jane<ZWSP>@example.com` broke the email pattern and passed."""
+        for mark in ("​", "‌", "‍", "﻿", "­"):
+            text = f"mail jane{mark}@example.com now"
+            result = _vault().deidentify(text)
+            assert "jane" not in result.content, f"{mark!r}: local part leaked"
+            assert "@example.com" not in result.content
+            assert mark not in result.content, f"{mark!r}: invisible left behind"
+
+    def test_a_unicode_digit_pan_is_detected(self):
+        """Arabic-Indic and other Nd digits are isdigit()-true but not [0-9],
+        and the Luhn validator's ord(ch)-48 was ASCII-only regardless."""
+        ascii_pan = "4111111111111111"
+        for base in (0x0660, 0x06F0, 0x0966, 0xFF10):  # arabic, ext-arabic, devanagari, fullwidth
+            pan = "".join(chr(base + (ord(c) - 48)) for c in ascii_pan)
+            result = _vault().deidentify(f"card {pan} exp")
+            assert pan not in result.content
+            assert any(f.pii_class is PIIClass.CREDIT_CARD for f in result.findings)
+
+    def test_the_token_replaces_the_exact_original_span_at_every_split(self):
+        """Offset correctness: the map must cut the original characters, the
+        hidden one included, at every position a secret can be split. (A naive
+        digit check would false-fail on the token body, which contains digits;
+        the real invariant is that the ZWSP and both original halves are gone
+        and a finding was produced.)"""
+        ascii_pan = "4111111111111111"
+        for pos in range(1, len(ascii_pan)):
+            left, right = ascii_pan[:pos], ascii_pan[pos:]
+            result = _vault().deidentify(f"x {left}​{right} y")
+            assert "​" not in result.content, f"split at {pos} left the ZWSP"
+            assert not (left in result.content and right in result.content), (
+                f"split at {pos} left the PAN halves in place"
+            )
+            assert any(f.pii_class is PIIClass.CREDIT_CARD for f in result.findings)
+
+    def test_ordinary_prose_split_by_an_invisible_is_not_a_credential(self):
+        """The normalization must not merge invisible-split prose into one long
+        run the credential scanner then reads as a high-entropy token."""
+        for mark in ("​", "‍", "­", "﻿"):
+            text = mark.join("sphinx of black quartz judge my vow".split())
+            assert _vault().deidentify(text, deny_action="fail").allowed
+
+    def test_a_plain_ascii_email_is_unchanged_by_the_fast_path(self):
+        result = _vault().deidentify("write to alice@example.com please")
+        assert "alice@example.com" not in result.content
+        assert "[[GL:EMAIL:" in result.content

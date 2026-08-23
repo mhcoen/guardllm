@@ -366,3 +366,28 @@ class TestUnsupportedBuiltins:
     def test_a_policy_needing_none_is_unaffected(self, policy):
         """The fixture policy in this repository requires no host builtin."""
         assert policy.evaluate(build_input(tool="wire_funds", contaminated=True)).allowed is False
+
+
+@_needs_opa
+class TestHeapDiscipline:
+    def test_the_heap_does_not_grow_across_evaluations(self, policy):
+        """It grew about 2.2 KB per call and was never reclaimed.
+
+        A gateway evaluates a policy on every tool call and runs for weeks, so
+        a per-call leak in the policy engine is an availability failure in the
+        security layer.
+        """
+        memory = policy._memory
+        for _ in range(200):
+            policy.evaluate(build_input(tool="wire_funds", contaminated=True))
+        settled = memory.data_len(policy._store)
+        for _ in range(5_000):
+            policy.evaluate(build_input(tool="wire_funds", contaminated=True))
+        assert memory.data_len(policy._store) == settled
+
+    def test_verdicts_stay_correct_while_the_heap_is_reused(self, policy):
+        """Winding the heap back must not corrupt what the next call reads."""
+        for i in range(2_000):
+            contaminated = bool(i % 2)
+            verdict = policy.evaluate(build_input(tool="wire_funds", contaminated=contaminated))
+            assert verdict.allowed is not contaminated

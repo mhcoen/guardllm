@@ -224,6 +224,14 @@ class RegoPolicy:
         # here, and passing an empty document instead silently disabled every
         # rule that read it.
         self._data = self._exports["opa_json_parse"](self._store, *self._write(data_document))
+        # Everything allocated from here on belongs to one evaluation. The heap
+        # is wound back to this mark before each one, so the data document and
+        # the module's own allocations survive and the per-call allocations do
+        # not accumulate. Without it the WASM heap grew by about 2.2 KB per
+        # evaluation and was never reclaimed: 55 MB after 26,000 calls, in a
+        # component that sits on the path of every tool call in a gateway that
+        # runs for weeks.
+        self._heap_base = self._exports["opa_heap_ptr_get"](self._store)
 
     def _dump(self, addr: int) -> str:
         """Serialize an OPA value address to JSON text."""
@@ -275,7 +283,16 @@ class RegoPolicy:
         return data[: data.index(b"\x00")].decode("utf-8")
 
     def evaluate(self, document: dict[str, Any]) -> PolicyDecision:
-        """Run the policy over one input document."""
+        """Run the policy over one input document.
+
+        Not safe to call concurrently on one instance: the wasmtime store and
+        the heap mark below are per-instance mutable state. One policy object
+        per session, or a lock, the same contract the pipeline states.
+        """
+        # Wind the heap back before allocating, not after reading, so the
+        # previous result stays readable until the next call and the reset
+        # happens exactly once per evaluation even if reading raises.
+        self._exports["opa_heap_ptr_set"](self._store, self._heap_base)
         addr, length = self._write(json.dumps(document))
         heap = self._exports["opa_heap_ptr_get"](self._store)
         result_addr = self._exports["opa_eval"](

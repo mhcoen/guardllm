@@ -53,8 +53,12 @@ class SessionStore:
             time_source = time.monotonic
         self._now = time_source
         self._lock = threading.Lock()
-        # id -> (guard, chain, last_used). Ordered by recency; oldest first.
-        self._entries: OrderedDict[str, tuple[Guard, Chain, float]] = OrderedDict()
+        # id -> (guard, chain, last_used, session_lock). Ordered by recency;
+        # oldest first. ``self._lock`` guards this map for the few microseconds
+        # of a lookup. The fourth element is a different thing entirely: it
+        # guards one session's Guard for the whole of one request, including
+        # the upstream round trip. See ``lock_for``.
+        self._entries: OrderedDict[str, tuple[Guard, Chain, float, threading.Lock]] = OrderedDict()
 
     def get(self, session_id: str | None) -> tuple[str, Guard, Chain]:
         """Return a live ``(session_id, Guard, Chain)``, creating it if needed.
@@ -73,8 +77,8 @@ class SessionStore:
             self._evict_expired(now)
             hit = self._entries.get(session_id)
             if hit is not None:
-                guard, chain, _ = hit
-                self._entries[session_id] = (guard, chain, now)
+                guard, chain, _, session_lock = hit
+                self._entries[session_id] = (guard, chain, now, session_lock)
                 self._entries.move_to_end(session_id)
                 return session_id, guard, chain
             # A client-supplied id that we do not hold is honoured as the id of
@@ -96,7 +100,7 @@ class SessionStore:
 
     def _insert(self, session_id: str, guard: Guard, chain: Chain, now: float) -> None:
         # Caller holds the lock, except _new which takes it around this.
-        self._entries[session_id] = (guard, chain, now)
+        self._entries[session_id] = (guard, chain, now, threading.Lock())
         self._entries.move_to_end(session_id)
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)  # evict least-recently-used
@@ -107,10 +111,43 @@ class SessionStore:
         # scanning the whole map.
         ttl = self._ttl
         while self._entries:
-            sid, (_guard, _chain, seen) = next(iter(self._entries.items()))
+            sid, (_guard, _chain, seen, _session_lock) = next(iter(self._entries.items()))
             if now - seen <= ttl:
                 break
             del self._entries[sid]
+
+    def lock_for(self, session_id: str) -> threading.Lock:
+        """The lock that serializes one session's requests.
+
+        A ``Guard`` mutates session state in place with no internal
+        synchronization -- the remembered canary, contamination and escalation
+        flags, DLP buffers, provenance, rate counters -- and
+        ``docs/security.md`` states the contract: one pipeline per session,
+        driven sequentially, and a host that may drive one concurrently holds a
+        lock around it. The gateway runs on ``ThreadingHTTPServer``, so the
+        gateway is that host. Two requests carrying the same
+        ``X-GuardLLM-Session`` land on the same Guard in different threads and
+        can interleave a contamination write with an egress read.
+
+        Held across the upstream round trip as well, not just the two
+        inspections. Contamination written by a tool result in a request has to
+        be in force for the response that follows it; releasing over the
+        network call would let a second request's ingest land between the
+        first request's ingest and its egress check, which is precisely the
+        session-risk loop the gateway exists to hold.
+
+        The cost is that two concurrent requests naming one session serialize,
+        including the time upstream. That is what a session is: a sequence.
+        Different sessions never contend, so throughput scales with clients
+        rather than with requests per client.
+
+        An id the store no longer holds returns a fresh, uncontended lock. It
+        cannot alias another session, because a caller in that position also
+        has a different Guard.
+        """
+        with self._lock:
+            hit = self._entries.get(session_id)
+            return hit[3] if hit is not None else threading.Lock()
 
     def chain(self, session_id: str) -> Chain | None:
         """The decision chain for a live session, or None if it is not held.
@@ -134,7 +171,7 @@ class SessionStore:
                     "escalated": chain.steps[-1].escalated if len(chain) else False,
                     "idle_seconds": round(self._now() - seen, 1),
                 }
-                for sid, (_guard, chain, seen) in self._entries.items()
+                for sid, (_guard, chain, seen, _session_lock) in self._entries.items()
             ]
         rows.reverse()  # most-recently-used first
         return rows

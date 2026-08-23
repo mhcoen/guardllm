@@ -249,7 +249,12 @@ def guard_chat_completion(
     the model; the response is checked after.
     """
     resolved_id, guard, chain = store.get(session_id)
-    inspect_request(body, guard, cfg, chain)
-    completion = call_upstream(body)
-    inspect_response(completion, guard, cfg, chain)
+    # One session is a sequence, and a Guard has no internal synchronization.
+    # Held across the upstream call as well as the two inspections: see
+    # SessionStore.lock_for for why releasing it over the network would break
+    # the session-risk loop rather than merely racing a data structure.
+    with store.lock_for(resolved_id):
+        inspect_request(body, guard, cfg, chain)
+        completion = call_upstream(body)
+        inspect_response(completion, guard, cfg, chain)
     return _Decision(session_id=resolved_id, completion=completion)

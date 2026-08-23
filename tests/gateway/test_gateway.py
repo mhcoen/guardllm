@@ -819,3 +819,66 @@ class TestArgumentEgress:
         assert last.stage == "tool_call"
         assert last.outcome == "blocked"
         assert "arguments" in last.reason
+
+
+# ---------------------------------------------------------------------------
+# One session is a sequence
+# ---------------------------------------------------------------------------
+
+
+class TestSessionSerialization:
+    """A Guard mutates session state with no internal synchronization.
+
+    `docs/security.md` states the contract: one pipeline per session, driven
+    sequentially, and a host that may drive one concurrently holds a lock.
+    ThreadingHTTPServer makes the gateway such a host.
+    """
+
+    def _timed_upstream(self, depth, overlaps, guard_lock):
+        import time
+
+        def call(_body):
+            with guard_lock:
+                depth[0] += 1
+                if depth[0] > 1:
+                    overlaps[0] += 1
+            time.sleep(0.02)
+            with guard_lock:
+                depth[0] -= 1
+            return _benign(_body)
+
+        return call
+
+    def _drive(self, store, session_ids):
+        depth, overlaps = [0], [0]
+        call = self._timed_upstream(depth, overlaps, threading.Lock())
+        body = {"messages": [{"role": "tool", "name": "fetch", "content": "a document"}]}
+
+        def one(session_id):
+            guard_chat_completion(
+                dict(body),
+                session_id=session_id,
+                store=store,
+                cfg=GatewayConfig(),
+                call_upstream=call,
+            )
+
+        threads = [threading.Thread(target=one, args=(sid,)) for sid in session_ids]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        return overlaps[0]
+
+    def test_one_session_never_runs_two_requests_at_once(self):
+        assert self._drive(_store(), ["shared"] * 8) == 0
+
+    def test_different_sessions_do_not_contend(self):
+        """Serializing every request would be a throughput bug, not a fix."""
+        assert self._drive(_store(), [f"s-{i}" for i in range(8)]) > 0
+
+    def test_a_session_the_store_no_longer_holds_gets_its_own_lock(self):
+        store = _store()
+        first = store.lock_for("never-created")
+        second = store.lock_for("never-created")
+        assert first is not second  # cannot alias another session's lock

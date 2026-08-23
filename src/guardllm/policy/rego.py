@@ -162,6 +162,27 @@ def _policy_parts(path: Path) -> tuple[bytes, str]:
             if wasm is None:
                 raise ValueError(f"{path} is a bundle with no policy.wasm in it")
             data = _bundle_member(bundle, "/data.json", "data.json", "./data.json")
+            # opa build merges every data file into one root document, keyed by
+            # directory (config/data.json becomes data.config), so a bundle it
+            # produced never has another. The bundle *format* allows them, and
+            # a bundle assembled by other tooling can carry one. Reading only
+            # the root would silently drop that data, and a rule reading it
+            # would find an undefined reference, not deny, and allow the call:
+            # the same fail-open this loader exists to close. Refused rather
+            # than merged, because guessing at a layout opa did not write is
+            # how the two disagree in the first place.
+            stray = [
+                name
+                for name in bundle.getnames()
+                if name.rsplit("/", 1)[-1] == "data.json" and name.strip("./") != "data.json"
+            ]
+            if stray:
+                raise ValueError(
+                    f"{path} carries data outside the bundle root: {sorted(stray)}. "
+                    "Rebuild it with `opa build -b <dir>`, which merges data into one "
+                    "root document; a nested data.json would be silently ignored here "
+                    "and a rule reading it would fail open."
+                )
         if data is None:
             return wasm, "{}"
         text = data.decode("utf-8")

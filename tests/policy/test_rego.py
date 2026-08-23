@@ -7,9 +7,11 @@ They skip where `opa` is absent; CI installs it so the path is exercised.
 
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -391,3 +393,48 @@ class TestHeapDiscipline:
             contaminated = bool(i % 2)
             verdict = policy.evaluate(build_input(tool="wire_funds", contaminated=contaminated))
             assert verdict.allowed is not contaminated
+
+
+@_needs_opa
+class TestBundleDataLayout:
+    """`opa build` merges data into one root document; other tooling need not.
+
+    Reading only the root would silently drop a nested data file, and a rule
+    reading it would meet an undefined reference, fail to fire, and allow the
+    call: the same fail-open the root loader exists to close.
+    """
+
+    def test_opa_merges_nested_data_into_the_root_document(self, tmp_path):
+        """The premise. If this ever stops holding, the refusal below is wrong."""
+        (tmp_path / "policy.rego").write_text(_DATA_POLICY)
+        for sub in ("config", "deep/nested"):
+            d = tmp_path / sub
+            d.mkdir(parents=True)
+            (d / "data.json").write_text('{"blocked_tools": ["search"]}')
+        bundle = tmp_path / "bundle.tar.gz"
+        subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "guardllm/deny", "-o", str(bundle)],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        with tarfile.open(bundle) as tar:
+            names = [n for n in tar.getnames() if n.rsplit("/", 1)[-1] == "data.json"]
+        assert names == ["/data.json"]
+        assert RegoPolicy(bundle).evaluate({"tool": "search"}).allowed is False
+
+    def test_a_bundle_with_data_outside_the_root_is_refused(self, tmp_path):
+        """Refused rather than merged: guessing at a layout opa did not write
+        is how the two come to disagree in the first place."""
+        bundle = _build(tmp_path, _DATA_POLICY, '{"blocked_tools": ["search"]}')
+        handmade = tmp_path / "handmade.tar.gz"
+        with tarfile.open(bundle) as src, tarfile.open(handmade, "w:gz") as dst:
+            for member in src.getmembers():
+                extracted = src.extractfile(member)
+                dst.addfile(member, io.BytesIO(extracted.read()) if extracted else None)
+            payload = b'{"blocked_tools": ["search"]}'
+            info = tarfile.TarInfo("config/data.json")
+            info.size = len(payload)
+            dst.addfile(info, io.BytesIO(payload))
+        with pytest.raises(ValueError, match="carries data outside the bundle root"):
+            RegoPolicy(handmade)

@@ -13,9 +13,9 @@ from guardllm import Guard
 ```
 
 Constructor:
-- `Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None)`
+- `Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None, vault_store: VaultStore | None = None)`
 
-All arguments are keyword-only. `privacy` is what constructs the vault; without it nothing in the privacy section below runs and no existing verdict changes.
+All arguments are keyword-only. `privacy` is what constructs the vault; without it nothing in the privacy section below runs and no existing verdict changes. `vault_store` attaches persistence to that vault and raises `ValueError` when given without `privacy`, since there is no vault to persist.
 
 Canary provisioning and lifecycle:
 - `guard.canary_token -> str | None`: read-only token for trusted host code to place in private model context.

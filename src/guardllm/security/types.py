@@ -262,6 +262,26 @@ class PolicyConfig:
                             f"argument_limits[{name!r}]['pattern'] is not a valid "
                             f"regular expression: {exc}"
                         ) from exc
+                elif key == "strip_unicode":
+                    # Present in the ARGUMENT_LIMITS defaults, so a policy
+                    # restating a default entry must not be refused for it.
+                    if not isinstance(value, bool):
+                        raise ValueError(
+                            f"argument_limits[{name!r}]['strip_unicode'] must be a "
+                            f"bool, got {type(value).__name__}"
+                        )
+                else:
+                    # The unknown-key refusal the rate_limits check above has
+                    # and this loop lacked. Without it, `maks_chars: 50` was
+                    # accepted at construction and the read site's .get()
+                    # returned None, so the intended cap was silently replaced
+                    # by the default: in the same commit that closed this exact
+                    # failure for the field beside it.
+                    raise ValueError(
+                        f"Unknown argument_limits[{name!r}] key: {key!r}. Valid keys: "
+                        "['max_chars', 'max_fields', 'max_value_chars', 'pattern', "
+                        "'strip_unicode']"
+                    )
 
 
 class ConfirmationHandler:

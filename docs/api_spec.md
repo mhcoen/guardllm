@@ -366,11 +366,12 @@ Behavior:
 ### Method: `validate_tool_args`
 
 ```python
-guard.validate_tool_args(tool: str, args: dict) -> ValidationResult
+guard.validate_tool_args(tool: str, args: dict, *, policy: PolicyConfig | None = None) -> ValidationResult
 ```
 
 Behavior:
 - Validates known argument names against built-in size/pattern limits.
+- `policy` supplies `PolicyConfig.argument_limits`, merged over the built-in limits by argument name. Optional so a host with no context in hand still gets the safety checks; `check_tool_call` and `guard_tool_call` pass the active context's policy themselves.
 - Applies universal safety checks (path traversal, null byte) to every argument including unknown ones and strings nested in containers; unknown fields get no size/pattern limits but are not exempt from these safety checks.
 - Emits audit event `tool_args_validated` if audit logger is configured.
 

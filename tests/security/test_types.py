@@ -436,3 +436,17 @@ class TestPolicyLimitValidation:
 
     def test_a_valid_argument_limit_is_accepted(self):
         assert PolicyConfig(argument_limits={"query": {"max_chars": 50, "pattern": r"^\w+$"}})
+
+    def test_an_unknown_argument_limit_key_is_refused(self):
+        """`maks_chars: 50` was accepted, and the read site's .get() then
+        returned None, silently replacing the intended cap with the default:
+        in the same commit that closed this exact failure for rate_limits."""
+        with pytest.raises(ValueError, match="Unknown argument_limits"):
+            PolicyConfig(argument_limits={"query": {"maks_chars": 50}})
+
+    def test_strip_unicode_is_a_valid_key_and_wants_a_bool(self):
+        """It appears in the ARGUMENT_LIMITS defaults, so restating a default
+        entry must not be refused."""
+        PolicyConfig(argument_limits={"query": {"strip_unicode": True}})
+        with pytest.raises(ValueError, match="must be a .?bool"):
+            PolicyConfig(argument_limits={"query": {"strip_unicode": 1}})

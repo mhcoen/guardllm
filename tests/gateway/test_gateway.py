@@ -914,3 +914,37 @@ class TestExpiryOnDiagnosticReads:
         sid, _guard, _chain = store.get("s-1")
         assert store.chain(sid) is not None
         assert len(store.listing()) == 1
+
+
+class TestArgumentEgressQuota:
+    """The argument check must not spend the quota for the call it is checking.
+
+    `check_outbound` records an outbound action against L6 every time it is
+    called. Looping it over a tool call's string leaves charged one send once
+    per leaf, so a stock six-leaf `send_email` exhausted `emails_per_hour=10`
+    inside two calls and the session stayed refused for the window.
+    """
+
+    def _send(self, i: int, body: str = "sending the report now") -> dict:
+        return _tool_call({"to": f"c{i}@example.com", "subject": "report", "body": body})
+
+    def test_an_ordinary_session_is_not_throttled_by_its_own_argument_check(self):
+        guard = Guard()
+        for i in range(9):
+            inspect_response(self._send(i), guard, GatewayConfig())
+
+    def test_the_real_hourly_limit_still_applies_and_is_reported_as_the_gate(self):
+        """Refusal must come from the tool gate, not from the argument scan."""
+        guard = Guard()
+        for i in range(10):
+            inspect_response(self._send(i), guard, GatewayConfig())
+        with pytest.raises(GatewayRefused, match="Hourly limit exceeded") as caught:
+            inspect_response(self._send(99), guard, GatewayConfig())
+        assert caught.value.stage == "tool_call"
+
+    def test_the_argument_check_still_blocks_and_still_escalates(self):
+        """The quota fix must not have cost the property the scan exists for."""
+        guard = _ingested(f"internal notes, api key {_SECRET}")
+        with pytest.raises(GatewayRefused, match="Secret pattern"):
+            inspect_response(self._send(0, body=_SECRET), guard, GatewayConfig())
+        assert guard._pipeline.session_escalated

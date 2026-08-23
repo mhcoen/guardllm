@@ -25,6 +25,7 @@
   - [Method: `process_inbound_compound`](#method-process_inbound_compound)
   - [Method: `check_tool_call`](#method-check_tool_call)
   - [Method: `check_outbound`](#method-check_outbound)
+  - [Method: `check_outbound_content`](#method-check_outbound_content)
   - [Method: `validate_tool_args`](#method-validate_tool_args)
   - [Method: `sanitize_exception`](#method-sanitize_exception)
   - [Method: `seed_private_values`](#method-seed_private_values)
@@ -106,7 +107,7 @@ Parameters:
 - `audit_logger`: optional logger object. If it has `.log(event)` it receives `AuditEvent` records emitted by Guard methods.
 - `principal_trust`: session-level caller trust (default `UNTRUSTED`). Accepts `TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`.
 - `privacy`: optional `PrivacyConfig`. Constructs the pseudonymization vault. Omitted, none of the four privacy methods below runs and no other verdict changes.
-- `vault_store`: optional `VaultStore`. Attaches persistence to the privacy vault: the stored snapshot is loaded at construction, and `persist_vault()` writes it back. Omitted, the vault is session state and nothing reaches disk. Ignored without `privacy`, since there is no vault to persist.
+- `vault_store`: optional `VaultStore`. Attaches persistence to the privacy vault: the stored snapshot is loaded at construction, and `persist_vault()` writes it back. Omitted, the vault is session state and nothing reaches disk. **Raises `ValueError` when given without `privacy`**, rather than building no vault and reporting nothing, because persistence configured but never happening looks healthy until a restart comes up empty.
 
 Behavior:
 - Initializes security pipeline and action gate.
@@ -344,6 +345,23 @@ Behavior:
 - A canary match blocks even with a quoting directive, sets `OutboundResult.canary_detected`, and escalates the logical session.
 - `recipient` (optional) feeds novel-recipient rate-limit anomaly detection; surfaced non-blocking on `OutboundResult.anomalies` and recorded in the audit event.
 - Emits one facade-owned `outbound_checked` audit event if audit logging is configured. Its DLP payload includes `canary_detected` and the post-check escalation state, never the canary value or raw outbound content.
+
+### Method: `check_outbound_content`
+
+```python
+guard.check_outbound_content(
+    content: str,
+    context: SecurityContext,
+    *,
+    has_quoting_directive: bool = False,
+) -> OutboundResult
+```
+
+Behavior:
+- L5 (remembered canary), L3 (DLP) and L4 (provenance) only. **No L6 quota or action accounting.**
+- For a caller inspecting several pieces of one outbound action, which is the shape a tool call has: many argument leaves, one send. `check_outbound` records an outbound action every time it is called, so looping it over the leaves charges that single action once per string and exhausts the hourly quota inside one request.
+- Escalation is preserved: a canary block or a high-confidence DLP block still sets session escalation, so a leak found in an argument still tightens later tool calls.
+- `prepare_tool_call` and the gateway's tool-argument check both use this rather than `check_outbound`.
 
 ### Method: `validate_tool_args`
 

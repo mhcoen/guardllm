@@ -213,8 +213,14 @@ def inspect_response(
             # Every string leaf, keys included, exactly as prepare_tool_call
             # does: checking one designated field would miss a canary in a
             # subject line or a credential in a filename.
+            # check_outbound_content, not check_outbound: one tool call is one
+            # outbound action, and check_outbound records an action against the
+            # hourly quota every time it is called. Looping that over the leaves
+            # charged a single send once per string, so the second tool call in
+            # any session was refused with "Hourly limit exceeded (10/10)" and
+            # stayed refused for the window. Escalation still fires from here.
             for leaf in _string_leaves(args):
-                out = guard.check_outbound(leaf, egress)
+                out = guard.check_outbound_content(leaf, egress)
                 if not out.allowed:
                     reason = f"{name} arguments: {out.reason}"
                     _record(chain, "tool_call", name, "blocked", reason, guard)

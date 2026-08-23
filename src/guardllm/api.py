@@ -69,6 +69,14 @@ class Guard:
         privacy: PrivacyConfig | None = None,
         vault_store: VaultStore | None = None,
     ) -> None:
+        # A store with no vault to fill is the failure persist_vault refuses by
+        # name: persistence configured but never happening, which looks healthy
+        # until a restart comes up empty. Caught here rather than at the first
+        # persist_vault call, which a host may not make until shutdown.
+        if vault_store is not None and privacy is None:
+            raise ValueError(
+                "vault_store needs privacy=PrivacyConfig(...): there is no vault to persist"
+            )
         self._pipeline = SecurityPipeline(
             audit_logger=audit_logger,
             canary_session_id=canary_session_id,
@@ -466,6 +474,45 @@ class Guard:
                 )
         return prepared
 
+    def check_outbound_content(
+        self,
+        content: str,
+        context: SecurityContext,
+        *,
+        has_quoting_directive: bool = False,
+    ) -> OutboundResult:
+        """Content checks only: L5, L3 and L4, with no L6 quota accounting.
+
+        For a caller that has to inspect several pieces of one outbound action,
+        which is the shape a tool call has: many argument leaves, one send.
+        ``check_outbound`` records an outbound action against the rate limiter
+        every time it is called, so looping it over the leaves of a single call
+        charges that call once per string and exhausts the hourly quota inside
+        one request. ``prepare_tool_call`` has always used this variant for the
+        same reason.
+
+        Escalation is preserved: a canary block or a high-confidence DLP block
+        still sets session escalation, so a leak found in an argument still
+        tightens later tool calls.
+        """
+        result = self._pipeline.check_outbound_content(content, context, has_quoting_directive)
+        self._audit(
+            AuditEvent(
+                event_type="outbound_content_checked",
+                action_summary=result.reason,
+                dlp_result={
+                    "allowed": result.allowed,
+                    "overlap_pct": result.overlap_pct,
+                    "secrets_found": result.secrets_found,
+                    "canary_detected": result.canary_detected,
+                    "session_escalated": self._pipeline.session_escalated,
+                },
+                provenance_result={"blocked": result.provenance_blocked},
+                session_id=context.source_id,
+            )
+        )
+        return result
+
     def check_outbound(
         self,
         content: str,
@@ -474,7 +521,11 @@ class Guard:
         has_quoting_directive: bool = False,
         recipient: str | None = None,
     ) -> OutboundResult:
-        """Run outbound DLP/provenance/rate checks."""
+        """Run outbound DLP/provenance/rate checks.
+
+        Records an outbound action against L6. For several checks belonging to
+        one action, use ``check_outbound_content``.
+        """
         result = self._pipeline.check_outbound(
             content=content,
             ctx=context,

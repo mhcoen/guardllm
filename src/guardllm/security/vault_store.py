@@ -386,9 +386,19 @@ class EncryptedFileVaultStore:
         return self._path
 
     def load(self) -> VaultSnapshot | None:
-        if not self._path.exists():
+        try:
+            blob = self._path.read_bytes()
+        except FileNotFoundError:
+            # The one case that is genuinely "nothing stored yet". Read first
+            # and catch, rather than exists() then read: between the two calls
+            # a concurrent purge turns the read into an exception where the
+            # contract promises None.
             return None
-        blob = self._path.read_bytes()
+        except OSError as exc:
+            # Anything else is a real failure and has to arrive as one. A vault
+            # file with the wrong ownership used to surface as a bare OSError
+            # out of the Guard constructor, which says nothing about vaults.
+            raise VaultStoreError(f"vault snapshot: cannot read {self._path}: {exc}") from exc
         if len(blob) < len(_MAGIC) + _NONCE_BYTES:
             raise VaultStoreError(f"vault snapshot: {self._path} is too short to be a vault file")
         header, nonce, ciphertext = (

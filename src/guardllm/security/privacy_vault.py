@@ -493,6 +493,11 @@ class PrivacyVault:
                         f"vault snapshot: source {position} repeats an earlier source; "
                         "one document would reach the model under two labels"
                     )
+                if handle in sources.values():
+                    raise VaultStoreError(
+                        f"vault snapshot: source {position} reuses an earlier handle; "
+                        "two unrelated documents would reach the model as one source"
+                    )
                 sources[(source_type, source_id)] = handle
             seeded: dict[str, PIIClass] = {}
             for position, pair in enumerate(snapshot.seeded):

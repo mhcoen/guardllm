@@ -606,3 +606,47 @@ class TestProtocolConformance:
             else EncryptedFileVaultStore(tmp_path / "v.bin", key=generate_key())
         )
         assert isinstance(store, VaultStore)
+
+
+class TestConstructionErrors:
+    def test_a_store_without_a_privacy_config_is_refused(self):
+        """Persistence configured but never happening looks healthy until a restart.
+
+        `Guard(vault_store=...)` with no `privacy=` used to build no vault at
+        all, store nothing, and raise nothing, then report "constructed without
+        privacy" at the first persist_vault, which a host may not call until
+        shutdown.
+        """
+        from guardllm import Guard
+
+        with pytest.raises(ValueError, match="there is no vault to persist"):
+            Guard(vault_store=MemoryVaultStore())
+
+    def test_two_sources_sharing_a_handle_are_refused(self):
+        """The inverse of the duplicate-source check beside it.
+
+        Distinct sources under one handle present two unrelated documents to
+        the model as one, which is the collision `_SOURCE_HANDLE_MAX` exists to
+        make improbable.
+        """
+        snapshot = VaultSnapshot(
+            sources=(("mcp_server", "a", "src-X"), ("mcp_server", "b", "src-X")),
+            source_key=b"\x01" * 32,
+        )
+        with pytest.raises(VaultStoreError, match="reuses an earlier handle"):
+            _vault().load_snapshot(snapshot)
+
+
+@needs_crypto
+class TestLoadErrorContract:
+    """`load` promises None or VaultStoreError, never a raw OSError."""
+
+    def test_an_unreadable_path_raises_a_vault_error(self, tmp_path):
+        directory = tmp_path / "vault-as-a-directory"
+        directory.mkdir()
+        store = EncryptedFileVaultStore(directory, key=generate_key())
+        with pytest.raises(VaultStoreError, match="cannot read"):
+            store.load()
+
+    def test_a_missing_file_is_still_none(self, tmp_path):
+        assert EncryptedFileVaultStore(tmp_path / "absent.bin", key=generate_key()).load() is None

@@ -214,7 +214,7 @@ store = EncryptedFileVaultStore.from_env("/var/lib/guardllm/vault.bin")
 
 guard = Guard(privacy=PrivacyConfig(), vault_store=store)
 guard.deidentify("...")
-guard.persist_vault()   # end of turn, checkpoint, or shutdown
+guard.persist_vault()  # end of turn, checkpoint, or shutdown
 ```
 
 Needs the `vault` extra: `pip install 'guardllm[vault]'`.

@@ -335,7 +335,7 @@ def main() -> int:
         print("No benchmark cases found.")
         return 1
 
-    records = build_text_records(cases, text_scope=args.text_scope)
+    records = build_text_records(cases, injection_scope=args.text_scope)
     if args.limit > 0:
         records = records[: args.limit]
 

@@ -165,7 +165,7 @@ def _dataset_hash(cases: list[dict[str, Any]]) -> str:
 
 
 def _text_dataset_hash(cases: list[dict[str, Any]]) -> str:
-    text_records = build_text_records(cases, text_scope="injection")
+    text_records = build_text_records(cases, injection_scope="injection")
     text_records = [r for r in text_records if r.suite in TEXT_SCOPE_INCLUDED_SUITES]
     payload = [
         {
@@ -216,7 +216,7 @@ def build_dataset(dataset_id: str, manifest_path: Path, output_root: Path) -> Pa
     suite_counts = Counter(str(c.get("suite", "unknown")) for c in cases)
     kind_counts = Counter(str(c.get("kind", "unknown")) for c in cases)
 
-    text_records = build_text_records(cases, text_scope="injection")
+    text_records = build_text_records(cases, injection_scope="injection")
     text_records = [r for r in text_records if r.suite in TEXT_SCOPE_INCLUDED_SUITES]
     label_counts = Counter("attack" if bool(r.label_attack) else "benign" for r in text_records)
     text_suite_counts = Counter(r.suite for r in text_records)

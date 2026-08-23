@@ -156,12 +156,19 @@ class SessionStore:
         side effect of someone opening a URL.
         """
         with self._lock:
+            # Swept here too. Expiry used to run only on the chat path, so an
+            # idle gateway kept an expired session's decision chain readable
+            # and listed for as long as nothing else arrived: a retention
+            # window with no upper bound, in the one surface built for someone
+            # to read a session back.
+            self._evict_expired(self._now())
             hit = self._entries.get(session_id)
             return hit[1] if hit is not None else None
 
     def listing(self) -> list[dict[str, object]]:
         """Every live session, newest use first, for the viewer's index."""
         with self._lock:
+            self._evict_expired(self._now())
             rows = [
                 {
                     "session_id": sid,

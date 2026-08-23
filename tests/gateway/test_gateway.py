@@ -882,3 +882,35 @@ class TestSessionSerialization:
         first = store.lock_for("never-created")
         second = store.lock_for("never-created")
         assert first is not second  # cannot alias another session's lock
+
+
+# ---------------------------------------------------------------------------
+# TTL is a retention claim, so reads have to honour it
+# ---------------------------------------------------------------------------
+
+
+class TestExpiryOnDiagnosticReads:
+    def _expired_store(self):
+        clock = [1000.0]
+        store = SessionStore(
+            make_guard=lambda: Guard(), ttl_seconds=1.0, time_source=lambda: clock[0]
+        )
+        sid, guard, chain = store.get("s-1")
+        chain.record(stage="ingest", detail="doc", outcome="recorded", reason="x", guard=guard)
+        clock[0] += 100
+        return store, sid
+
+    def test_an_expired_session_is_not_listed(self):
+        """Expiry ran only on the chat path, so an idle gateway kept it forever."""
+        store, _ = self._expired_store()
+        assert store.listing() == []
+
+    def test_an_expired_chain_is_not_readable(self):
+        store, sid = self._expired_store()
+        assert store.chain(sid) is None
+
+    def test_a_live_session_survives_a_read(self):
+        store = _store()
+        sid, _guard, _chain = store.get("s-1")
+        assert store.chain(sid) is not None
+        assert len(store.listing()) == 1

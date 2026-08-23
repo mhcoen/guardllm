@@ -74,6 +74,49 @@ if not verdict.allowed:
 The entrypoint returns deny messages, so an empty result is an allow. A bundle
 or a bare `policy.wasm` both load.
 
+### What the bundle brings with it
+
+A bundle's `data.json` is loaded and is what `data.` references resolve
+against, so a rule can read reference data the bundle ships:
+
+```rego
+deny contains msg if {
+    some blocked in data.config.blocked_tools
+    input.tool == blocked
+    msg := "tool is blocked by bundle data"
+}
+```
+
+Build with `-b` so the directory layout becomes the data path
+(`config/data.json` → `data.config`), the same as `opa eval -b`. A bare
+`policy.wasm` has no data document, so `data.` references in one are undefined.
+
+### Builtins are refused, not stubbed
+
+OPA compiles most builtins into the WASM module. A few it does not, and expects
+the host to supply them; `builtins()` names exactly those. **GuardLLM supplies
+none, and refuses at load any policy that needs one**, naming it.
+
+That refusal is the feature. The alternative is to answer such a call with
+"undefined", and in Rego an undefined reference makes the enclosing rule body
+undefined, so a `deny` rule that reaches one does not deny — it fails to fire,
+and the call is allowed. A policy you tested with `opa eval` and watched deny
+would load, evaluate, and permit, with nothing anywhere saying why.
+
+`sprintf` is the one you are most likely to meet, because it is how a deny
+message interpolates what it objected to. A literal message needs no builtin:
+
+```rego
+# refused at load: sprintf is not compiled into the module
+msg := sprintf("tool %v is refused", [input.tool])
+
+# fine
+msg := "wire_funds is refused from a contaminated session"
+```
+
+The fixture policy in this repository requires no host builtin at all, and
+neither does any rule written against `input.guardllm`.
+
 ## The stability contract
 
 Your rules live in your repository and your deployment runs a release for

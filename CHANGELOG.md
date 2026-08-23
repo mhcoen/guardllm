@@ -4,6 +4,11 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Fixed
+- **A Rego policy could fail open in two ways, silently.** Both are the same shape: in Rego an undefined reference makes the enclosing rule body undefined, so a `deny` rule that meets one does not deny, it fails to fire, and the call is allowed. Measured against `opa eval` on the same bundle and input, where OPA returned two deny messages and GuardLLM returned "no policy objection".
+  - **A bundle's `data.json` was never loaded.** The WASM ABI takes the data document as a caller-supplied argument and nothing is compiled into the module, so passing `{}` left every `data.` reference undefined. A comment claimed a bundle's own data still applied; it did not. The bundle's data document is now parsed and passed, and a test asserts GuardLLM's verdict equals `opa eval`'s on the same input.
+  - **Builtins OPA does not compile into the module were answered with 0**, which reads as undefined. They are now **refused at load**, naming them, rather than stubbed at evaluation. `sprintf` is the common one, because it is how a deny message interpolates what it objected to; a literal message needs no builtin, and the fixture policy in this repository needs none at all. A loud refusal once, before the policy is trusted with a decision, beats a policy that evaluates and permits.
+
 ### Added
 - Privacy vault persistence, so a token keeps meaning the same person across a restart. `Guard(privacy=..., vault_store=EncryptedFileVaultStore.from_env(path))` and `guard.persist_vault()`. Needs the new `vault` extra: `pip install 'guardllm[vault]'`. The vault remains session state by default and nothing reaches disk on its own: a vault with no store never writes, and a vault with one writes only when asked. Writing on every token would put an fsync on the path of every prompt, and the window that leaves is one the vault already fails closed on.
   - What this buys is continuity, not protection. Nothing crosses to the provider that would not have crossed before. Without a store a restart loses co-reference, so the same person is issued a second token and tokens from before the restart stop resolving; either way an unresolvable token fails the call rather than resolving to the wrong person.

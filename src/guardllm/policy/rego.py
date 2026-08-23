@@ -126,24 +126,51 @@ def _wasmtime():
     return wasmtime
 
 
-def _policy_wasm(path: Path) -> bytes:
-    """Read policy.wasm from an OPA bundle, or from a bare .wasm file.
+def _bundle_member(bundle: tarfile.TarFile, *names: str) -> bytes | None:
+    """The first member present under any of ``names``, or None."""
+    for name in names:
+        try:
+            member = bundle.extractfile(name)
+        except KeyError:
+            continue
+        if member is not None:
+            return member.read()
+    return None
 
-    ``opa build -t wasm`` emits a gzipped tar holding ``/policy.wasm``. Both
-    are accepted because both are things a person ends up with.
+
+def _policy_parts(path: Path) -> tuple[bytes, str]:
+    """Read policy.wasm AND data.json from an OPA bundle.
+
+    ``opa build -t wasm`` emits a gzipped tar holding ``/policy.wasm`` and,
+    when the bundle carries any, ``/data.json``. A bare ``.wasm`` file is also
+    accepted, because both are things a person ends up with; it has no data.
+
+    The data document has to come from the bundle. An earlier version parsed
+    an empty one here and said in a comment that a bundle's own ``data.json``
+    still applied. It does not: the WASM ABI takes the data document as a
+    caller-supplied argument, and nothing is compiled into the module. A rule
+    reading ``data.config.blocked_tools`` therefore found nothing, and in Rego
+    an undefined reference makes the whole rule body undefined, so the rule did
+    not deny -- it failed to fire. Measured against ``opa eval`` on the same
+    bundle and input: OPA returned two deny messages, this returned "no policy
+    objection".
     """
-    data = path.read_bytes()
-    if data[:2] == b"\x1f\x8b" or path.suffixes[-2:] == [".tar", ".gz"]:
+    raw = path.read_bytes()
+    if raw[:2] == b"\x1f\x8b" or path.suffixes[-2:] == [".tar", ".gz"]:
         with tarfile.open(path) as bundle:
-            for name in ("/policy.wasm", "policy.wasm", "./policy.wasm"):
-                try:
-                    member = bundle.extractfile(name)
-                except KeyError:
-                    continue
-                if member is not None:
-                    return member.read()
-        raise ValueError(f"{path} is a bundle with no policy.wasm in it")
-    return data
+            wasm = _bundle_member(bundle, "/policy.wasm", "policy.wasm", "./policy.wasm")
+            if wasm is None:
+                raise ValueError(f"{path} is a bundle with no policy.wasm in it")
+            data = _bundle_member(bundle, "/data.json", "data.json", "./data.json")
+        if data is None:
+            return wasm, "{}"
+        text = data.decode("utf-8")
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path} holds a data.json that is not valid JSON: {exc}") from exc
+        return wasm, text
+    return raw, "{}"
 
 
 class RegoPolicy:
@@ -161,7 +188,7 @@ class RegoPolicy:
     def __init__(self, path: str | Path) -> None:
         wasmtime = _wasmtime()
         self._path = Path(path)
-        wasm = _policy_wasm(self._path)
+        wasm, data_document = _policy_parts(self._path)
 
         self._engine = wasmtime.Engine()
         self._store = wasmtime.Store(self._engine)
@@ -172,10 +199,12 @@ class RegoPolicy:
             params = [wasmtime.ValType.i32()] * arity
             results = [wasmtime.ValType.i32()] if returns else []
             kind = wasmtime.FuncType(params, results)
-            # A policy that reaches a builtin we did not provide gets 0 rather
-            # than a crash. The WASM target already lacks the builtins that
-            # would matter here, http.send above all, and access-control rules
-            # do not use them.
+            # Reaching one of these is a bug rather than a policy outcome:
+            # every builtin the policy actually requires is rejected at load
+            # time by _refuse_unsupported_builtins below, so nothing should
+            # ever call one. Returning 0 was what made an unimplemented builtin
+            # read as undefined, which in Rego means the rule does not fire,
+            # which for a deny rule means the call is allowed.
             body = (lambda *_a: 0) if returns else (lambda *_a: None)
             return wasmtime.Func(self._store, kind, body)
 
@@ -189,9 +218,51 @@ class RegoPolicy:
         instance = linker.instantiate(self._store, module)
         self._exports = instance.exports(self._store)
         self._memory = self._exports["memory"]
-        # Parsed once: the data document is empty here because every fact a
-        # policy needs arrives as input. A bundle's own data.json still applies.
-        self._data = self._exports["opa_json_parse"](self._store, *self._write("{}"))
+        self._refuse_unsupported_builtins()
+        # Parsed once, from the bundle. Most facts a policy needs arrive as
+        # input; a bundle that ships reference data expects that data to be
+        # here, and passing an empty document instead silently disabled every
+        # rule that read it.
+        self._data = self._exports["opa_json_parse"](self._store, *self._write(data_document))
+
+    def _dump(self, addr: int) -> str:
+        """Serialize an OPA value address to JSON text."""
+        return self._read(self._exports["opa_json_dump"](self._store, addr))
+
+    def _refuse_unsupported_builtins(self) -> None:
+        """Refuse a policy that needs a builtin this host does not implement.
+
+        ``builtins()`` names exactly the builtins OPA could not compile into
+        the module and expects the host to supply. GuardLLM supplies none: it
+        evaluates access-control rules in process with no network, and the
+        builtins in that set are the ones whose implementations would be host
+        behaviour rather than policy.
+
+        Refusing at load is the whole point. The alternative, which is what
+        this did before, is to answer every such call with 0. In Rego that
+        reads as undefined, an undefined reference makes the enclosing rule
+        body undefined, and a ``deny`` rule that does not fire is an allow. So
+        a policy the author tested with ``opa eval`` and watched deny would
+        load here, evaluate, and permit the call, with nothing anywhere saying
+        why. A refusal at load is loud, happens once, and happens before the
+        policy is trusted with a decision.
+
+        ``sprintf`` is the common one, because it is how a deny message
+        interpolates the thing it objected to. A literal message needs no
+        builtin, and the fixture policy in this repository requires none at
+        all.
+        """
+        required = json.loads(self._dump(self._exports["builtins"](self._store)) or "{}")
+        if not required:
+            return
+        names = ", ".join(sorted(required))
+        raise ValueError(
+            f"{self._path} needs Rego builtins this build does not implement: {names}. "
+            "They are refused at load rather than stubbed, because a stubbed builtin "
+            "reads as undefined in Rego, an undefined reference makes the rule body "
+            "undefined, and a deny rule that does not fire allows the call. Rewrite "
+            "the rules without them (a literal deny message needs no sprintf)."
+        )
 
     def _write(self, text: str) -> tuple[int, int]:
         raw = text.encode("utf-8")

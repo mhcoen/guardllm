@@ -7,6 +7,7 @@ They skip where `opa` is absent; CI installs it so the path is exercised.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -253,4 +254,115 @@ class TestInputVersion:
         # The gate is on the session fact, not merely on the version.
         assert policy.evaluate(build_input(tool="export_all")).allowed is True
         # And the rules written before the version existed are unaffected.
+        assert policy.evaluate(build_input(tool="wire_funds", contaminated=True)).allowed is False
+
+
+# ---------------------------------------------------------------------------
+# The two ways this used to fail open, and the leak underneath them
+# ---------------------------------------------------------------------------
+
+#: A rule whose only condition lives in the bundle's own data document. It
+#: needs no builtin, so it loads; if the data is not there, the reference is
+#: undefined, the rule body is undefined, and the deny does not fire.
+_DATA_POLICY = """package guardllm
+
+deny contains msg if {
+    some blocked in data.config.blocked_tools
+    input.tool == blocked
+    msg := "tool is blocked by bundle data"
+}
+"""
+
+#: `sprintf` is not compiled into the WASM module; OPA expects the host to
+#: supply it. It is the common case, because it is how a deny message
+#: interpolates what it objected to.
+_BUILTIN_POLICY = """package guardllm
+
+deny contains msg if {
+    input.tool == "wire_funds"
+    msg := sprintf("tool %v is refused", [input.tool])
+}
+"""
+
+
+def _build(tmp_path, source: str, data: str | None = None) -> Path:
+    """Compile a bundle the way an operator would, from a directory."""
+    (tmp_path / "policy.rego").write_text(source)
+    if data is not None:
+        (tmp_path / "config").mkdir(exist_ok=True)
+        (tmp_path / "config" / "data.json").write_text(data)
+    bundle = tmp_path / "bundle.tar.gz"
+    subprocess.run(  # noqa: S603 - fixed argv, no shell, path from shutil.which
+        [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "guardllm/deny", "-o", str(bundle)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    return bundle
+
+
+@_needs_opa
+class TestBundleData:
+    """A rule reading `data.` must see the bundle's data document.
+
+    It did not. The data document is a caller-supplied argument in the WASM
+    ABI and nothing is compiled into the module, so passing `{}` left every
+    such rule undefined -- which for a deny rule is an allow, silently.
+    """
+
+    def test_a_rule_reading_bundle_data_denies(self, tmp_path):
+        bundle = _build(tmp_path, _DATA_POLICY, '{"blocked_tools": ["search"]}')
+        policy = RegoPolicy(bundle)
+        verdict = policy.evaluate({"tool": "search"})
+        assert verdict.allowed is False
+        assert "blocked by bundle data" in verdict.reason
+
+    def test_it_agrees_with_opa_itself(self, tmp_path):
+        """The ground truth: what `opa eval` says about the same bundle.
+
+        This is the assertion that would have caught the original defect. The
+        policy denied under `opa eval` and allowed under RegoPolicy.
+        """
+        bundle = _build(tmp_path, _DATA_POLICY, '{"blocked_tools": ["search"]}')
+        document = {"tool": "search"}
+        native = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [_OPA, "eval", "-b", ".", "-I", "data.guardllm.deny"],
+            cwd=tmp_path,
+            input=json.dumps(document),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        opa_denials = json.loads(native.stdout)["result"][0]["expressions"][0]["value"]
+        verdict = RegoPolicy(bundle).evaluate(document)
+        assert bool(opa_denials) is (not verdict.allowed)
+        assert sorted(opa_denials) == sorted(verdict.reasons)
+
+    def test_a_rule_reading_absent_data_still_allows(self, tmp_path):
+        """No data.json in the bundle is not an error, just nothing to read."""
+        bundle = _build(tmp_path, _DATA_POLICY)
+        assert RegoPolicy(bundle).evaluate({"tool": "search"}).allowed is True
+
+
+@_needs_opa
+class TestUnsupportedBuiltins:
+    def test_a_policy_needing_a_host_builtin_is_refused_at_load(self, tmp_path):
+        """Loudly, once, and before the policy is trusted with a decision.
+
+        Answering the call with 0 instead made it read as undefined, which
+        made the rule body undefined, which made a deny rule allow.
+        """
+        bundle = _build(tmp_path, _BUILTIN_POLICY)
+        with pytest.raises(ValueError, match="builtins this build does not implement"):
+            RegoPolicy(bundle)
+
+    def test_the_refusal_names_the_builtin_and_the_way_out(self, tmp_path):
+        bundle = _build(tmp_path, _BUILTIN_POLICY)
+        with pytest.raises(ValueError) as caught:
+            RegoPolicy(bundle)
+        assert "sprintf" in str(caught.value)
+        assert "literal deny message" in str(caught.value)
+
+    def test_a_policy_needing_none_is_unaffected(self, policy):
+        """The fixture policy in this repository requires no host builtin."""
         assert policy.evaluate(build_input(tool="wire_funds", contaminated=True)).allowed is False

@@ -389,3 +389,50 @@ class TestPolicyConfigValidation:
                     TrustLevel.UNTRUSTED: {"invalid_key": 5},
                 }
             )
+
+
+class TestPolicyLimitValidation:
+    """Both settings are checked at construction, not where they are read.
+
+    A wrong type at the read site is a TypeError out of the middle of a tool
+    call: `max_chars: "50"` raised comparing int to str on whichever request
+    happened to carry that argument, which is a 500 at dispatch for what is a
+    typo in a policy file.
+    """
+
+    def test_an_unknown_rate_limit_key_is_refused(self):
+        """It merged cleanly and left the default of ten silently in force."""
+        with pytest.raises(ValueError, match="Unknown rate_limits keys"):
+            PolicyConfig(rate_limits={"emails_per_hr": 2})
+
+    def test_a_non_numeric_rate_limit_is_refused(self):
+        with pytest.raises(ValueError, match="must be a number"):
+            PolicyConfig(rate_limits={"emails_per_hour": "2"})
+
+    def test_the_boolean_rate_limit_wants_a_boolean(self):
+        with pytest.raises(ValueError, match="must be a bool"):
+            PolicyConfig(rate_limits={"novel_recipient_flag": 1})
+        PolicyConfig(rate_limits={"novel_recipient_flag": False})
+
+    def test_a_valid_rate_limit_is_accepted(self):
+        assert PolicyConfig(rate_limits={"emails_per_hour": 2}).rate_limits
+
+    def test_a_non_mapping_argument_limit_is_refused(self):
+        """Previously discarded in silence by an isinstance guard."""
+        with pytest.raises(ValueError, match="must be a mapping"):
+            PolicyConfig(argument_limits={"query": 50})
+
+    def test_a_non_integer_max_chars_is_refused(self):
+        with pytest.raises(ValueError, match=r"\['max_chars'\] must be an int"):
+            PolicyConfig(argument_limits={"query": {"max_chars": "50"}})
+
+    def test_an_uncompilable_pattern_is_refused(self):
+        with pytest.raises(ValueError, match="not a valid regular expression"):
+            PolicyConfig(argument_limits={"query": {"pattern": "["}})
+
+    def test_a_non_string_pattern_is_refused(self):
+        with pytest.raises(ValueError, match="'pattern'. must be a string"):
+            PolicyConfig(argument_limits={"query": {"pattern": 5}})
+
+    def test_a_valid_argument_limit_is_accepted(self):
+        assert PolicyConfig(argument_limits={"query": {"max_chars": 50, "pattern": r"^\w+$"}})

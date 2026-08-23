@@ -7,6 +7,7 @@ circular imports. No dependencies outside stdlib.
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -212,6 +213,55 @@ class PolicyConfig:
                     f"Unknown rate_limit_overrides keys for {trust_level}: "
                     f"{sorted(unknown)}. Valid keys: {sorted(_VALID_RATE_LIMIT_KEYS)}"
                 )
+        # Same check for the base limits. They went unvalidated while the
+        # overrides beside them were checked, so `emails_per_hr: 2` merged
+        # cleanly and left the default of ten in force with nothing reporting
+        # that the setting had not taken. That is the exact failure enforcing
+        # this field was meant to end.
+        unknown = set(self.rate_limits) - _VALID_RATE_LIMIT_KEYS
+        if unknown:
+            raise ValueError(
+                f"Unknown rate_limits keys: {sorted(unknown)}. "
+                f"Valid keys: {sorted(_VALID_RATE_LIMIT_KEYS)}"
+            )
+        for key, value in self.rate_limits.items():
+            expected = bool if key == "novel_recipient_flag" else (int, float)
+            if isinstance(value, bool) != (expected is bool) or not isinstance(value, expected):
+                raise ValueError(
+                    f"rate_limits[{key!r}] must be "
+                    f"{'a bool' if expected is bool else 'a number'}, "
+                    f"got {type(value).__name__}"
+                )
+        # And the argument limits. Both of these are checked here rather than
+        # where they are read, because a wrong type there is a TypeError out of
+        # the middle of a tool call: `max_chars: "50"` raised comparing int to
+        # str on the request that happened to carry that argument, which is a
+        # 500 at dispatch for what is a typo in a policy file.
+        for name, limits in self.argument_limits.items():
+            if not isinstance(limits, dict):
+                raise ValueError(
+                    f"argument_limits[{name!r}] must be a mapping, got {type(limits).__name__}"
+                )
+            for key, value in limits.items():
+                if key in ("max_chars", "max_fields", "max_value_chars"):
+                    if isinstance(value, bool) or not isinstance(value, int):
+                        raise ValueError(
+                            f"argument_limits[{name!r}][{key!r}] must be an int, "
+                            f"got {type(value).__name__}"
+                        )
+                elif key == "pattern":
+                    if not isinstance(value, str):
+                        raise ValueError(
+                            f"argument_limits[{name!r}]['pattern'] must be a string, "
+                            f"got {type(value).__name__}"
+                        )
+                    try:
+                        re.compile(value)
+                    except re.error as exc:
+                        raise ValueError(
+                            f"argument_limits[{name!r}]['pattern'] is not a valid "
+                            f"regular expression: {exc}"
+                        ) from exc
 
 
 class ConfirmationHandler:

@@ -15,6 +15,7 @@
 - [Restoring into free text](#restoring-into-free-text)
 - [Failing closed](#failing-closed)
 - [Alphabet runs, and the one thing you may have to choose](#alphabet-runs-and-the-one-thing-you-may-have-to-choose)
+- [Persisting the vault](#persisting-the-vault)
 - [What this does not do](#what-this-does-not-do)
 - [Related](#related)
 
@@ -197,15 +198,77 @@ PrivacyConfig(ambiguous_alphabet_policy="redact")  # the default
 Egress is not configurable here: `check_outbound` reports the run whatever this
 is set to, so a value of this shape never leaves quietly.
 
+## Persisting the vault
+
+The vault is session state by default and nothing reaches disk on its own.
+A deployment that needs a token to keep meaning the same person across a
+restart attaches a store:
+
+```python
+from guardllm import Guard
+from guardllm.security.types import PrivacyConfig
+from guardllm.security.vault_store import EncryptedFileVaultStore
+
+# Reads the key from GUARDLLM_VAULT_KEY, and refuses if it is unset.
+store = EncryptedFileVaultStore.from_env("/var/lib/guardllm/vault.bin")
+
+guard = Guard(privacy=PrivacyConfig(), vault_store=store)
+guard.deidentify("...")
+guard.persist_vault()   # end of turn, checkpoint, or shutdown
+```
+
+Needs the `vault` extra: `pip install 'guardllm[vault]'`.
+
+**What this buys is continuity, not protection.** Nothing crosses to the
+provider that would not have crossed before. Without a store a restart loses
+co-reference, so the same person is issued a second token and tokens from
+before the restart stop resolving; they fail closed rather than resolving to
+the wrong person either way.
+
+**A persisted vault is a different security object.** In memory it holds
+plaintext the caller already had. On disk it is a re-identification database:
+one file mapping every token a provider has seen back to the person behind it,
+outliving the request, the process, and usually the incident. So the store that
+ships encrypts under AES-256-GCM, and there is no unencrypted alternative
+behind it: without the extra it refuses to write rather than falling back to
+plaintext.
+
+**The key is yours and the library will not invent one.** `generate_key()`
+returns a fresh 256-bit key as base64 for a secret manager; nothing in
+GuardLLM writes a key anywhere. `EncryptedFileVaultStore.from_env(path)` reads
+one from `GUARDLLM_VAULT_KEY` and refuses when it is unset, rather than
+generating one and coming up healthy and empty against a file it can no longer
+read. Lose the key and you lose the file, which is the intended property.
+
+Three behaviours worth knowing before you rely on it:
+
+- **A file it cannot authenticate raises**, and is never read as an empty
+  vault. Starting empty after a wrong key looks like a fresh session and is
+  not one: every live token would silently stop resolving.
+- **`clear()` destroys the stored snapshot too.** A clear invalidates every
+  token in the transcript, and leaving the file behind would let the next
+  process resurrect them.
+- **The file's absence is not authenticated.** Deleting it is
+  indistinguishable from a first run. That is a denial of continuity rather
+  than a disclosure, and the remedy is filesystem permissions.
+
+`VaultStore` is a three-method protocol (`load`, `save`, `purge`), so a
+deployment that wants a database, a KMS-fronted blob, or replication
+implements it without touching the vault. Key rotation, escrow, and deletion
+evidence sit above the interface rather than inside it.
+
 ## What this does not do
 
 - **It does not find what no tier detects.** A name or a street address with no
   seeded value and no registered detector passes through in the clear. The
   vault reports `detection_incomplete` when it knows its own coverage was
   partial; it cannot report what nothing looked for.
-- **It does not survive the process.** The vault is in memory and scoped to the
-  session. A restart loses the mapping, and tokens issued before it will no
-  longer resolve. They fail closed rather than resolving to the wrong value.
+- **It does not survive the process unless you ask it to.** The vault is in
+  memory and scoped to the session by default. A restart loses the mapping,
+  and tokens issued before it will no longer resolve; they fail closed rather
+  than resolving to the wrong value. See "Persisting the vault" above for the
+  opt-in, and note that it changes continuity rather than what the provider
+  sees.
 - **It does not protect a path that does not go through it.** Content the host
   sends to a provider without calling `deidentify` is not covered, in the same
   way the rest of GuardLLM governs the paths routed through it.

@@ -55,6 +55,12 @@ from guardllm.security.types import (
     ReidentifyResult,
     SanitizationResult,
 )
+from guardllm.security.vault_store import (
+    VaultEntry,
+    VaultSnapshot,
+    VaultStore,
+    VaultStoreError,
+)
 
 # ---------------------------------------------------------------------------
 # Token text form
@@ -265,6 +271,10 @@ class _Entry:
     value: str
     pii_class: PIIClass
     token: str
+    #: The codeword body inside the token. Kept rather than reparsed out of
+    #: the rendered form, because a snapshot has to reproduce the exact body
+    #: the payload index and the trigram index were built from.
+    body: str
 
 
 class VaultCapacityError(RuntimeError):
@@ -279,14 +289,25 @@ class VaultCapacityError(RuntimeError):
 class PrivacyVault:
     """Session-scoped store mapping identifiers to tokens and back.
 
-    In-memory, cleared by ``reset``, never persisted by this library. A shared
-    or persistent vault is a re-identification database and a different
-    security object; it needs encryption at rest, TTL, and access control that
-    are not provided here.
+    In-memory and cleared by ``clear`` unless a ``store`` is attached. Nothing
+    reaches disk on its own: a vault with no store never writes, and a vault
+    with one writes only when ``persist`` is called.
+
+    A persisted vault is a different security object from this one. In memory
+    it holds plaintext the caller already had; on disk it is a
+    re-identification database that outlives the request. So the only store
+    this library ships encrypts under a caller-supplied key, and TTL and
+    access control remain the deployment's to provide. See
+    ``guardllm.security.vault_store``.
     """
 
-    def __init__(self, config: PrivacyConfig) -> None:
+    def __init__(self, config: PrivacyConfig, *, store: VaultStore | None = None) -> None:
         self._config = config
+        # Loading here rather than lazily on first use: a vault that adopted
+        # stored state only once someone asked for a token could issue a fresh
+        # token for a value the store already had an entry for, splitting one
+        # person across two identifiers in the same session.
+        self._store = store
         self._by_value: dict[tuple[PIIClass, str], _Entry] = {}
         self._by_payload: dict[str, _Entry] = {}
         # Issuance is a compound of lookup, capacity check, collision
@@ -302,6 +323,10 @@ class PrivacyVault:
         self._source_key = secrets.token_bytes(32)
         self._STRIP_SEPARATORS = _STRIP_SEPARATORS_TABLE
         self.seeded = SeededValues()
+        if store is not None:
+            snapshot = store.load()
+            if snapshot is not None:
+                self.load_snapshot(snapshot)
 
     # -- lifecycle ------------------------------------------------------
 
@@ -320,6 +345,11 @@ class PrivacyVault:
             # sessions; without it a provider can join overflow handles from
             # before and after a reset.
             self._source_key = secrets.token_bytes(32)
+            # A clear that left the stored snapshot behind would let the next
+            # process resurrect tokens the host has just invalidated, which is
+            # the one outcome worse than losing them.
+            if self._store is not None:
+                self._store.purge()
 
     def __len__(self) -> int:
         return len(self._by_payload)
@@ -330,6 +360,171 @@ class PrivacyVault:
 
     def seed(self, values: dict[str, PIIClass]) -> None:
         self.seeded.add(values)
+
+    # -- persistence ----------------------------------------------------
+
+    def snapshot(self) -> VaultSnapshot:
+        """Everything needed to resume this vault in another process.
+
+        The returned object holds plaintext, and is the most sensitive thing
+        this module produces: it is every identifier the session saw, in one
+        place, next to the token the provider was shown for each. It carries a
+        ``repr`` that counts rather than quotes for that reason. Hand it to a
+        store; do not log it.
+
+        Entries are taken from the payload index because that is the one keyed
+        by what a token actually carries. The value index holds the same
+        objects under a normalized key, and both are rebuilt on load from these
+        entries alone.
+        """
+        with self._lock:
+            return VaultSnapshot(
+                entries=tuple(
+                    VaultEntry(pii_class=e.pii_class, value=e.value, body=e.body)
+                    for e in self._by_payload.values()
+                ),
+                sources=tuple(
+                    (source_type, source_id, handle)
+                    for (source_type, source_id), handle in self._sources.items()
+                ),
+                source_key=self._source_key,
+                seeded=self.seeded.items(),
+            )
+
+    @staticmethod
+    def _validated_entries(snapshot: VaultSnapshot) -> list[tuple[tuple, VaultEntry]]:
+        """Check every entry before any of them is indexed.
+
+        The vault's whole promise is that a token resolves to the person it was
+        issued for, and four structures have to agree for that to hold. A
+        snapshot is the one input that writes all four at once, so it is
+        checked as a whole rather than trusted because it authenticated: a
+        store is an interface anyone may implement, and an AEAD proves who
+        wrote a file, not that what it holds is coherent.
+
+        The failures this excludes, in the order they were found:
+
+        - **Two entries under one codeword body.** The value index keeps both
+          and the payload index keeps the last, so the first person's token
+          resolves to the second person.
+        - **A body that is not a codeword.** ``render_token`` will happily
+          render ``[[GL:EMAIL:!!!]]``, which no resolution path can match and
+          which puts a live-looking token in front of the provider.
+        - **A body that is merely correctable.** One whose symbols decode only
+          after correction canonicalizes to a *different* codeword, so the
+          vault would hold two names for one payload.
+        - **Two entries for one value.** Same person, two tokens, and which one
+          resolves depends on iteration order.
+        """
+        seen_payloads: dict[str, str] = {}
+        seen_values: set[tuple] = set()
+        staged: list[tuple[tuple, VaultEntry]] = []
+        for position, entry in enumerate(snapshot.entries):
+            where = f"entry {position}"
+            if not isinstance(entry.pii_class, PIIClass):
+                raise VaultStoreError(f"vault snapshot: {where} has a non-PIIClass class")
+            if not isinstance(entry.value, str) or not entry.value:
+                raise VaultStoreError(f"vault snapshot: {where} has an empty or non-string value")
+            if not isinstance(entry.body, str):
+                raise VaultStoreError(f"vault snapshot: {where} has a non-string body")
+            decoded = codec.decode_text(entry.body)
+            if decoded.status is not codec.EXACT or (
+                codec.encode_text(list(decoded.payload)) != entry.body
+            ):
+                # Deliberately not quoting the body back. A store handing over
+                # garbage is not a reason to put its contents in a log line.
+                raise VaultStoreError(f"vault snapshot: {where} has a body that is not a codeword")
+            payload = entry.body[: codec.PAYLOAD_SYMBOLS]
+            if payload in seen_payloads:
+                raise VaultStoreError(
+                    f"vault snapshot: {where} repeats the codeword of "
+                    f"{seen_payloads[payload]}; one token would resolve to two people"
+                )
+            seen_payloads[payload] = where
+            key = (entry.pii_class, PrivacyVault._normalize(entry.pii_class, entry.value))
+            if key in seen_values:
+                raise VaultStoreError(f"vault snapshot: {where} repeats an earlier value")
+            seen_values.add(key)
+            staged.append((key, entry))
+        return staged
+
+    def load_snapshot(self, snapshot: VaultSnapshot) -> None:
+        """Adopt stored state. Only into a vault that has issued nothing.
+
+        Refusing a non-empty vault is not caution about overwriting a data
+        structure. Replacing the indexes drops every token issued since the
+        process started, and those tokens are already in the host's transcript
+        and in whatever the provider was sent; they would stop resolving with
+        no event anywhere saying why. A caller that means it calls ``clear``
+        first, which invalidates them deliberately.
+
+        Every check runs before the first write, so a snapshot that fails one
+        leaves the vault exactly as it was. A partial load is worse than a
+        refused one: it is a vault holding some of a session's identities and
+        silently missing the rest, which reads as a working vault.
+        """
+        with self._lock:
+            if self._by_payload:
+                raise VaultStoreError(
+                    f"vault snapshot: refusing to load into a vault holding "
+                    f"{len(self._by_payload)} live tokens; call clear() first"
+                )
+            # Capacity is a security parameter, not a memory limit: the forgery
+            # bound is ~N/2^PAYLOAD_BITS, so silently seating more entries than
+            # the configured maximum weakens the property the number states.
+            if len(snapshot.entries) > self._config.vault_max_entries:
+                raise VaultStoreError(
+                    f"vault snapshot: holds {len(snapshot.entries)} entries but this "
+                    f"vault is configured for {self._config.vault_max_entries}"
+                )
+            if not isinstance(snapshot.source_key, bytes) or len(snapshot.source_key) != 32:
+                raise VaultStoreError(
+                    f"vault snapshot: source key must be 32 bytes, got {len(snapshot.source_key)}"
+                )
+            sources: dict[tuple[str, str], str] = {}
+            for position, row in enumerate(snapshot.sources):
+                if len(row) != 3 or not all(isinstance(part, str) and part for part in row):
+                    raise VaultStoreError(
+                        f"vault snapshot: source {position} is not three non-empty strings"
+                    )
+                source_type, source_id, handle = row
+                if (source_type, source_id) in sources:
+                    raise VaultStoreError(
+                        f"vault snapshot: source {position} repeats an earlier source; "
+                        "one document would reach the model under two labels"
+                    )
+                sources[(source_type, source_id)] = handle
+            seeded: dict[str, PIIClass] = {}
+            for position, pair in enumerate(snapshot.seeded):
+                value, pii_class = pair
+                if not isinstance(value, str) or not isinstance(pii_class, PIIClass):
+                    raise VaultStoreError(f"vault snapshot: seeded value {position} is malformed")
+                seeded[value] = pii_class
+            staged = self._validated_entries(snapshot)
+
+            # Nothing above this line has written anything, and nothing below
+            # it can fail.
+            for key, entry in staged:
+                self._record_locked(key, entry.pii_class, entry.value, entry.body)
+            self._sources.update(sources)
+            # Carried, not regenerated. Past the source-handle cache cap the
+            # vault derives handles under this key, so a fresh one would relabel
+            # sources the model has already been shown across the restart.
+            self._source_key = snapshot.source_key
+            self.seeded.add(seeded)
+
+    def persist(self) -> None:
+        """Write the current state to the attached store.
+
+        Explicit, and not called from issuance. Writing on every token would
+        put an fsync on the path of every prompt, and the window it would close
+        is one the vault already fails closed on: a token issued after the last
+        write and lost to a crash is unresolvable afterwards, which fails the
+        call rather than resolving to the wrong person.
+        """
+        if self._store is None:
+            raise VaultStoreError("this vault has no store; construct it with store=...")
+        self._store.save(self.snapshot())
 
     # -- issuance -------------------------------------------------------
 
@@ -367,7 +562,20 @@ class PrivacyVault:
                 break
         else:  # pragma: no cover - requires 8 consecutive 60-bit collisions
             raise VaultCapacityError("could not draw a unique token payload")
-        entry = _Entry(value=value, pii_class=pii_class, token=render_token(pii_class, body))
+        return self._record_locked(key, pii_class, value, body).token
+
+    def _record_locked(self, key, pii_class: PIIClass, value: str, body: str) -> _Entry:
+        """Write one entry into every index that has to agree about it.
+
+        Shared with snapshot loading rather than duplicated there. Four
+        structures describe the same token, and a loader that rebuilt three of
+        them would leave the vault resolving a token the stray-payload scan
+        cannot see.
+        """
+        payload = body[: codec.PAYLOAD_SYMBOLS]
+        entry = _Entry(
+            value=value, pii_class=pii_class, token=render_token(pii_class, body), body=body
+        )
         self._by_value[key] = entry
         self._by_payload[payload] = entry
         # Canonical full codeword bodies, for the O(1) scan in
@@ -377,7 +585,7 @@ class PrivacyVault:
         self._issued_bodies.add(folded_body)
         for gram in _trigrams(folded_body):
             self._body_trigrams.setdefault(gram, set()).add(folded_body)
-        return entry.token
+        return entry
 
     #: Source handles live outside the value vault. Deriving them from
     #: len(_by_value) leaked how many protected values a session had seen

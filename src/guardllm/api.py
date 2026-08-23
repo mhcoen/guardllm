@@ -31,6 +31,7 @@ from guardllm.security.types import (
     TrustLevel,
 )
 from guardllm.security.validation import ValidationResult, validate_arguments
+from guardllm.security.vault_store import VaultStore
 
 
 def _string_leaves(node: object) -> list[str]:
@@ -66,12 +67,14 @@ class Guard:
         audit_logger: object | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
         privacy: PrivacyConfig | None = None,
+        vault_store: VaultStore | None = None,
     ) -> None:
         self._pipeline = SecurityPipeline(
             audit_logger=audit_logger,
             canary_session_id=canary_session_id,
             principal_trust=principal_trust,
             privacy=privacy,
+            vault_store=vault_store,
         )
         self._action_gate = ActionGate()
         self._audit_logger = audit_logger
@@ -348,6 +351,20 @@ class Guard:
         if vault is None:
             raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
         vault.seed(values)
+
+    def persist_vault(self) -> None:
+        """Write the privacy vault to the store this guard was constructed with.
+
+        Explicit, and the host chooses when: at the end of a turn, on a
+        checkpoint, or on shutdown. Nothing writes on its own, and a guard
+        built without ``vault_store`` raises rather than silently doing
+        nothing, because "persistence configured but never happening" is the
+        failure that looks fine until a restart.
+        """
+        vault = self._pipeline.vault
+        if vault is None:
+            raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
+        vault.persist()
 
     def deidentify(self, content: str) -> DeidentifyResult:
         """Replace identifiers in host-assembled content before it reaches a model.

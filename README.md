@@ -51,6 +51,7 @@ That is not an argument against those tools, and GuardLLM replaces none of them.
 - Two independent deny-by-default gates: `restore_policy` per tool field, `destination_policy` per destination
 - Declared values and deterministic pattern detection, neither of which infers; a `Detector` protocol for anything else
 - Tokens carry an error-correcting check, so one mangled symbol is recovered and two are refused rather than resolved to the wrong value
+- The vault is session state and writes nothing on its own; a deployment that needs a token to keep meaning the same person across a restart attaches an encrypted store under a key it supplies ([docs/privacy.md](docs/privacy.md))
 
 **Deployment**
 - Run as a library, or as an OpenAI-compatible proxy that runs the checks itself: an application changes only its `base_url` and makes no GuardLLM calls ([docs/gateway.md](docs/gateway.md))
@@ -94,8 +95,9 @@ A single team should be able to protect an application without paying. Organizat
 | YAML configuration and trust mapping | Included | Included | Included |
 | Rego policy, authored and evaluated locally | Included | Included | Included |
 | Local session forensics viewer, ephemeral | Included | Included | Included |
+| Vault persistence to an encrypted local file | Included | Included | Included |
 | Durable decision history, search, SIEM export | | Included | Included |
-| Vault persistence, key management, compliance and deletion evidence | | Included | Included |
+| Vault key management, compliance and deletion evidence | | Included | Included |
 | Central policy distribution, versioning, staged rollout, drift detection | | | Included |
 | Enterprise identity: SSO, SAML, RBAC | | | Included |
 | SLA, indemnification, named support | | | Included |

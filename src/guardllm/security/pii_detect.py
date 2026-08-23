@@ -777,6 +777,15 @@ class SeededValues:
         self._automaton = None
         self._dirty = False
 
+    def items(self) -> tuple[tuple[str, PIIClass], ...]:
+        """The declared values and their classes, for persistence.
+
+        Normalized rather than as the host wrote them: ``add`` folds on the way
+        in and the original casing is not kept, so this is what a reload has to
+        restore to reproduce the same matches.
+        """
+        return tuple(self._values.items())
+
     def find(self, text: str) -> list[tuple[int, int, PIIClass]]:
         """Locate seeded values, returning offsets into the ORIGINAL text.
 

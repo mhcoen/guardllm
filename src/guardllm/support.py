@@ -73,6 +73,10 @@ _ENV_PREFIX = "GUARDLLM_"
 _OPTIONAL = {
     "yaml": "PyYAML, needed to read a YAML policy file",
     "wasmtime": "needed to evaluate a Rego policy",
+    # This one fails loudly rather than silently, since the vault store has no
+    # plaintext fallback. It is here because the operator reading the bundle is
+    # the one who has to be told which extra to install.
+    "cryptography": "needed to persist the privacy vault to an encrypted file",
 }
 _CORE = ("beautifulsoup4", "soupsieve", "confusables")
 

@@ -35,6 +35,7 @@ from guardllm.security.types import (
     SensitivityLevel,
     TrustLevel,
 )
+from guardllm.security.vault_store import VaultStore
 
 # Tool-gating policy strictness ranking. When multiple session-risk signals
 # fire (contamination, egress escalation), the strictest policy wins.
@@ -56,6 +57,7 @@ class SecurityPipeline:
         canary_session_id: str | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
         privacy: PrivacyConfig | None = None,
+        vault_store: VaultStore | None = None,
     ) -> None:
         self._sanitizer = sanitize
         self._provenance = ProvenanceTracker()
@@ -67,7 +69,7 @@ class SecurityPipeline:
         self._context_contaminated: bool = False
         self._session_escalated: bool = False
         self._privacy = privacy
-        self._vault = PrivacyVault(privacy) if privacy is not None else None
+        self._vault = PrivacyVault(privacy, store=vault_store) if privacy is not None else None
         self._canary_session_id: str | None = canary_session_id
         self._canary: str | None = None
         if canary_session_id:

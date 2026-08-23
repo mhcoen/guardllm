@@ -31,6 +31,7 @@
   - [Method: `deidentify`](#method-deidentify)
   - [Method: `reidentify`](#method-reidentify)
   - [Method: `prepare_tool_call`](#method-prepare_tool_call)
+  - [Method: `persist_vault`](#method-persist_vault)
   - [Async Method: `confirm_action`](#async-method-confirm_action)
   - [Async Method: `guard_tool_call`](#async-method-guard_tool_call)
 - [Type Specification](#type-specification)
@@ -66,7 +67,7 @@ This document is the complete public API contract for GuardLLM (`guardllm`) as i
 - Stability target: `Guard` methods and the data types referenced below.
 - Internal modules under `guardllm.security.*` are implementation details unless explicitly referenced in this spec.
 - The privacy types are public and referenced here, but are imported from `guardllm.security.types` rather than from the package root: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DeidentifyResult`, `PreparedCall`.
-- Three supported modules sit outside the `Guard` facade: `guardllm.config` (policy files), `guardllm.policy` (Rego), and `guardllm.support` (diagnostic bundles). Each has its own page under [docs](README.md).
+- Four supported modules sit outside the `Guard` facade: `guardllm.config` (policy files), `guardllm.policy` (Rego), `guardllm.support` (diagnostic bundles), and `guardllm.security.vault_store` (vault persistence: the `VaultStore` protocol, `EncryptedFileVaultStore`, `MemoryVaultStore`, `VaultSnapshot`, `VaultEntry`, `VaultStoreError`, `generate_key`, and `VAULT_SNAPSHOT_VERSION`). Each has its own page under [docs](README.md).
 
 ## Public Export
 
@@ -97,7 +98,7 @@ callers need them for annotations and construction:
 ### Constructor
 
 ```python
-Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None)
+Guard(*, canary_session_id: str | None = None, audit_logger: object | None = None, principal_trust: TrustLevel = TrustLevel.UNTRUSTED, privacy: PrivacyConfig | None = None, vault_store: VaultStore | None = None)
 ```
 
 Parameters:
@@ -105,6 +106,7 @@ Parameters:
 - `audit_logger`: optional logger object. If it has `.log(event)` it receives `AuditEvent` records emitted by Guard methods.
 - `principal_trust`: session-level caller trust (default `UNTRUSTED`). Accepts `TRUSTED`, `SEMI_TRUSTED`, or `UNTRUSTED`.
 - `privacy`: optional `PrivacyConfig`. Constructs the pseudonymization vault. Omitted, none of the four privacy methods below runs and no other verdict changes.
+- `vault_store`: optional `VaultStore`. Attaches persistence to the privacy vault: the stored snapshot is loaded at construction, and `persist_vault()` writes it back. Omitted, the vault is session state and nothing reaches disk. Ignored without `privacy`, since there is no vault to persist.
 
 Behavior:
 - Initializes security pipeline and action gate.
@@ -432,6 +434,17 @@ Behavior:
 - **Ordering requirement.** Call this before building the `AuthorizationEvent` and `Binding`. Both bind exact bytes, so a scope authorized over a token fails against the restored value and the binding hash mismatches.
 - Fails closed. An unresolvable token, a token whose framing the model damaged, an unresolvable count past `max_unresolvable`, or an argument tree past `max_arg_depth` or `max_arg_nodes` refuses the call rather than dispatching a partially resolved one.
 - Unlike the three above, this does **not** raise without `privacy`. It passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
+
+### Method: `persist_vault`
+
+```python
+guard.persist_vault() -> None
+```
+
+Behavior:
+- Writes the privacy vault's current state to the `vault_store` the guard was constructed with.
+- Explicit, and never called from issuance: writing on every token would put an fsync on the path of every prompt, and a token lost to a crash before the next write is unresolvable afterwards, which fails the call rather than resolving to the wrong person.
+- Raises `ValueError` without `privacy`, and `VaultStoreError` with `privacy` but no `vault_store`. Persistence configured but never happening is the failure that looks fine until a restart.
 
 ### Async Method: `confirm_action`
 

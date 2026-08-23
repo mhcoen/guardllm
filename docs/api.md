@@ -68,6 +68,8 @@ Available only when the guard was constructed with `privacy=PrivacyConfig(...)`.
 - `guard.reidentify(content: str, *, destination: Destination, allowed_classes: frozenset[PIIClass] | None = None) -> ReidentifyResult`: restore real values for one destination. `allowed_classes` **narrows** and never widens: it intersects with `destination_policy` rather than replacing it.
 - `guard.prepare_tool_call(tool: str, args: dict, context: SecurityContext, *, has_quoting_directive: bool = False) -> PreparedCall`: resolve tokens in tool arguments under `restore_policy`. Call it **before** building the authorization event and binding, because both bind exact bytes and a scope authorized over a token fails against the restored value.
 
+- `guard.persist_vault() -> None`: write the vault to the store the guard was constructed with (`Guard(..., vault_store=...)`). Raises without a store rather than doing nothing, since persistence configured but never happening is the failure that looks fine until a restart.
+
 Both restore paths are deny-by-default: a field or destination with no rule restores nothing. See [privacy.md](privacy.md).
 
 ## Beyond the Guard Facade
@@ -78,6 +80,7 @@ Both restore paths are deny-by-default: a field or destination with no rule rest
 - **Rego policies.** `guardllm.policy.RegoPolicy(path)`, `build_input(...)`, `decide(...)`, and `POLICY_INPUT_VERSION`. Evaluated in process through wasmtime, with no network. A GuardLLM deny is final and the policy is never consulted; Rego only ever narrows. Needs the `rego` extra. See [rego.md](rego.md).
 - **Diagnostics.** `guardllm.support.build_bundle(...)`, `render_bundle(...)`, `write_bundle(path, ...)`, and `python -m guardllm.support`. Raises `UnsafeBundleError` rather than writing a bundle holding credential material it cannot remove exactly. See [support.md](support.md).
 - **Gateway.** `python -m guardllm.gateway` presents an OpenAI-compatible endpoint that runs the checks itself, so an application changes only its `base_url`. See [gateway.md](gateway.md).
+- **Vault persistence.** `guardllm.security.vault_store.VaultStore` is a three-method protocol (`load`, `save`, `purge`); `EncryptedFileVaultStore(path, key=...)` and `.from_env(path)` are the local implementation, AES-256-GCM under a key you supply, and `MemoryVaultStore` is the in-process one. `generate_key()` returns a key for a secret manager and nothing here writes one. Needs the `vault` extra. There is no unencrypted fallback: without it the store refuses to write. See [privacy.md](privacy.md).
 - **Audit sinks.** `AuditLogger(log_path=..., stream=...)`. `stream=sys.stdout` is the intended argument in a container, and is flushed per event.
 
 ## Return Objects

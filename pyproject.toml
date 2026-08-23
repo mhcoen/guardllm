@@ -27,6 +27,10 @@ dev = [
   # matter: it is a Go binary rather than a wheel, so CI installs it in its own
   # step and the tests skip the compile-and-run cases when it is absent.
   "wasmtime>=25.0",
+  # And cryptography, for the encrypted vault store. The store has no plaintext
+  # fallback, so without this its tests skip and the only path that writes a
+  # vault to disk is never exercised.
+  "cryptography>=43.0",
 ]
 # Reading a policy from a file, for a deployment that has no Python object to
 # put one in. Optional because the library itself never needs it: a host that
@@ -40,6 +44,15 @@ yaml = [
 # whoever compiles the policy, never a runtime one.
 rego = [
   "wasmtime>=25.0",
+]
+# Persisting the privacy vault to an encrypted local file. Optional because
+# the vault is session state by default and most deployments want it that way.
+# There is no unencrypted alternative behind this: a persisted vault is a
+# re-identification database, so the store refuses to write without it rather
+# than falling back to plaintext. The stdlib has no AEAD, and hand-rolling one
+# inside a security product would cost more than the dependency does.
+vault = [
+  "cryptography>=43.0",
 ]
 # Lint tooling is pinned so a new release cannot turn CI red on an unchanged
 # commit. Dependabot tracks these and opens a PR when a version moves, so the

@@ -71,7 +71,7 @@ class TestWhatTheBundleAnswers:
         """A Rego policy that never ran and a YAML file that was never read
         both look like a policy that did not fire, and both are one line."""
         optional = build_bundle()["optional_dependencies"]
-        assert set(optional) == {"yaml", "wasmtime"}
+        assert set(optional) == {"yaml", "wasmtime", "cryptography"}
         for entry in optional.values():
             assert set(entry) == {"importable", "version", "needed_for"}
             assert isinstance(entry["importable"], bool)

@@ -34,7 +34,7 @@ an attachment.
 | --- | --- |
 | **Resolved policy** | Every setting as it is actually in force, plus `changed_from_default` naming the ones that are not stock, and `source` saying whether they came from a file, an explicit object, or the defaults |
 | **Versions** | GuardLLM, Python, the platform, and the three core dependencies |
-| **Optional extras** | Whether `yaml` and `wasmtime` can actually be imported. A Rego policy that never ran and a YAML file that was never read both look like a policy that did not fire |
+| **Optional extras** | Whether `yaml`, `wasmtime` and `cryptography` can actually be imported. A Rego policy that never ran and a YAML file that was never read both look like a policy that did not fire |
 | **Decision chain** | The session's stages, tools and verdicts with the contamination and escalation flags as they stood at each step |
 | **Environment** | Platform, Python build, whether this is a container, and which `GUARDLLM_*` variables are set |
 

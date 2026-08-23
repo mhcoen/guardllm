@@ -283,6 +283,38 @@ class PolicyConfig:
                         "'strip_unicode']"
                     )
 
+        # Overlap thresholds. The three LCS minimums are each consumed behind a
+        # 5-gram overlap gate (the O(m*n) LCS is only computed when a shared
+        # 5-gram exists, an optimization that is exact only for thresholds >= 5:
+        # a shorter verbatim overlap need not share a 5-gram, so the gate skips
+        # the LCS and the block never fires). A value below five is therefore
+        # not a stricter setting, it is a silently disabled one, which is the
+        # accepted-but-not-enforced failure the other checks above exist to end.
+        _NGRAM = 5
+        for name in (
+            "dlp_verbatim_lcs_min",
+            "dlp_sensitive_lcs_min",
+            "provenance_verbatim_lcs_min",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be an int, got {type(value).__name__}")
+            if value < _NGRAM:
+                raise ValueError(
+                    f"{name} must be >= {_NGRAM}: it is gated behind a {_NGRAM}-gram "
+                    "overlap, so a smaller value never blocks."
+                )
+        # The n-gram thresholds are deliberately NOT range-checked. Unlike the
+        # LCS minimum, an out-of-range value here does not read as stricter
+        # while being off: 0.0 means "always compute the LCS" (maximally
+        # strict), and a value above 1.0 is the supported idiom for disabling
+        # the gate, since overlap is a fraction that can never reach it. Only a
+        # non-number is refused, which is a type error rather than a policy.
+        for name in ("dlp_ngram_overlap_min", "provenance_ngram_overlap_min"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+
 
 class ConfirmationHandler:
     """Protocol for user confirmation. Implemented by Episodic's CLI."""

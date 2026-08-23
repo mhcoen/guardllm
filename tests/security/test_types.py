@@ -450,3 +450,30 @@ class TestPolicyLimitValidation:
         PolicyConfig(argument_limits={"query": {"strip_unicode": True}})
         with pytest.raises(ValueError, match="must be a .?bool"):
             PolicyConfig(argument_limits={"query": {"strip_unicode": 1}})
+
+    def test_an_lcs_threshold_below_the_ngram_gate_is_refused(self):
+        """It is computed only when a 5-gram is shared, so a value under 5
+        silently never blocks: disabled, not stricter."""
+        with pytest.raises(ValueError, match="must be >= 5"):
+            PolicyConfig(provenance_verbatim_lcs_min=3)
+        with pytest.raises(ValueError, match="must be >= 5"):
+            PolicyConfig(dlp_verbatim_lcs_min=4)
+
+    def test_a_non_numeric_ngram_threshold_is_refused(self):
+        with pytest.raises(ValueError, match="must be a number"):
+            PolicyConfig(dlp_ngram_overlap_min="0.4")
+
+    def test_an_out_of_range_ngram_is_accepted_as_the_disable_idiom(self):
+        """Overlap is a fraction, so >1.0 never blocks: the supported way to
+        turn the gate off, and 0.0 means always run the LCS. Neither is the
+        looks-strict-but-off failure the LCS check guards, so neither is
+        refused."""
+        PolicyConfig(dlp_ngram_overlap_min=1.1)
+        PolicyConfig(provenance_ngram_overlap_min=0.0)
+
+    def test_a_non_numeric_threshold_is_refused(self):
+        with pytest.raises(ValueError, match="must be an int"):
+            PolicyConfig(dlp_sensitive_lcs_min="12")
+
+    def test_the_default_thresholds_are_valid(self):
+        assert PolicyConfig().provenance_verbatim_lcs_min == 50

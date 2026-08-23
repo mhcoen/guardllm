@@ -56,9 +56,15 @@ session rather than sharing one.
 
 Provenance comes from the channel, never the content: a message's role and a
 tool's name are structural facts about where bytes came from, so the library's
-rule that nothing is inferred from content survives the move into a proxy. A
-deployment that pipes untrusted text through a different channel declares that
-in configuration.
+rule that nothing is inferred from content survives the move into a proxy.
+
+The channel the gateway ingests is the `tool` role, and only that one.
+`tool_result_trust` sets the trust level those results are ingested under; it
+does not add channels, and there is no role-to-provenance map today. A
+deployment whose untrusted text arrives on a `user` turn is not covered by the
+proxy for that path and calls `process_inbound` for it in library mode. This
+paragraph previously said such a deployment could declare the channel in
+configuration, which was not true of any setting that exists.
 
 ## Configuration
 

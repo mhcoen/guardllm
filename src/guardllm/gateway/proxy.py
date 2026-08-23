@@ -56,10 +56,16 @@ class GatewayConfig:
     """
 
     upstream_base_url: str = "https://api.openai.com/v1"
-    #: Trust for each message role that re-enters the context. Only ``tool``
-    #: results are treated as untrusted ingest by default; ``system`` and
-    #: ``user`` are operator-originated. A deployment that pipes untrusted text
-    #: into user turns declares that here.
+    #: The trust level a ``tool`` result is ingested under. ``system`` and
+    #: ``user`` turns are operator-originated and are not ingested at all.
+    #:
+    #: This sets the trust of the one channel the gateway ingests; it does not
+    #: add channels. A deployment that pipes untrusted text into *user* turns
+    #: cannot declare that here, and this comment used to say it could. Doing
+    #: so needs a role-to-provenance map rather than a single trust level, and
+    #: until there is one the honest statement is that the gateway ingests tool
+    #: results and nothing else. A host with untrusted text arriving on another
+    #: role calls ``process_inbound`` for it in library mode.
     tool_result_trust: TrustLevel = TrustLevel.UNTRUSTED
     #: Applied to every session's Guard. None means library defaults.
     policy: PolicyConfig | None = None

@@ -46,7 +46,9 @@ GuardLLM runs in two shapes, and they differ in where the trust boundary falls.
 
 **As a library, in process.** The host imports `Guard` and calls it. Everything above applies directly, and the assumptions A-AS1, A-AS2 and A-AS9 are host obligations because only the host knows which paths exist.
 
-**As a gateway, as a proxy.** `guardllm.gateway` presents an OpenAI-compatible endpoint, so an application changes its `base_url` and makes no GuardLLM calls at all. That removes A-AS1, A-AS2 and A-AS9 as things the application can forget: a `tool` role message is ingested as untrusted content, the reply is checked on the way back, and neither is optional. Provenance is taken from the channel (message role, tool name) and never from content, so "nothing is inferred from content" survives the move into a proxy.
+**As a gateway, as a proxy.** `guardllm.gateway` presents an OpenAI-compatible endpoint, so an application changes its `base_url` and makes no GuardLLM calls at all. That removes A-AS1, A-AS2 and A-AS9 as things the application can forget: a `tool` role message is ingested as untrusted content, the reply is checked on the way back, tool-call arguments are checked as an outbound channel string by string before the call is allowed, and none of it is optional. Provenance is taken from the channel (message role, tool name) and never from content, so "nothing is inferred from content" survives the move into a proxy.
+
+Two limits on that, stated because the sentence above is a security claim. The proxy ingests the `tool` role and no other, so untrusted text arriving on a `user` turn is a path it does not mediate and A-AS1 still applies to it. And the prompt sent to the inference provider is still T-IN13, in gateway mode exactly as in library mode.
 
 Three properties of that shape are worth stating because they are not obvious:
 

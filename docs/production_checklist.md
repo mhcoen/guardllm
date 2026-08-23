@@ -30,7 +30,7 @@ Use this checklist before deploying guardllm-backed flows.
 ## 4. Outbound Safety
 
 - Run `check_outbound(...)` before external calls and user-visible responses.
-- Treat content carried in tool-call arguments as an outbound channel. `check_tool_call(...)` gates the action (policy, rate limit, binding) and does not inspect argument content, so an email send that passes the tool gate still needs `check_outbound(...)` on its body (see A-AS9 in `docs/threat_model.md`).
+- Treat content carried in tool-call arguments as an outbound channel. `check_tool_call(...)` gates the action (policy, rate limit, binding) and does not inspect argument content, so an email send that passes the tool gate still needs `check_outbound(...)` on its body (see A-AS9 in `docs/threat_model.md`). `prepare_tool_call(...)` already does this over every string leaf when the privacy vault is enabled. **In gateway mode this is not yours to remember:** the proxy runs outbound DLP and provenance over every string in a tool call's arguments before allowing it.
 - Fail closed when DLP/provenance/canary checks block output.
 - When canaries are enabled, place `guard.canary_token` in private model context from trusted host code and never log or expose the token itself.
 - Log blocked events with enough context for follow-up.

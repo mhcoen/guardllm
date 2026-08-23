@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from guardllm import Guard
+from guardllm.api import _string_leaves
 from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
@@ -186,10 +187,33 @@ def inspect_response(
             if not isinstance(args, dict):
                 args = {"_value": args}
             gate = guard.check_tool_call(name, args, egress)
-            outcome = "allowed" if gate.allowed else "blocked"
-            _record(chain, "tool_call", name, outcome, gate.reason, guard)
             if not gate.allowed:
+                _record(chain, "tool_call", name, "blocked", gate.reason, guard)
                 raise GatewayRefused("tool_call", f"{name}: {gate.reason}")
+            # Argument content is an outbound channel, and the gate above does
+            # not read it: check_tool_call decides whether the ACTION is
+            # permitted (policy, rate limit, binding) and says so in
+            # docs/production_checklist.md. In library mode that is A-AS9, a
+            # host obligation, because only the host knows which arguments
+            # carry a payload. The gateway has no host to delegate it to, and
+            # docs/threat_model.md says the proxy removes A-AS9 as something
+            # the application can forget -- so the proxy has to do it.
+            #
+            # Measured before this existed: a credential lifted out of an
+            # ingested tool result and placed in a send_email body was allowed
+            # as a tool argument, while the same bytes as assistant text were
+            # refused. That is the exfiltration path the layer exists for.
+            #
+            # Every string leaf, keys included, exactly as prepare_tool_call
+            # does: checking one designated field would miss a canary in a
+            # subject line or a credential in a filename.
+            for leaf in _string_leaves(args):
+                out = guard.check_outbound(leaf, egress)
+                if not out.allowed:
+                    reason = f"{name} arguments: {out.reason}"
+                    _record(chain, "tool_call", name, "blocked", reason, guard)
+                    raise GatewayRefused("egress", reason)
+            _record(chain, "tool_call", name, "allowed", gate.reason, guard)
 
         text = _message_text(message)
         if text:

@@ -40,9 +40,12 @@ message array:
 - A `tool` role message is a tool result re-entering the context. It is
   ingested and can contaminate the session, exactly as a retrieved document
   does in code.
-- The model's reply is checked on the way back: tool-call arguments through the
-  authorization gate, final text through the outbound DLP and provenance
-  checks.
+- The model's reply is checked on the way back. Tool calls go through the
+  authorization gate, and then **every string in their arguments goes through
+  outbound DLP and provenance**, because argument content is an outbound
+  channel: a credential or a copied passage in an email body leaves the
+  boundary whether it travels as prose or as a JSON field. Final text goes
+  through the same outbound checks.
 
 Because both happen against one session, the session-risk loop holds across
 requests: an untrusted tool result in one call tightens tool authorization in

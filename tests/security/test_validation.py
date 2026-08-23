@@ -441,3 +441,50 @@ class TestUniversalSafetyChecks:
     def test_reasonable_nesting_still_valid(self):
         result = validate_arguments("t", {"opts": {"a": {"b": {"c": "/safe/path/here"}}}})
         assert result.valid is True
+
+
+class TestPolicyArgumentLimits:
+    """`argument_limits` was accepted, documented, and read by nothing.
+
+    A policy setting `query.max_chars` to 1 accepted a two-character query
+    with no error anywhere. A security setting that is accepted and not
+    enforced is worse than one that is refused.
+    """
+
+    def test_a_policy_limit_is_enforced(self):
+        from guardllm.security.validation import validate_arguments
+
+        assert validate_arguments("search", {"query": "ab"}).valid
+        tightened = validate_arguments("search", {"query": "ab"}, {"query": {"max_chars": 1}})
+        assert not tightened.valid
+        assert "exceeds maximum size" in tightened.errors[0]
+
+    def test_it_reaches_the_gate(self):
+        from guardllm import Guard
+        from guardllm.security.types import PolicyConfig
+
+        guard = Guard()
+        policy = PolicyConfig(argument_limits={"query": {"max_chars": 1}})
+        context = Guard.context_mcp_server(server_id="s", policy=policy)
+        assert not guard.check_tool_call("search", {"query": "ab"}, context).allowed
+        assert guard.check_tool_call(
+            "search", {"query": "ab"}, Guard.context_mcp_server(server_id="s")
+        ).allowed
+
+    def test_a_partial_override_keeps_its_siblings(self):
+        from guardllm.security.validation import _merged_limits
+
+        merged = _merged_limits({"query": {"max_chars": 1}})
+        assert merged["query"] == {"max_chars": 1, "strip_unicode": True}
+
+    def test_it_can_add_an_argument_the_defaults_do_not_know(self):
+        from guardllm.security.validation import validate_arguments
+
+        result = validate_arguments("t", {"ticket": "AB-1234"}, {"ticket": {"pattern": r"^\d+$"}})
+        assert not result.valid
+
+    def test_the_defaults_are_never_mutated(self):
+        from guardllm.security.validation import ARGUMENT_LIMITS, _merged_limits
+
+        _merged_limits({"query": {"max_chars": 1}})
+        assert ARGUMENT_LIMITS["query"]["max_chars"] == 1_000

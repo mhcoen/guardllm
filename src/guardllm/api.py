@@ -303,7 +303,7 @@ class Guard:
         confirmation does not consume quota.
         """
         if validate:
-            validation = self.validate_tool_args(tool, args)
+            validation = self.validate_tool_args(tool, args, policy=context.policy)
             if not validation.valid:
                 return GateResult(
                     allowed=False,
@@ -499,9 +499,17 @@ class Guard:
         )
         return result
 
-    def validate_tool_args(self, tool: str, args: dict) -> ValidationResult:
-        """Validate tool arguments before security checks/dispatch."""
-        result = validate_arguments(tool, args)
+    def validate_tool_args(
+        self, tool: str, args: dict, *, policy: PolicyConfig | None = None
+    ) -> ValidationResult:
+        """Validate tool arguments before security checks/dispatch.
+
+        ``policy`` supplies ``argument_limits``. Optional, so a host with no
+        context in hand still gets the universal safety checks; the two gates
+        below pass the active context's policy, which is the path that
+        matters.
+        """
+        result = validate_arguments(tool, args, policy.argument_limits if policy else None)
         self._audit(
             AuditEvent(
                 event_type="tool_args_validated",
@@ -615,7 +623,7 @@ class Guard:
                 require_confirmation = True
 
         if validate:
-            validation = self.validate_tool_args(tool, args)
+            validation = self.validate_tool_args(tool, args, policy=context.policy)
             if not validation.valid:
                 return GateResult(
                     allowed=False,

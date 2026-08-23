@@ -60,15 +60,30 @@ class RateLimiter:
         return [t for t in times if t > cutoff]
 
     def _effective_limits(self, ctx: SecurityContext) -> dict:
-        """Merge principal_trust overrides with base limits.
+        """Merge the policy's base limits and its principal_trust overrides.
 
-        Override wins for any key present. Base limits fill in the rest.
-        Never mutates DEFAULT_LIMITS or self._limits.
+        Three layers, each narrower than the last: the constructor's limits
+        (DEFAULT_LIMITS unless the host passed its own), then
+        ``policy.rate_limits``, then ``policy.rate_limit_overrides`` for this
+        principal's trust level. A key present in a later layer wins; keys
+        absent from it are inherited rather than dropped, so a policy that sets
+        one limit does not silently unset the rest.
+
+        ``policy.rate_limits`` was a documented setting that nothing read. It
+        was accepted by the YAML loader and listed in docs/configuration.md,
+        and an operator who wrote ``emails_per_hour: 0`` got the default of ten
+        with no error anywhere. A security setting that is accepted and not
+        enforced is worse than one that is refused.
+
+        Never mutates DEFAULT_LIMITS, self._limits, or the policy's dicts.
         """
+        base = self._limits
+        if ctx.policy.rate_limits:
+            base = {**base, **ctx.policy.rate_limits}
         overrides = ctx.policy.rate_limit_overrides.get(ctx.principal_trust)
         if not overrides:
-            return self._limits
-        merged = dict(self._limits)
+            return base
+        merged = dict(base)
         merged.update(overrides)
         return merged
 

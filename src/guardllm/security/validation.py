@@ -72,23 +72,51 @@ def _walk_value(arg_name: str, value: Any, _depth: int = 0) -> list[str]:
     return []
 
 
-def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
+def _merged_limits(overrides: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """ARGUMENT_LIMITS with a policy's overrides applied, per argument name.
+
+    Merged per name rather than replaced, so ``{"query": {"max_chars": 1}}``
+    tightens the size of ``query`` without discarding the ``strip_unicode``
+    that sat beside it. A name absent from ARGUMENT_LIMITS is simply added.
+
+    Never mutates ARGUMENT_LIMITS: it is module state shared by every caller.
+    """
+    if not overrides:
+        return ARGUMENT_LIMITS
+    merged = {name: dict(limits) for name, limits in ARGUMENT_LIMITS.items()}
+    for name, limits in overrides.items():
+        if isinstance(limits, dict):
+            merged.setdefault(name, {}).update(limits)
+    return merged
+
+
+def validate_arguments(
+    tool: str, args: dict[str, Any], limits: dict[str, Any] | None = None
+) -> ValidationResult:
     """Validate all arguments for a tool invocation.
 
     No partial acceptance: if any argument fails, the entire request is
     rejected. Validation runs before any security layer.
 
+    ``limits`` is ``PolicyConfig.argument_limits``, merged over the defaults
+    per argument name. It was a documented setting that nothing read: a policy
+    setting ``query.max_chars`` to 1 accepted a two-character query with no
+    error anywhere. Optional here so the universal safety checks -- path
+    traversal, null bytes -- stay callable with no policy in hand.
+
     Args:
         tool: Tool name (for context in error messages).
         args: Argument dict from the MCP request.
+        limits: Optional per-argument overrides from the active policy.
 
     Returns:
         ValidationResult with valid=True if all checks pass.
     """
     errors: list[str] = []
+    table = _merged_limits(limits)
 
     for arg_name, value in args.items():
-        limits = ARGUMENT_LIMITS.get(arg_name)
+        limits_for_arg = table.get(arg_name)
 
         # Universal safety checks run on EVERY argument (known or unknown),
         # including strings nested inside containers. Unknown argument names
@@ -100,8 +128,8 @@ def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
         if arg_name == "provenance":
             # Special handling for structured provenance field
             if isinstance(value, dict):
-                max_fields = limits.get("max_fields", 10) if limits else 10
-                max_val = limits.get("max_value_chars", 500) if limits else 500
+                max_fields = limits_for_arg.get("max_fields", 10) if limits_for_arg else 10
+                max_val = limits_for_arg.get("max_value_chars", 500) if limits_for_arg else 500
                 if len(value) > max_fields:
                     errors.append(
                         f"Parameter {arg_name} exceeds maximum fields ({len(value)} > {max_fields})"
@@ -113,16 +141,16 @@ def validate_arguments(tool: str, args: dict[str, Any]) -> ValidationResult:
 
         # Named-argument limits (max_chars / pattern) apply only to declared
         # string arguments.
-        if limits is None or not isinstance(value, str):
+        if limits_for_arg is None or not isinstance(value, str):
             continue
 
         # Check max_chars
-        max_chars = limits.get("max_chars")
+        max_chars = limits_for_arg.get("max_chars")
         if max_chars is not None and len(value) > max_chars:
             errors.append(f"Parameter {arg_name} exceeds maximum size")
 
         # Check pattern
-        pattern = limits.get("pattern")
+        pattern = limits_for_arg.get("pattern")
         if pattern is not None and not re.match(pattern, value):
             errors.append(f"Parameter {arg_name} exceeds limits")
 

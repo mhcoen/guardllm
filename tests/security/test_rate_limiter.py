@@ -508,3 +508,69 @@ class TestThreadSafety:
         assert sum(1 for a in results if a) == limit
         recorded = len(limiter._sessions[ctx.source_id].action_times["gmail_send_email"])
         assert recorded == limit
+
+
+class TestPolicyRateLimits:
+    """`rate_limits` was accepted, documented, and read by nothing.
+
+    An operator who wrote `emails_per_hour: 0` got the default of ten, with no
+    error anywhere to say the setting had not taken.
+    """
+
+    def test_a_policy_limit_is_enforced(self):
+        from guardllm import Guard
+        from guardllm.security.types import PolicyConfig
+
+        policy = PolicyConfig(rate_limits={"emails_per_hour": 0}, enable_destructive=True)
+        context = Guard.context_mcp_client(client_id="c", policy=policy)
+        result = Guard().check_tool_call(
+            "send_email", {"to": "a@b.example"}, context, recipient="a@b.example"
+        )
+        assert not result.allowed
+        assert "0/0" in result.reason
+
+    def test_the_default_still_applies_without_one(self):
+        from guardllm import Guard
+        from guardllm.security.types import PolicyConfig
+
+        context = Guard.context_mcp_client(
+            client_id="c", policy=PolicyConfig(enable_destructive=True)
+        )
+        assert (
+            Guard()
+            .check_tool_call("send_email", {"to": "a@b.example"}, context, recipient="a@b.example")
+            .allowed
+        )
+
+    def test_a_partial_policy_does_not_unset_the_rest(self):
+        from guardllm.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
+        from guardllm.security.types import PolicyConfig, SecurityContext
+
+        limiter = RateLimiter()
+        context = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="c",
+            policy=PolicyConfig(rate_limits={"emails_per_hour": 2}),
+        )
+        effective = limiter._effective_limits(context)
+        assert effective["emails_per_hour"] == 2
+        assert effective["burst_threshold"] == DEFAULT_LIMITS["burst_threshold"]
+        assert DEFAULT_LIMITS["emails_per_hour"] == 10  # not mutated
+
+    def test_a_trust_override_still_wins_over_the_policy_base(self):
+        from guardllm.security.rate_limiter import RateLimiter
+        from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+
+        limiter = RateLimiter()
+        context = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="c",
+            principal_trust=TrustLevel.TRUSTED,
+            policy=PolicyConfig(
+                rate_limits={"emails_per_hour": 2},
+                rate_limit_overrides={TrustLevel.TRUSTED: {"emails_per_hour": 50}},
+            ),
+        )
+        assert limiter._effective_limits(context)["emails_per_hour"] == 50

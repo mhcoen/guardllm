@@ -72,8 +72,8 @@ class-to-policy mappings that a file cannot name, so it stays a Python object.
 - `enable_destructive`: enable destructive tools (default `False`).
 - `capability_scopes`: server-mode allowed tool scope mapping (`None` = no allowlist; `{}` = deny all tools).
 - `client_id`: optional logical client identity.
-- `rate_limits`: custom rate limits (overrides defaults where used).
-- `argument_limits`: custom argument constraints.
+- `rate_limits`: base rate limits for this context, merged over the defaults (`emails_per_hour`, `burst_threshold`, `burst_window_seconds`, `novel_recipient_flag`). A key you omit keeps its default rather than being unset. `rate_limit_overrides` still wins over this for the matching principal trust level.
+- `argument_limits`: per-argument constraints (`max_chars`, `pattern`, and for `provenance`, `max_fields` / `max_value_chars`), merged over the defaults by argument name. A partial override keeps the sibling settings of that argument, and a name the defaults do not know is added.
 - `escalation_gate_enabled`: enable heightened confirmation behavior in action gate.
 - `contaminated_action`: action when contaminated context detected (default `"block"`).
 - `dlp_verbatim_lcs_min`: untrusted-echo LCS threshold (default `14` chars).

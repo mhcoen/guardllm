@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,19 @@ _MAX_BODY_BYTES = 8 * 1024 * 1024  # a chat request past 8MB is not a real one
 #: a real one, and read() with no bound lets a compromised or malfunctioning
 #: upstream allocate arbitrary gateway memory before a single check has run.
 _MAX_UPSTREAM_BYTES = 8 * 1024 * 1024
+
+#: Total wall clock allowed for one upstream exchange, connect through last
+#: byte. urllib's ``timeout`` is a socket inactivity timeout, not a deadline, so
+#: an upstream that delivers a byte often enough to keep resetting it holds the
+#: connection indefinitely: a 124-byte response drip-fed one byte per second
+#: completed in 123.9 seconds under a 120-second timeout. ThreadingHTTPServer
+#: gives each request a thread, so that is a worker held per connection and an
+#: availability failure in the component every request passes through.
+_UPSTREAM_DEADLINE_SECONDS = 120.0
+
+#: Read granularity for the bounded read below. Small enough that the deadline
+#: is checked often against a slow sender, large enough not to matter otherwise.
+_UPSTREAM_CHUNK_BYTES = 64 * 1024
 
 
 class _NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -77,18 +91,38 @@ def _upstream_caller(cfg: GatewayConfig, auth_header: str | None):
         # The url's scheme is checked to be http(s) at construction, above, so
         # the file:/custom-scheme risk both linters flag here cannot occur.
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # noqa: S310
+        deadline = time.monotonic() + _UPSTREAM_DEADLINE_SECONDS
         try:
-            with _opener.open(req, timeout=120) as resp:  # noqa: S310  # nosec B310
-                # One byte past the cap, then reject: read(cap) alone cannot
-                # tell a body exactly at the cap from one that was truncated.
-                raw = resp.read(_MAX_UPSTREAM_BYTES + 1)
-                if len(raw) > _MAX_UPSTREAM_BYTES:
-                    raise GatewayRefused(
-                        "upstream",
-                        f"model API response exceeds {_MAX_UPSTREAM_BYTES} bytes",
-                        status=502,
-                    )
-                return json.loads(raw.decode("utf-8"))
+            with _opener.open(req, timeout=_UPSTREAM_DEADLINE_SECONDS) as resp:  # noqa: S310  # nosec B310
+                # Chunked, with the deadline checked between chunks, because the
+                # socket timeout alone is not a deadline: it resets on every
+                # byte. read1 rather than read so a slow sender returns what it
+                # has instead of blocking for a full chunk, which is what makes
+                # the check between iterations meaningful.
+                pieces: list[bytes] = []
+                total = 0
+                while True:
+                    if time.monotonic() > deadline:
+                        raise GatewayRefused(
+                            "upstream",
+                            f"model API exceeded the {_UPSTREAM_DEADLINE_SECONDS:.0f}s deadline",
+                            status=504,
+                        )
+                    chunk = resp.read1(_UPSTREAM_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    # One byte past the cap is enough to know it is over: a body
+                    # exactly at the cap is indistinguishable from a truncated
+                    # one if the read stops at the cap itself.
+                    if total > _MAX_UPSTREAM_BYTES:
+                        raise GatewayRefused(
+                            "upstream",
+                            f"model API response exceeds {_MAX_UPSTREAM_BYTES} bytes",
+                            status=502,
+                        )
+                    pieces.append(chunk)
+                return json.loads(b"".join(pieces).decode("utf-8"))
         except urllib.error.HTTPError as exc:
             # The model API refused (bad key, rate limit), or a redirect was
             # refused above. Surface its status rather than dressing it as a

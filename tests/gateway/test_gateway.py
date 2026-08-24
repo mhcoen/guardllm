@@ -1036,3 +1036,63 @@ class TestUpstreamCall:
         )
         with pytest.raises(GatewayRefused, match="exceeds"):
             call({"messages": []})
+
+
+class TestUpstreamDeadline:
+    """The socket timeout is not a deadline: it resets on every byte.
+
+    A 124-byte response drip-fed one byte per second completed in 123.9s under
+    a 120s timeout. ThreadingHTTPServer gives each request a thread, so that is
+    a worker held per connection.
+    """
+
+    def test_a_drip_feeding_upstream_is_cut_at_the_deadline(self, monkeypatch):
+        """The deadline is shrunk rather than the response lengthened, so the
+        test exercises the same branch in a couple of seconds."""
+        import time as _time
+        from http.server import HTTPServer
+
+        from guardllm.gateway import server as server_mod
+        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
+
+        monkeypatch.setattr(server_mod, "_UPSTREAM_DEADLINE_SECONDS", 2.0)
+
+        class Drip(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                body = b'{"choices": []}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                for byte in body:
+                    try:
+                        self.wfile.write(bytes([byte]))
+                        self.wfile.flush()
+                    except Exception:
+                        return
+                    _time.sleep(0.5)
+
+            def log_message(self, *a):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Drip)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        call = server_mod._upstream_caller(
+            GatewayConfig(upstream_base_url=f"http://127.0.0.1:{server.server_port}"), None
+        )
+        started = _time.monotonic()
+        with pytest.raises(GatewayRefused, match="deadline"):
+            call({"messages": []})
+        # 15 bytes at 0.5s each would be 7.5s; the deadline must cut it early.
+        assert _time.monotonic() - started < 5.0
+
+    def test_a_prompt_upstream_is_unaffected(self, running_gateway):
+        gw_url, _ = running_gateway
+        request = urllib.request.Request(
+            f"{gw_url}/v1/chat/completions",
+            data=json.dumps({"messages": [{"role": "user", "content": "hi"}]}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 200

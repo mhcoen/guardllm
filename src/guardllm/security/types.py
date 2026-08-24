@@ -75,6 +75,48 @@ class SensitivityLevel(Enum):
 # ---------------------------------------------------------------------------
 
 
+#: Tolerance for a timestamp that sits slightly in the future. An
+#: AuthorizationEvent may be minted by an adapter on another host, so a small
+#: skew is legitimate; a timestamp beyond it is not a clock difference, it is a
+#: value chosen to outlive its TTL.
+CLOCK_SKEW_TOLERANCE_SECONDS = 60.0
+
+
+def expiry_reason(created_at: float, ttl: float, *, now: float | None = None) -> str | None:
+    """None while live, a reason string once the window must be refused.
+
+    Written as an explicit accept-range rather than a single ``elapsed > ttl``
+    test, because that form failed open in three separate ways and each one let
+    a stale authorization or binding verify:
+
+    - ``NaN`` anywhere makes every comparison False, so ``elapsed > ttl`` was
+      False and the check passed. YAML and JSON can both carry it.
+    - An infinite timestamp gives ``elapsed = -inf``, likewise never greater.
+    - A timestamp far enough in the future keeps ``elapsed`` negative for as
+      long as the caller chose, so the authorization never expires.
+
+    Replay protection is the control these two TTLs implement, so this is not
+    cosmetic: it is the defeat of the mechanism. Anything not finite, and
+    anything outside ``[-skew, ttl]``, is refused.
+    """
+    current = time.time() if now is None else now
+    if not math.isfinite(created_at):
+        return f"timestamp is not finite ({created_at})"
+    if not math.isfinite(ttl):
+        return f"TTL is not finite ({ttl})"
+    if ttl < 0:
+        return f"TTL is negative ({ttl:.0f}s)"
+    elapsed = current - created_at
+    if elapsed < -CLOCK_SKEW_TOLERANCE_SECONDS:
+        return (
+            f"timestamp is {-elapsed:.0f}s in the future "
+            f"(max skew {CLOCK_SKEW_TOLERANCE_SECONDS:.0f}s)"
+        )
+    if elapsed > ttl:
+        return f"expired ({elapsed:.0f}s > {ttl:.0f}s TTL)"
+    return None
+
+
 @dataclass(frozen=True)
 class AuthorizationEvent:
     """Structured proof that a user authorized a specific action.
@@ -468,7 +510,10 @@ class Binding:
 
     @property
     def expired(self) -> bool:
-        return (time.time() - self.created_at) > self.ttl
+        # Fails closed on a non-finite or future created_at/ttl. See
+        # expiry_reason: the plain `elapsed > ttl` form this replaced accepted
+        # NaN, infinity, and any sufficiently future timestamp.
+        return expiry_reason(self.created_at, self.ttl) is not None
 
 
 @dataclass

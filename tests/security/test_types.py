@@ -497,3 +497,62 @@ class TestPolicyLimitValidation:
 
         with pytest.raises(ValueError, match="must be finite"):
             parse_policy("policy:\n  provenance_ngram_overlap_min: .nan\n")
+
+
+class TestExpiryFailsClosed:
+    """`elapsed > ttl` failed open three ways, each defeating replay protection."""
+
+    def test_non_finite_and_future_values_are_refused(self):
+        import math
+        import time
+
+        from guardllm.security.types import expiry_reason
+
+        now = time.time()
+        assert expiry_reason(now - 5, 120) is None
+        assert "expired" in expiry_reason(now - 1e6, 120)
+        assert "not finite" in expiry_reason(math.nan, 120)
+        assert "not finite" in expiry_reason(math.inf, 120)
+        assert "not finite" in expiry_reason(now, math.nan)
+        assert "future" in expiry_reason(now + 1e9, 120)
+        assert "negative" in expiry_reason(now, -1)
+
+    def test_modest_clock_skew_is_tolerated(self):
+        """An adapter may mint the event on another host."""
+        import time
+
+        from guardllm.security.types import expiry_reason
+
+        assert expiry_reason(time.time() + 10, 120) is None
+
+    def test_a_binding_with_a_nan_ttl_is_expired(self):
+        import math
+        import time
+
+        from guardllm.security.request_binding import create_binding, verify_binding
+
+        binding = create_binding("wire_funds", {"amount": 100}, message_hash="m", ttl=math.nan)
+        binding.created_at = time.time() - 1_000_000_000
+        allowed, _ = verify_binding(binding, "wire_funds", {"amount": 100}, "m")
+        assert not allowed
+
+    def test_the_authorization_gate_refuses_a_non_finite_timestamp(self):
+        import math
+
+        from guardllm import Guard
+        from guardllm.security.types import PolicyConfig, SecurityContext
+
+        context = SecurityContext(
+            mode="client",
+            source_type="mcp_server",
+            source_id="s",
+            policy=PolicyConfig(enable_destructive=True),
+        )
+        for timestamp in (math.nan, math.inf):
+            auth = Guard.authorize(
+                "send_email", {"to": "a@b.example"}, message_hash="m", timestamp=timestamp
+            )
+            result = Guard().check_tool_call(
+                "send_email", {"to": "a@b.example"}, context, authorization=auth, message_hash="m"
+            )
+            assert not result.allowed

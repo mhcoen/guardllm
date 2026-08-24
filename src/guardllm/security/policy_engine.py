@@ -13,6 +13,7 @@ from guardllm.security.types import (
     GateResult,
     SecurityContext,
     TrustLevel,
+    expiry_reason,
 )
 
 # Tools that can modify external state (spec §6)
@@ -259,12 +260,19 @@ class PolicyEngine:
                     confidence="none",
                 )
 
-        # Verify timestamp within TTL
-        elapsed = time.time() - auth_event.timestamp
-        if elapsed > self._auth_ttl:
+        # Verify timestamp within TTL. Fails closed on a non-finite or future
+        # timestamp: the plain `elapsed > ttl` form this replaced accepted NaN,
+        # infinity, and any sufficiently future value, each of which made an
+        # authorization that never expires. See types.expiry_reason.
+        # `now` passed explicitly rather than left to expiry_reason's default:
+        # it keeps the clock read in this module, which is the seam the demo
+        # builder and several tests patch, and makes the time source visible at
+        # the decision rather than one call away.
+        stale = expiry_reason(auth_event.timestamp, self._auth_ttl, now=time.time())
+        if stale is not None:
             return GateResult(
                 allowed=False,
-                reason=(f"Authorization expired ({elapsed:.0f}s > {self._auth_ttl:.0f}s TTL)"),
+                reason=f"Authorization {stale}",
                 confidence="none",
             )
 

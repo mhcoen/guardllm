@@ -47,13 +47,13 @@ from guardllm.security.normalization import (
     _CONFUSABLE_TABLE,
     _INVISIBLE_RE,
     _TAG_CHAR_RE,
-    MAX_OVERLAP_CHARS,
-    compute_lcs_length,
-    compute_ngram_overlap,
+    MAX_OVERLAP_SCAN_CHARS,
     deobfuscate_reversed,
     deobfuscate_separated,
     deobfuscate_spelled,
     normalize_for_overlap,
+    overlap_scan,
+    overlap_windows,
     strip_invisibles,
 )
 from guardllm.security.types import OutboundResult, SecurityContext
@@ -1271,15 +1271,36 @@ class OutboundDLP:
 
     def ingest_untrusted(self, content: str) -> None:
         """Normalize and buffer untrusted content for later DLP checks."""
-        normalized = normalize_for_overlap(content)[:MAX_OVERLAP_CHARS]
-        if normalized:
-            self._buffer.append(normalized)
+        self._append_windows(self._buffer, content)
 
     def ingest_sensitive(self, content: str) -> None:
         """Normalize and buffer sensitive content for contaminated-context checks."""
-        normalized = normalize_for_overlap(content)[:MAX_OVERLAP_CHARS]
-        if normalized:
-            self._sensitive_buffer.append(normalized)
+        self._append_windows(self._sensitive_buffer, content)
+
+    @staticmethod
+    def _append_windows(buffer: deque[str], content: str) -> None:
+        """Buffer all of ``content``, in windows, rather than its first 50k.
+
+        Truncating each entry was the same bypass as truncating the outbound
+        side, in the other direction: a document ingested past the cap was only
+        remembered up to it, so copying a passage out of the tail of a 60,000
+        character document came back clean. Reproduced before this change.
+
+        One window per entry keeps every entry within the per-entry bound the
+        comparison relies on, so the memory ceiling is unchanged: entries are
+        still capped, and the deque still holds a fixed number of them. What
+        changes is that a large document occupies several slots instead of
+        silently losing its tail. The total the buffer can remember is
+        therefore its length times the window, and a document beyond that
+        evicts its own earliest windows, which is the same recency rule the
+        deque already applied between documents.
+        """
+        normalized = normalize_for_overlap(content)
+        if not normalized:
+            return
+        for window in overlap_windows(normalized):
+            if window:
+                buffer.append(window)
 
     def check(
         self,
@@ -1327,10 +1348,20 @@ class OutboundDLP:
         if has_quoting_directive:
             return OutboundResult(allowed=True, reason="clean (quoting)")
 
-        # Cap the outbound content compared for overlap so a very large payload
-        # cannot drive the O(m*n) LCS routine unbounded.
-        content = content[:MAX_OVERLAP_CHARS]
+        # The overlap checks below scan ALL of the content, in windows. This
+        # used to truncate to MAX_OVERLAP_CHARS and compare the prefix, which
+        # was a silent bypass: the same copied passage padded past the cap came
+        # back clean. Beyond what we will scan, refuse rather than truncate,
+        # because reporting clean on content we did not read is the bug.
         normalized_content = normalize_for_overlap(content)
+        if len(normalized_content) > MAX_OVERLAP_SCAN_CHARS:
+            return OutboundResult(
+                allowed=False,
+                reason=(
+                    f"content is {len(normalized_content)} normalized characters, "
+                    f"beyond the {MAX_OVERLAP_SCAN_CHARS} the overlap checks inspect"
+                ),
+            )
 
         # Build deobfuscated variants for overlap checks.
         # Each entry: (normalized_text, strip_separators, label)
@@ -1360,20 +1391,18 @@ class OutboundDLP:
         for variant, strip_seps, _label in variants:
             if echo_detected:
                 break
-            for buffered in self._buffer:
-                buf = deobfuscate_separated(buffered) if strip_seps else buffered
-                ngram = compute_ngram_overlap(variant, buf, n=5)
+            refs = [deobfuscate_separated(b) if strip_seps else b for b in self._buffer]
+            # One windowed pass over the whole variant for the whole buffer. The
+            # substring check is gated on a shared gram the length of the
+            # threshold, which is exact: a common substring that long contains
+            # such a gram, so no shared gram proves no blocking overlap.
+            for ngram, lcs_len in overlap_scan(variant, refs, lcs_gate=echo_threshold):
                 if ngram > echo_max_ngram:
                     echo_max_ngram = ngram
-                # Only run the LCS when a shared 5-gram exists. A common
-                # substring of length >= the echo threshold necessarily shares
-                # 5-grams, so ngram == 0 implies LCS < 5 and it can be skipped.
-                if ngram > 0.0:
-                    lcs_len = compute_lcs_length(variant, buf)
-                    if lcs_len > echo_max_lcs:
-                        echo_max_lcs = lcs_len
+                if lcs_len > echo_max_lcs:
+                    echo_max_lcs = lcs_len
                 # Echo is a boolean signal; once tripped, further scanning only
-                # refines a metadata value, so stop (bounds work on large input).
+                # refines a metadata value, so stop.
                 if echo_max_lcs >= echo_threshold or echo_max_ngram >= ngram_threshold:
                     echo_detected = True
                     break
@@ -1383,13 +1412,12 @@ class OutboundDLP:
         # widen this check; it is pure metadata for downstream layers.
         if contaminated and not has_quoting_directive:
             for variant, strip_seps, label in variants:
-                for buffered in self._sensitive_buffer:
-                    buf = deobfuscate_separated(buffered) if strip_seps else buffered
-                    overlap = compute_ngram_overlap(variant, buf, n=5)
-                    # Gate the O(m*n) LCS behind the cheap n-gram check: a
-                    # verbatim overlap >= sensitive_lcs (>= 12) always shares
-                    # 5-grams, so ngram == 0 implies no blocking LCS.
-                    lcs_len = compute_lcs_length(variant, buf) if overlap > 0.0 else 0
+                sensitive_refs = [
+                    deobfuscate_separated(b) if strip_seps else b for b in self._sensitive_buffer
+                ]
+                for overlap, lcs_len in overlap_scan(
+                    variant, sensitive_refs, lcs_gate=sensitive_lcs
+                ):
                     if lcs_len >= sensitive_lcs:
                         result = OutboundResult(
                             allowed=False,

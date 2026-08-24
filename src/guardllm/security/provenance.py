@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from guardllm.security.normalization import (
-    MAX_OVERLAP_CHARS,
-    compute_lcs_length,
-    compute_ngram_overlap,
+    MAX_OVERLAP_SCAN_CHARS,
     deobfuscate_reversed,
     deobfuscate_spelled,
     normalize_for_overlap,
+    overlap_scan,
+    overlap_windows,
 )
 from guardllm.security.types import SensitivityLevel, TrustLevel
 
@@ -82,10 +82,17 @@ class ProvenanceTracker:
         if not check_spans:
             return (True, "clean")
 
-        # Cap the outbound content compared for overlap so a very large payload
-        # cannot drive the O(m*n) LCS routine unbounded.
-        content = content[:MAX_OVERLAP_CHARS]
+        # Scans ALL of the content, in windows. This used to truncate to
+        # MAX_OVERLAP_CHARS and compare only that prefix, which was a silent
+        # bypass: a copied passage padded past the cap came back clean. Beyond
+        # what we will scan, refuse rather than truncate.
         normalized_content = normalize_for_overlap(content)
+        if len(normalized_content) > MAX_OVERLAP_SCAN_CHARS:
+            return (
+                False,
+                f"content is {len(normalized_content)} normalized characters, beyond the "
+                f"{MAX_OVERLAP_SCAN_CHARS} the provenance overlap check inspects",
+            )
 
         # Build deobfuscated variants for overlap checks
         content_variants = [normalized_content]
@@ -96,20 +103,30 @@ class ProvenanceTracker:
         if spelled_norm != normalized_content:
             content_variants.append(spelled_norm)
 
+        # Spans are windowed too, not truncated. A span longer than the window
+        # was cut to it, so a passage copied out of the TAIL of a 60,000
+        # character ingested document came back clean: the same bypass as the
+        # outbound cap, in the other direction. Each window is compared
+        # separately and reports its own span, so a match anywhere in a long
+        # span is found and attributed correctly.
+        normalized_spans = [
+            (span, label, window)
+            for span, label in check_spans
+            for window in overlap_windows(normalize_for_overlap(span.text))
+            if window
+        ]
         for variant in content_variants:
             deob = " (deobfuscated)" if variant is not normalized_content else ""
-            for span, label in check_spans:
-                normalized_span = normalize_for_overlap(span.text)[:MAX_OVERLAP_CHARS]
-                if not normalized_span:
-                    continue
-
-                # N-gram overlap (cheap, O(m+n)) computed first; gate the O(m*n)
-                # LCS behind it. A verbatim overlap >= lcs_threshold (>= 50)
-                # always shares 5-grams, so ngram == 0 implies no blocking LCS.
-                overlap = compute_ngram_overlap(variant, normalized_span, n=5)
-
-                # LCS check: configurable (default >= 50 chars) is a block
-                lcs_len = compute_lcs_length(variant, normalized_span) if overlap > 0.0 else 0
+            # One windowed pass over the whole variant for every span. The
+            # substring check is gated on a shared gram the length of the
+            # threshold, which is exact: a common substring that long contains
+            # such a gram, so no shared gram proves no blocking overlap.
+            scanned = overlap_scan(
+                variant, [row[2] for row in normalized_spans], lcs_gate=lcs_threshold
+            )
+            for (span, label, _text), (overlap, lcs_len) in zip(
+                normalized_spans, scanned, strict=True
+            ):
                 if lcs_len >= lcs_threshold:
                     return (
                         False,

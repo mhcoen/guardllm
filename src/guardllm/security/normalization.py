@@ -13,6 +13,7 @@ import re
 import secrets
 import unicodedata
 import warnings
+from collections.abc import Sequence
 
 # Zero-width and invisible characters (spec §1.2)
 _INVISIBLE_RE = re.compile(
@@ -293,6 +294,114 @@ def compute_lcs_length(a: str, b: str) -> int:
         else:
             hi = mid - 1
     return best
+
+
+#: Overlap between consecutive scan windows. A common substring of length L is
+#: wholly inside some window whenever the lap is at least L, so any match at or
+#: above the configured thresholds (validated >= 5, defaults 12 to 50) is still
+#: found when it straddles a seam. Far above any threshold, and cheap: it only
+#: adds lap/window to the work.
+OVERLAP_WINDOW_LAP = 4_096
+
+#: Total normalized characters the overlap checks will examine. Content beyond
+#: this is refused rather than truncated: see the note on overlap_scan.
+MAX_OVERLAP_SCAN_CHARS = 1_000_000
+
+
+def overlap_windows(text: str, window: int = MAX_OVERLAP_CHARS) -> list[str]:
+    """``text`` split into windows that overlap by ``OVERLAP_WINDOW_LAP``."""
+    if len(text) <= window:
+        return [text]
+    stride = window - OVERLAP_WINDOW_LAP
+    return [text[i : i + window] for i in range(0, len(text), stride) if i < len(text)]
+
+
+#: References processed per pass. The n-gram sets are built per reference, so
+#: holding all of them at once makes peak memory the size of the whole buffer's
+#: gram sets: fifty entries at the per-entry cap measured 445MB. Batching bounds
+#: that to this many references at a time, at the cost of rebuilding each
+#: window's sets once per batch, which is cheap because windows are few.
+OVERLAP_SCAN_BATCH = 4
+
+
+def overlap_scan(
+    content: str, references: Sequence[str], *, lcs_gate: int, n: int = 5
+) -> list[tuple[float, int]]:
+    """For each reference, its n-gram ratio and longest common substring in ALL of ``content``.
+
+    Replaces the pattern of truncating content to MAX_OVERLAP_CHARS and
+    comparing only that prefix. The truncation was a silent enforcement bypass:
+    the same copied passage moved past the cap turned a block into a clean
+    result, so padding an outbound payload with 50,001 characters defeated both
+    the verbatim-overlap and the provenance checks. A processing bound must scan
+    in windows or refuse the input; it cannot discard the tail and report clean.
+
+    Windowed because the Rabin-Karp substring check hashes every window of its
+    first operand, so memory follows that operand. Windows bound it, and
+    ``OVERLAP_WINDOW_LAP`` keeps a match that straddles a seam findable.
+
+    Each window's n-gram sets are built once and intersected against every
+    reference in the batch, rather than rebuilding the content's set per
+    reference as the previous shape did: with a full buffer that is the same
+    O(content) work fifty times over. The ratio accumulates the distinct
+    reference n-grams seen anywhere in content, so it equals what comparing
+    whole strings would give rather than a per-window approximation that could
+    miss a reference whose n-grams straddle a seam.
+
+    ``lcs_gate`` is the threshold the caller compares the length against, and it
+    is the gate's gram size. A common substring of length L contains a gram of
+    length L, so no shared ``lcs_gate``-gram proves the longest common substring
+    is below the threshold and the expensive check is skipped exactly. Gating on
+    5-grams instead, as this code did, is a far weaker test that ordinary prose
+    passes constantly: it ran the substring check for every reference on every
+    window, which measured 7.5 seconds where the gated form takes milliseconds.
+
+    A length below ``lcs_gate`` is reported as 0 rather than measured. Nothing
+    decides on a sub-threshold length; it is metadata. At or above the gate the
+    value is exact, except for a match longer than one window, where it is a
+    lower bound that cannot change a verdict because every threshold is orders
+    of magnitude below the window size.
+    """
+    gate = max(lcs_gate, n)
+    refs = [r[:MAX_OVERLAP_CHARS] for r in references]
+    out: list[tuple[float, int]] = []
+    windows = overlap_windows(content) if len(content) >= n else []
+
+    for offset in range(0, len(refs), OVERLAP_SCAN_BATCH):
+        batch = refs[offset : offset + OVERLAP_SCAN_BATCH]
+        ratio_grams = [
+            {r[i : i + n] for i in range(len(r) - n + 1)} if len(r) >= n else set() for r in batch
+        ]
+        gate_grams = [
+            {r[i : i + gate] for i in range(len(r) - gate + 1)} if len(r) >= gate else set()
+            for r in batch
+        ]
+        seen: list[set[str]] = [set() for _ in batch]
+        best = [0] * len(batch)
+
+        for chunk in windows:
+            if len(chunk) < n:
+                continue
+            chunk_ratio = {chunk[i : i + n] for i in range(len(chunk) - n + 1)}
+            chunk_gate = (
+                {chunk[i : i + gate] for i in range(len(chunk) - gate + 1)}
+                if len(chunk) >= gate
+                else set()
+            )
+            for k in range(len(batch)):
+                if ratio_grams[k]:
+                    seen[k] |= ratio_grams[k] & chunk_ratio
+                if gate_grams[k] and (gate_grams[k] & chunk_gate):
+                    found = compute_lcs_length(chunk, batch[k])
+                    if found > best[k]:
+                        best[k] = found
+
+        out.extend(
+            (len(seen[k]) / len(ratio_grams[k]) if ratio_grams[k] else 0.0, best[k])
+            for k in range(len(batch))
+        )
+
+    return out
 
 
 def compute_ngram_overlap(a: str, b: str, n: int = 5) -> float:

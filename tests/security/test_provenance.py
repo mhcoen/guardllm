@@ -1,5 +1,7 @@
 """Tests for MCP security provenance tracking."""
 
+import pytest
+
 from guardllm.security.normalization import compute_lcs_length, compute_ngram_overlap
 from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
 from guardllm.security.types import TrustLevel
@@ -315,3 +317,37 @@ class TestProvenanceTracker:
         )
         assert allowed is True
         assert reason == "clean"
+
+
+class TestProvenanceCoversTheWholeSpan:
+    """Spans were truncated to the window, so a passage in the tail of a long
+    ingested span was never compared. Spans are windowed now, and each window
+    reports its own span so attribution stays correct."""
+
+    PASSAGE = (
+        "Project Northwind ships on 14 March and the board has not been told yet, "
+        "which is exactly the sort of thing that must not leave the building."
+    )
+
+    @pytest.mark.parametrize("offset", [0, 49_000, 60_000, 200_000])
+    def test_a_match_anywhere_in_a_long_span_is_found_and_attributed(self, offset):
+        from guardllm import Guard
+        from guardllm.security.types import SecurityContext, TrustLevel
+
+        guard = Guard()
+        guard.process_inbound(
+            "z" * offset + self.PASSAGE,
+            SecurityContext(
+                mode="client",
+                source_type="mcp_server",
+                source_id="web",
+                source_trust=TrustLevel.UNTRUSTED,
+            ),
+        )
+        result = guard.check_outbound(
+            self.PASSAGE,
+            SecurityContext(mode="client", source_type="mcp_server", source_id="model"),
+        )
+        assert not result.allowed
+        # Attribution must survive the windowing.
+        assert "mcp_server:web" in result.reason or "untrusted" in result.reason

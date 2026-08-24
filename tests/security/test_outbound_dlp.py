@@ -319,3 +319,68 @@ class TestOutboundDLP:
         dlp.ingest_untrusted(untrusted)
         result = dlp.check(untrusted, ctx)
         assert result.allowed is True
+
+
+class TestOverlapCoversTheWholePayload:
+    """The 50,000-character cap was a prefix-only check, in both directions.
+
+    Outbound: padding a payload past the cap moved the copied passage out of the
+    compared prefix, so a block became "clean". Inbound: a document ingested
+    past the cap was only remembered up to it, so copying from its tail was also
+    "clean". Both reproduced before this change.
+    """
+
+    PASSAGE = (
+        "Project Northwind ships on 14 March and the board has not been told yet, "
+        "which is exactly the sort of thing that must not leave the building."
+    )
+
+    def _session(self, ingested: str):
+        from guardllm import Guard
+        from guardllm.security.types import SecurityContext, TrustLevel
+
+        guard = Guard()
+        guard.process_inbound(
+            ingested,
+            SecurityContext(
+                mode="client",
+                source_type="mcp_server",
+                source_id="web",
+                source_trust=TrustLevel.UNTRUSTED,
+            ),
+        )
+        return guard, SecurityContext(mode="client", source_type="mcp_server", source_id="model")
+
+    @pytest.mark.parametrize("padding", [0, 49_000, 50_001, 200_000, 600_000])
+    def test_padding_past_the_cap_does_not_hide_a_copied_passage(self, padding):
+        guard, egress = self._session(f"retrieved document. {self.PASSAGE}")
+        result = guard.check_outbound("x" * padding + self.PASSAGE, egress)
+        assert not result.allowed, f"padding {padding} hid the copy"
+
+    def test_a_passage_buried_mid_payload_is_found(self):
+        guard, egress = self._session(f"retrieved document. {self.PASSAGE}")
+        result = guard.check_outbound("x" * 300_000 + self.PASSAGE + "y" * 300_000, egress)
+        assert not result.allowed
+
+    @pytest.mark.parametrize("doc_padding", [0, 49_000, 60_000, 200_000, 600_000])
+    def test_copying_from_the_tail_of_a_large_document_is_found(self, doc_padding):
+        """The ingest side of the same cap."""
+        guard, egress = self._session("z" * doc_padding + self.PASSAGE)
+        result = guard.check_outbound(self.PASSAGE, egress)
+        assert not result.allowed, f"tail of a {doc_padding}-padded document was forgotten"
+
+    def test_content_beyond_what_is_scanned_is_refused_not_passed(self):
+        """Refusing is the honest answer; reporting clean on unread content is
+        the bug this replaced."""
+        from guardllm.security.normalization import MAX_OVERLAP_SCAN_CHARS
+
+        guard, egress = self._session(f"retrieved document. {self.PASSAGE}")
+        result = guard.check_outbound("x" * (MAX_OVERLAP_SCAN_CHARS + 100), egress)
+        assert not result.allowed
+        assert "beyond" in result.reason
+
+    def test_an_unrelated_large_payload_is_still_clean(self):
+        """The fix must not turn size alone into a block."""
+        guard, egress = self._session("retrieved document about migratory birds")
+        result = guard.check_outbound("q" * 200_000, egress)
+        assert result.allowed

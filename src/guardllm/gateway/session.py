@@ -11,9 +11,15 @@ Two failure directions, and they are not symmetric:
   or escalation would gate another's tools, or worse, one caller's redacted
   provenance would be read against another's egress. So an absent or unusable
   session id yields a FRESH session, never a shared one.
-- Losing a session to eviction is a correctness cost, not a security one: the
-  next call rebuilds a clean Guard, which is stricter, not looser. So eviction
-  is free to be aggressive.
+- Losing a session to eviction was assumed to be a correctness cost only, on
+  the reasoning that a rebuilt Guard is stricter. That is wrong in one
+  direction and it was measured: contamination and escalation only ever tighten
+  policy, so a clean rebuild is LOOSER than the session it replaced. A tool the
+  contaminated session denied was allowed again after eviction, and any client
+  can force that by filling the LRU with session ids of its own. Eviction now
+  keeps a note of which ids were tainted, and a returning id gets those flags
+  back. The buffers do not come back, so eviction still costs detection of
+  copying from content ingested before it; what it no longer costs is the gate.
 """
 
 from __future__ import annotations
@@ -79,6 +85,7 @@ class SessionStore:
         make_guard: Callable[[], Guard],
         max_sessions: int = 10_000,
         ttl_seconds: float = 3600.0,
+        max_tainted: int = 100_000,
         time_source: Callable[[], float] | None = None,
     ) -> None:
         if max_sessions < 1:
@@ -92,6 +99,13 @@ class SessionStore:
             time_source = time.monotonic
         self._now = time_source
         self._lock = threading.Lock()
+        #: Session ids evicted while contaminated or escalated, and the flags
+        #: they carried. Two booleans per id, so this is cheap enough to keep
+        #: far more of than there are live sessions. Bounded like everything
+        #: else here: past the cap the oldest notes are dropped, which restores
+        #: the old behaviour for exactly those ids and no others.
+        self._tainted: OrderedDict[str, tuple[bool, bool]] = OrderedDict()
+        self._max_tainted = max_tainted
         # id -> (guard, chain, last_used, session_lock). Ordered by recency;
         # oldest first. ``self._lock`` guards this map for the few microseconds
         # of a lookup. The fourth element is a different thing entirely: it
@@ -127,8 +141,16 @@ class SessionStore:
                 return session_id, guard, chain
             # A client-supplied id that we do not hold is honoured as the id of
             # a NEW session, so the client keeps a stable handle across the TTL
-            # gap. It is still a fresh Guard, never resurrected state.
+            # gap. Still a fresh Guard: no buffers, no provenance, no chain.
+            # But if this id was tainted when it went away, the flags come back
+            # with it, because rebuilding them clean is the one way a rebuild
+            # is looser rather than stricter, and any client can force the
+            # eviction that triggers it.
             guard, chain = self._make_guard(), Chain()
+            tainted = self._tainted.get(session_id)
+            if tainted is not None:
+                contaminated, escalated = tainted
+                guard.carry_session_risk(contaminated=contaminated, escalated=escalated)
             self._insert(session_id, guard, chain, now)
             return session_id, guard, chain
 
@@ -147,7 +169,25 @@ class SessionStore:
         self._entries[session_id] = (guard, chain, now, threading.Lock())
         self._entries.move_to_end(session_id)
         while len(self._entries) > self._max:
-            self._entries.popitem(last=False)  # evict least-recently-used
+            evicted_id, (evicted_guard, _c, _s, _l) = self._entries.popitem(last=False)
+            self._remember_taint(evicted_id, evicted_guard)
+
+    def _remember_taint(self, session_id: str, guard: Guard) -> None:
+        """Note that this id was carrying session risk when it went away.
+
+        Caller holds the lock. Only tainted ids are recorded: a clean session
+        has nothing a rebuild would lose, so there is no reason to remember it
+        and every reason not to grow this map with them.
+        """
+        pipeline = guard._pipeline
+        contaminated = pipeline.context_contaminated
+        escalated = pipeline.session_escalated
+        if not (contaminated or escalated):
+            return
+        self._tainted[session_id] = (contaminated, escalated)
+        self._tainted.move_to_end(session_id)
+        while len(self._tainted) > self._max_tainted:
+            self._tainted.popitem(last=False)
 
     def _evict_expired(self, now: float) -> None:
         # Caller holds the lock. Entries are ordered oldest-use first, so the
@@ -155,9 +195,10 @@ class SessionStore:
         # scanning the whole map.
         ttl = self._ttl
         while self._entries:
-            sid, (_guard, _chain, seen, _session_lock) = next(iter(self._entries.items()))
+            sid, (guard, _chain, seen, _session_lock) = next(iter(self._entries.items()))
             if now - seen <= ttl:
                 break
+            self._remember_taint(sid, guard)
             del self._entries[sid]
 
     def lock_for(self, session_id: str) -> threading.Lock:

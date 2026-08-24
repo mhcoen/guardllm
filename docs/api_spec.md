@@ -32,6 +32,7 @@
   - [Method: `deidentify`](#method-deidentify)
   - [Method: `reidentify`](#method-reidentify)
   - [Method: `prepare_tool_call`](#method-prepare_tool_call)
+  - [Method: `carry_session_risk`](#method-carry_session_risk)
   - [Method: `persist_vault`](#method-persist_vault)
   - [Async Method: `confirm_action`](#async-method-confirm_action)
   - [Async Method: `guard_tool_call`](#async-method-guard_tool_call)
@@ -453,6 +454,17 @@ Behavior:
 - **Ordering requirement.** Call this before building the `AuthorizationEvent` and `Binding`. Both bind exact bytes, so a scope authorized over a token fails against the restored value and the binding hash mismatches.
 - Fails closed. An unresolvable token, a token whose framing the model damaged, an unresolvable count past `max_unresolvable`, or an argument tree past `max_arg_depth` or `max_arg_nodes` refuses the call rather than dispatching a partially resolved one.
 - Unlike the three above, this does **not** raise without `privacy`. It passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
+
+### Method: `carry_session_risk`
+
+```python
+guard.carry_session_risk(*, contaminated: bool = False, escalated: bool = False) -> None
+```
+
+Behavior:
+- Raises the session-risk flags on a rebuilt guard. For a host reconstructing a session whose guard it no longer holds; the gateway uses it when an evicted session id returns.
+- **Monotonic.** It can raise these flags and never lower them. A setter that could clear them would be a way to launder a contaminated session back to clean, which is the failure it exists to prevent.
+- Only the flags travel. DLP buffers and provenance spans are not reconstructible from two booleans, so overlap detection against content ingested before the rebuild does not come back; the tool gate, which the flags drive, does.
 
 ### Method: `persist_vault`
 

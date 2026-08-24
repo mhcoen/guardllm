@@ -49,7 +49,13 @@ message array:
 
 Because both happen against one session, the session-risk loop holds across
 requests: an untrusted tool result in one call tightens tool authorization in
-the next, under `contaminated_tool_policy`. A `X-GuardLLM-Session` request
+the next, under `contaminated_tool_policy`. It survives eviction too: sessions
+are held in memory under an LRU and a TTL, and a session dropped by either is
+noted as tainted if it was contaminated or escalated, so the same id coming
+back is rebuilt with those flags rather than clean. Without that, any client
+could relax another's session by filling the LRU with ids of its own. What
+eviction still costs is the buffers: copying from content ingested before the
+eviction is no longer detected, because two booleans cannot reconstruct them. A `X-GuardLLM-Session` request
 header names the session; the gateway returns it on the response so the client
 can send it back. A request with no session header gets a fresh, isolated
 session rather than sharing one.

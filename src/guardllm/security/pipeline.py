@@ -90,6 +90,29 @@ class SecurityPipeline:
         """True after a high-confidence exfiltration block in this session."""
         return self._session_escalated
 
+    def carry_session_risk(self, *, contaminated: bool = False, escalated: bool = False) -> None:
+        """Re-raise session-risk flags on a rebuilt pipeline. Never lowers them.
+
+        For a host that must reconstruct a session whose object it no longer
+        holds, which for the gateway means one the LRU or the TTL evicted.
+        Contamination and escalation only ever tighten policy, so losing them
+        is not the harmless "rebuild is stricter" that eviction was assumed to
+        be: it is the one direction that loosens.
+
+        Deliberately monotonic. A setter that could also clear these would be a
+        way to launder a contaminated session back to clean, which is the bug
+        this exists to close rather than a feature to offer.
+
+        Only the flags travel. The DLP buffers and provenance spans are not
+        reconstructible from two booleans, so overlap detection against content
+        ingested before the eviction does not come back; the tool gate, which
+        is what the flags drive, does.
+        """
+        if contaminated:
+            self._context_contaminated = True
+        if escalated:
+            self._session_escalated = True
+
     @property
     def canary_token(self) -> str | None:
         """Return the canary trusted host code must place in private context."""

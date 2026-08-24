@@ -69,6 +69,7 @@ Available only when the guard was constructed with `privacy=PrivacyConfig(...)`.
 - `guard.prepare_tool_call(tool: str, args: dict, context: SecurityContext, *, has_quoting_directive: bool = False) -> PreparedCall`: resolve tokens in tool arguments under `restore_policy`. Call it **before** building the authorization event and binding, because both bind exact bytes and a scope authorized over a token fails against the restored value.
 
 - `guard.check_outbound_content(content, context, *, has_quoting_directive=False) -> OutboundResult`: L5/L3/L4 with no L6 quota accounting, for a caller checking several pieces of one outbound action. `check_outbound` records an action every call, so looping it over a tool call's argument leaves spends that call's quota once per string.
+- `guard.carry_session_risk(*, contaminated=False, escalated=False) -> None`: re-raise session-risk flags on a rebuilt guard, for a host reconstructing a session it no longer holds. Monotonic: it never lowers them, since clearing would launder a contaminated session back to clean.
 - `guard.persist_vault() -> None`: write the vault to the store the guard was constructed with (`Guard(..., vault_store=...)`). Raises without a store rather than doing nothing, since persistence configured but never happening is the failure that looks fine until a restart.
 
 Both restore paths are deny-by-default: a field or destination with no rule restores nothing. See [privacy.md](privacy.md).

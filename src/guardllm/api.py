@@ -360,6 +360,16 @@ class Guard:
             raise ValueError("Guard was constructed without privacy=PrivacyConfig(...)")
         vault.seed(values)
 
+    def carry_session_risk(self, *, contaminated: bool = False, escalated: bool = False) -> None:
+        """Re-raise session-risk flags on a rebuilt guard. Never lowers them.
+
+        For a host reconstructing a session whose guard it no longer holds. See
+        ``SecurityPipeline.carry_session_risk``: monotonic on purpose, because
+        a setter that could also clear these would launder a contaminated
+        session back to clean.
+        """
+        self._pipeline.carry_session_risk(contaminated=contaminated, escalated=escalated)
+
     def persist_vault(self) -> None:
         """Write the privacy vault to the store this guard was constructed with.
 

@@ -695,17 +695,16 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
 
 
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
-    payload = [
-        {
-            "id": c.get("id"),
-            "suite": c.get("suite"),
-            "kind": c.get("kind"),
-            "source_type": c.get("source_type"),
-            "content_type": c.get("content_type"),
-        }
-        for c in cases
-    ]
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    """Hash the full content of every case, not just its identity.
+
+    This covered only id/suite/kind/source_type/content_type, so a change to a
+    case's input or its expected outcome left the hash unchanged: it pinned
+    presence and order but not what was evaluated. Hashing the whole case dict
+    with sorted keys makes any content or label change alter the hash. See the
+    matching function in compare_mitigations for why the field set is not
+    enumerated.
+    """
+    raw = json.dumps(cases, sort_keys=True, ensure_ascii=True).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 

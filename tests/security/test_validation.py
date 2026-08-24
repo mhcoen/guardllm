@@ -488,3 +488,61 @@ class TestPolicyArgumentLimits:
 
         _merged_limits({"query": {"max_chars": 1}})
         assert ARGUMENT_LIMITS["query"]["max_chars"] == 1_000
+
+
+class TestArgumentNamesAreNotEchoed:
+    """Argument names are attacker-influenced and travel further than the call.
+
+    A validation error quoting one verbatim reaches the audit stream and the
+    sanitized outward error, and the outbound DLP that catches a credential in
+    a *value* never inspects a *key*. Naming a parameter with a token therefore
+    wrote that token into the audit log.
+    """
+
+    CREDENTIALS = [
+        "ghp_R7kQm2XvB9nZtL4wHc6JyE1sPaGdUf3oIbNr",  # 40 chars, identifier-legal
+        "AKIAIOSFODNN7EXAMPLE",  # 20 chars, defeats any length bound
+        "sk-live-9f3aQ2m7Xb4TzR8kLp0WvYc6NdJ1sE5H",
+    ]
+
+    def test_a_credential_argument_name_is_not_quoted_back(self):
+        from guardllm.security.validation import validate_arguments
+
+        for secret in self.CREDENTIALS:
+            result = validate_arguments("file_write", {secret: "../etc/passwd"})
+            assert not result.valid, "the control itself must still fire"
+            assert secret not in result.errors[0], f"{secret[:8]}... echoed"
+            assert "<argument:" in result.errors[0]
+
+    def test_it_does_not_reach_the_audit_record(self):
+        import json
+
+        from guardllm import Guard
+
+        class Capture:
+            def __init__(self):
+                self.rows = []
+
+            def log(self, event):
+                self.rows.append(event)
+
+        for secret in self.CREDENTIALS:
+            capture = Capture()
+            Guard(audit_logger=capture).validate_tool_args("file_write", {secret: "../etc/passwd"})
+            blob = json.dumps([getattr(e, "__dict__", str(e)) for e in capture.rows], default=str)
+            assert secret not in blob
+
+    def test_an_ordinary_name_stays_readable(self):
+        """The common error must not become unreadable to fix the rare one."""
+        from guardllm.security.validation import validate_arguments
+
+        assert "Parameter path" in validate_arguments("file_write", {"path": "../x"}).errors[0]
+        long_name = "expect_any_anomaly_contains"
+        assert long_name in validate_arguments("t", {long_name: "../x"}).errors[0]
+
+    def test_the_digest_is_stable_so_reports_correlate(self):
+        from guardllm.security.validation import _safe_arg_label
+
+        secret = self.CREDENTIALS[0]
+        assert _safe_arg_label(secret) == _safe_arg_label(secret)
+        assert _safe_arg_label(secret) != _safe_arg_label(self.CREDENTIALS[1])

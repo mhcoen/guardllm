@@ -6,6 +6,7 @@ Rejects the entire request if any argument fails validation.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any
 
@@ -22,6 +23,54 @@ ARGUMENT_LIMITS: dict[str, dict[str, Any]] = {
 }
 
 
+#: A parameter name we are willing to quote back verbatim. Real tool schemas
+#: use short identifiers; the longest in this repository's own case corpus is
+#: 27 characters, so 32 is generous of them and of nothing else.
+_PLAIN_ARG_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]{0,31}$")
+
+
+def _looks_like_a_secret(text: str) -> bool:
+    """True when the credential scanner recognizes anything in ``text``.
+
+    Imported lazily: validation is the first and cheapest gate, and the DLP
+    module is large. By the time a parameter name is odd enough to reach here
+    the module is loaded anyway, because the pipeline imports it.
+    """
+    from guardllm.security.outbound_dlp import _scan_secrets
+
+    return bool(_scan_secrets(text))
+
+
+def _safe_arg_label(arg_name: str) -> str:
+    """A parameter name safe to put in an error, an audit record, or a response.
+
+    Argument names are attacker-influenced. They arrive from a model-proposed
+    tool call, and validation errors quoting them verbatim travel further than
+    the call does: into the audit stream, and out through the sanitized error
+    path. A caller that names a parameter with a credential therefore wrote
+    that credential into the audit log, and the outbound DLP that would have
+    caught it in a *value* never sees a *key*. Reproduced with a GitHub token
+    as the argument name; the whole token appeared in both.
+
+    Names that look like ordinary identifiers pass through, so the common error
+    stays readable. Anything else is replaced by a stable digest reference,
+    which still lets an operator correlate repeated reports without the library
+    republishing content it was handed.
+
+    Two gates, because neither alone is enough. The shape test cannot separate
+    a credential from an identifier on its own: a GitHub token is exactly 40
+    characters of identifier-legal text, and an AWS access key ID is 20, so any
+    length bound loose enough for real parameter names admits some secret. The
+    credential scan cannot stand alone either, since it answers "does this look
+    like a secret" when the safe question is the narrower "is this a plausible
+    parameter name". A name must pass both to be echoed.
+    """
+    if _PLAIN_ARG_NAME.match(arg_name) and not _looks_like_a_secret(arg_name):
+        return arg_name
+    digest = hashlib.sha256(arg_name.encode("utf-8", "surrogatepass")).hexdigest()[:8]
+    return f"<argument:{digest}>"
+
+
 def _string_safety_errors(arg_name: str, value: str) -> list[str]:
     """Universal safety checks applied to every string argument.
 
@@ -31,10 +80,11 @@ def _string_safety_errors(arg_name: str, value: str) -> list[str]:
     that are absent from ARGUMENT_LIMITS.
     """
     errors: list[str] = []
+    label = _safe_arg_label(arg_name)
     if ".." in value:
-        errors.append(f"Parameter {arg_name} contains path traversal")
+        errors.append(f"Parameter {label} contains path traversal")
     if "\x00" in value:
-        errors.append(f"Parameter {arg_name} contains a null byte")
+        errors.append(f"Parameter {label} contains a null byte")
     return errors
 
 
@@ -54,7 +104,7 @@ def _walk_value(arg_name: str, value: Any, _depth: int = 0) -> list[str]:
     is rejected rather than raising RecursionError out of the first gate.
     """
     if _depth > _MAX_WALK_DEPTH:
-        return [f"Parameter {arg_name} nesting too deep"]
+        return [f"Parameter {_safe_arg_label(arg_name)} nesting too deep"]
     if isinstance(value, str):
         return _string_safety_errors(arg_name, value)
     if isinstance(value, dict):
@@ -132,11 +182,14 @@ def validate_arguments(
                 max_val = limits_for_arg.get("max_value_chars", 500) if limits_for_arg else 500
                 if len(value) > max_fields:
                     errors.append(
-                        f"Parameter {arg_name} exceeds maximum fields ({len(value)} > {max_fields})"
+                        f"Parameter {_safe_arg_label(arg_name)} exceeds maximum fields "
+                        f"({len(value)} > {max_fields})"
                     )
                 for k, v in value.items():
                     if isinstance(v, str) and len(v) > max_val:
-                        errors.append(f"Parameter {arg_name}.{k} exceeds maximum size")
+                        errors.append(
+                            f"Parameter {_safe_arg_label(arg_name)}.{_safe_arg_label(str(k))} exceeds maximum size"
+                        )
             continue
 
         # Named-argument limits (max_chars / pattern) apply only to declared
@@ -147,12 +200,12 @@ def validate_arguments(
         # Check max_chars
         max_chars = limits_for_arg.get("max_chars")
         if max_chars is not None and len(value) > max_chars:
-            errors.append(f"Parameter {arg_name} exceeds maximum size")
+            errors.append(f"Parameter {_safe_arg_label(arg_name)} exceeds maximum size")
 
         # Check pattern
         pattern = limits_for_arg.get("pattern")
         if pattern is not None and not re.match(pattern, value):
-            errors.append(f"Parameter {arg_name} exceeds limits")
+            errors.append(f"Parameter {_safe_arg_label(arg_name)} exceeds limits")
 
     if errors:
         return ValidationResult(

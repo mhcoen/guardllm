@@ -1096,3 +1096,54 @@ class TestUpstreamDeadline:
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             assert response.status == 200
+
+
+class TestSessionIdBounds:
+    """Session ids are unauthenticated and become dictionary keys, response
+    headers, and forensics rows. Unbounded, that is a memory amplifier a
+    stranger controls: a 60,000-character id was accepted and retained, and 200
+    of them held 12.7MB against a 10,000-session ceiling."""
+
+    def test_an_oversized_id_is_refused_and_not_retained(self):
+        from guardllm.gateway.session import InvalidSessionId
+
+        store = _store()
+        with pytest.raises(InvalidSessionId):
+            store.get("a" * 60_000)
+        assert len(store) == 0, "a refused id must not be stored"
+
+    def test_reserved_and_unprintable_characters_are_refused(self):
+        from guardllm.gateway.session import InvalidSessionId
+
+        store = _store()
+        for bad in ("alpha?part", "with#frag", "per%cent", "a b", "tab\tid", "sl/ash"):
+            with pytest.raises(InvalidSessionId):
+                store.get(bad)
+        assert len(store) == 0
+
+    def test_the_shapes_a_real_client_echoes_are_accepted(self):
+        store = _store()
+        import uuid
+
+        for good in (uuid.uuid4().hex, str(uuid.uuid4()), "a" * 128, "ok-id_1.2~3"):
+            resolved, _guard, _chain = store.get(good)
+            assert resolved == good
+
+    def test_an_absent_id_is_still_a_fresh_session(self):
+        """Refusing a malformed id must not change the documented behaviour for
+        no id at all."""
+        store = _store()
+        resolved, _guard, _chain = store.get(None)
+        assert resolved and len(store) == 1
+
+    def test_the_shell_answers_400_rather_than_500(self, running_gateway):
+        gw_url, _ = running_gateway
+        request = urllib.request.Request(
+            f"{gw_url}/v1/chat/completions",
+            data=json.dumps({"messages": [{"role": "user", "content": "hi"}]}).encode(),
+            headers={"Content-Type": "application/json", "X-GuardLLM-Session": "a" * 60_000},
+            method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=10)
+        assert caught.value.code == 400

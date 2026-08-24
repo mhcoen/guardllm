@@ -18,12 +18,51 @@ Two failure directions, and they are not symmetric:
 
 from __future__ import annotations
 
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
 
 from guardllm import Guard
 from guardllm.gateway.forensics import Chain
+
+#: Longest client-supplied session id accepted. The gateway mints
+#: ``uuid4().hex``, 32 characters, so this is generous of any real client while
+#: bounding what an unauthenticated caller can make the store retain.
+MAX_SESSION_ID_LENGTH = 128
+
+#: Characters allowed in a session id. Covers hex, UUIDs with dashes, and
+#: base64url, which is every shape a client might echo back. Deliberately
+#: excludes the reserved URL characters that would also make the forensics
+#: links ambiguous, and anything non-printable that would land in a response
+#: header.
+_SESSION_ID_RE = re.compile(rf"^[A-Za-z0-9._~-]{{1,{MAX_SESSION_ID_LENGTH}}}$")
+
+
+class InvalidSessionId(ValueError):
+    """A client-supplied session id the store will not accept.
+
+    Ids are unauthenticated: any caller can invent one, and the store keeps it
+    as a dictionary key, echoes it in a response header, and renders it in the
+    forensics index. Unbounded, that is a memory amplifier a stranger controls.
+    Measured before this existed: a 60,000-character id was accepted, retained
+    even though the upstream call failed, and echoed back in the error
+    response; two hundred of them held 12.7MB, and the store's ceiling of
+    10,000 sessions puts hundreds of megabytes within reach of ids alone.
+
+    Refused rather than truncated or hashed, because a silently altered id
+    means the client's next request lands in a different session than the one
+    it thinks it is continuing.
+    """
+
+
+def validate_session_id(session_id: str) -> None:
+    """Raise ``InvalidSessionId`` unless the id is one we will store."""
+    if not _SESSION_ID_RE.match(session_id):
+        raise InvalidSessionId(
+            f"session id must be 1 to {MAX_SESSION_ID_LENGTH} characters of "
+            f"[A-Za-z0-9._~-] (got {len(session_id)} characters)"
+        )
 
 
 class SessionStore:
@@ -72,6 +111,11 @@ class SessionStore:
         now = self._now()
         if not session_id:
             return self._new(now)
+        # Before the id becomes a dictionary key, a response header, and a row
+        # in the forensics index. An absent id is a fresh session by design; a
+        # malformed one is a client error and is refused rather than quietly
+        # turned into a fresh session, which would hide the mistake.
+        validate_session_id(session_id)
 
         with self._lock:
             self._evict_expired(now)

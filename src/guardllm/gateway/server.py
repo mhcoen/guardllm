@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from guardllm.gateway.proxy import GatewayConfig, GatewayRefused, guard_chat_completion
-from guardllm.gateway.session import SessionStore
+from guardllm.gateway.session import InvalidSessionId, SessionStore
 from guardllm.gateway.viewer import render_chain, render_index, render_missing
 from guardllm.support import UnsafeBundleError, build_bundle, render_bundle
 
@@ -279,7 +279,14 @@ class _Handler(BaseHTTPRequestHandler):
         # Resolved here rather than inside the guarded call, so the id exists on
         # every exit path including a refusal. store.get is idempotent for a
         # known id, so the call below returns this same session.
-        resolved_id, _guard, _chain = self.store.get(self.headers.get(_SESSION_HEADER))
+        try:
+            resolved_id, _guard, _chain = self.store.get(self.headers.get(_SESSION_HEADER))
+        except InvalidSessionId as exc:
+            # A client error, not a security decision: the header is malformed.
+            # Refused before the id becomes a stored key, a response header, or
+            # a forensics row.
+            self._error(400, str(exc))
+            return
         call = _upstream_caller(self.cfg, self.headers.get("Authorization"))
         try:
             decision = guard_chat_completion(

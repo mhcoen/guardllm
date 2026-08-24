@@ -7,6 +7,7 @@ circular imports. No dependencies outside stdlib.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import time
 from collections.abc import Sequence
@@ -314,6 +315,15 @@ class PolicyConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+            # Non-finite is the one out-of-range value that IS the disabling
+            # failure this check exists to catch. Every `overlap >= NaN` is
+            # false, so a threshold of NaN silently never blocks, and YAML
+            # spells it `.nan` so a policy file can reach it. Infinity is
+            # refused with it: it is not the documented disable idiom (a value
+            # above 1.0 is), and accepting one non-finite while refusing the
+            # other invites the confusion.
+            if math.isnan(value) or math.isinf(value):
+                raise ValueError(f"{name} must be finite, got {value}")
 
 
 class ConfirmationHandler:

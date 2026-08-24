@@ -477,3 +477,23 @@ class TestPolicyLimitValidation:
 
     def test_the_default_thresholds_are_valid(self):
         assert PolicyConfig().provenance_verbatim_lcs_min == 50
+
+    def test_a_non_finite_ngram_threshold_is_refused(self):
+        """NaN is the one out-of-range value that IS the disabling failure:
+        every `overlap >= NaN` is false, so the block silently never fires,
+        and YAML spells it `.nan` so a policy file can reach it."""
+        import math
+
+        for value in (math.nan, math.inf, -math.inf):
+            with pytest.raises(ValueError, match="must be finite"):
+                PolicyConfig(dlp_ngram_overlap_min=value)
+            with pytest.raises(ValueError, match="must be finite"):
+                PolicyConfig(provenance_ngram_overlap_min=value)
+
+    def test_a_nan_threshold_cannot_arrive_through_a_policy_file(self):
+        """YAML `.nan` parses to float('nan'); the loader must refuse it."""
+        pytest.importorskip("yaml")
+        from guardllm.config import parse_policy
+
+        with pytest.raises(ValueError, match="must be finite"):
+            parse_policy("policy:\n  provenance_ngram_overlap_min: .nan\n")

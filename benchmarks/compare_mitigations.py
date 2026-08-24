@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error, request
 
+from _bootstrap import dataset_hash
 from output_layout import (
     CACHE_ROOT,
     RUNS_ROOT,
@@ -121,22 +122,14 @@ def _append_jsonl_cache(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _dataset_hash_for_cases(cases: list[dict[str, Any]]) -> str:
-    """Hash the full content of every case, not just its identity.
+    """Delegates to the one shared implementation. See _bootstrap.dataset_hash.
 
-    This hashed only id/suite/kind/source_type/content_type, so it pinned
-    which cases were present and in what order but nothing about what they
-    said or expected. A case whose input text and expected outcome were both
-    changed produced an identical hash, which is the opposite of what a
-    provenance hash is for: it could not detect that the evaluated data had
-    been altered, only that its labels had been reordered. Hashing the whole
-    case dict, with sorted keys for stability, makes any content or
-    expected-outcome change alter the hash. Enumerating content fields was the
-    original mistake, since the schema carries a different set per kind
-    (outbound, inbound, error, replay_message, and a dozen expect_* fields),
-    so any list would miss some.
+    This carried its own copy, which serialized with different separators and
+    a different ensure_ascii than the builder's, so an identical case list
+    hashed two ways: METADATA.json and comparison.json could never be checked
+    against each other, which is the only thing the field is for.
     """
-    encoded = json.dumps(cases, sort_keys=True, ensure_ascii=True).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return dataset_hash(cases)
 
 
 def _repo_rel(path: Path) -> str:

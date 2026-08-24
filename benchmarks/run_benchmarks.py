@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 import sys
 import time
@@ -17,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from _bootstrap import ROOT  # noqa: F401
+from _bootstrap import ROOT, dataset_hash  # noqa: F401
 from output_layout import (
     DATASETS_ROOT,
     RUNS_ROOT,
@@ -695,17 +694,8 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
 
 
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
-    """Hash the full content of every case, not just its identity.
-
-    This covered only id/suite/kind/source_type/content_type, so a change to a
-    case's input or its expected outcome left the hash unchanged: it pinned
-    presence and order but not what was evaluated. Hashing the whole case dict
-    with sorted keys makes any content or label change alter the hash. See the
-    matching function in compare_mitigations for why the field set is not
-    enumerated.
-    """
-    raw = json.dumps(cases, sort_keys=True, ensure_ascii=True).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    """Delegates to the one shared implementation. See _bootstrap.dataset_hash."""
+    return dataset_hash(cases)
 
 
 def write_report(

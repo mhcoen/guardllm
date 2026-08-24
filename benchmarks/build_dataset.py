@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from _bootstrap import ROOT  # noqa: F401
+from _bootstrap import ROOT, dataset_hash  # noqa: F401
 from compare_mitigations import TEXT_SCOPE_INCLUDED_SUITES, build_text_records
 from output_layout import BENCH_ROOT, ensure_run_dir, git_sha_short
 from run_benchmarks import CASES_DIR, UPSTREAM_MANIFEST
@@ -160,8 +160,8 @@ def _content_hash_case(case: dict[str, Any]) -> str:
 
 
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
-    payload = [_canonical_case(c) for c in cases]
-    return _sha256_json(payload)
+    """Delegates to the one shared implementation. See _bootstrap.dataset_hash."""
+    return dataset_hash([_canonical_case(c) for c in cases])
 
 
 def _text_dataset_hash(cases: list[dict[str, Any]]) -> str:

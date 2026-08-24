@@ -804,3 +804,38 @@ def test_readme_entry_point_does_not_quote_counts():
     # The rejected first draft led with build process rather than effect.
     assert "drift-checked" not in promo
     assert "self-contained pages" not in promo
+
+
+def test_the_three_dataset_hashes_agree():
+    """One dataset hash, or the field cannot do its job.
+
+    Three copies existed and two disagreed on serialization: the builder used
+    compact separators with ensure_ascii=False, the evaluators used defaults
+    with ensure_ascii=True. The same case list therefore hashed two ways, so
+    METADATA.json's value could never be compared with comparison.json's, and
+    neither could confirm the other had evaluated the same data.
+    """
+    import sys as _sys
+
+    bench = str(ROOT / "benchmarks")
+    if bench not in _sys.path:
+        _sys.path.insert(0, bench)
+    from build_dataset import _dataset_hash as builder_hash
+    from compare_mitigations import _dataset_hash_for_cases as compare_hash
+    from run_benchmarks import _dataset_hash as run_hash
+
+    cases = [
+        {"id": "a", "suite": "s", "kind": "k", "outbound": "café", "expect_allowed": False},
+        {"id": "b", "suite": "s", "kind": "k", "outbound": "naïve ünïcode", "expect_allowed": True},
+    ]
+    assert builder_hash(cases) == compare_hash(cases) == run_hash(cases)
+
+    # And the property the shared implementation exists to provide.
+    mutated = [dict(cases[0], outbound="AKIAIOSFODNN7EXAMPLE", expect_allowed=True), cases[1]]
+    assert compare_hash(cases) != compare_hash(mutated), "content and label must change the hash"
+
+    reordered = [
+        {"expect_allowed": False, "outbound": "café", "kind": "k", "suite": "s", "id": "a"},
+        cases[1],
+    ]
+    assert compare_hash(cases) == compare_hash(reordered), "key order must not change the hash"

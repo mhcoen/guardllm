@@ -14,6 +14,7 @@ from __future__ import annotations
 import html
 import time
 from typing import Any
+from urllib.parse import quote
 
 from guardllm.gateway.forensics import Chain
 
@@ -130,7 +131,15 @@ def render_index(rows: list[dict[str, Any]]) -> str:
         for row in rows:
             sid = str(row["session_id"])
             cells += (
-                f'<tr><td><a href="/forensics/{html.escape(sid)}">'
+                # quote for the href, escape for the text. They answer
+                # different questions and neither substitutes for the other:
+                # html.escape stops markup injection but leaves a reserved URL
+                # character reserved, so an id containing "?" or "#" produced a
+                # link to a *different* session (everything from the "?" became
+                # a query string, and from the "#" a fragment the server never
+                # sees). The server unquotes this path component, so the two
+                # sides round trip.
+                f'<tr><td><a href="/forensics/{quote(sid, safe="")}">'
                 f"<code>{html.escape(sid)}</code></a></td>"
                 f"<td>{row['steps']}</td><td>{row['blocked']}</td>"
                 f"<td>{_flags(bool(row['contaminated']), bool(row['escalated']))}</td>"

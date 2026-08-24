@@ -8,6 +8,7 @@ that the gateway never takes the upstream key.
 
 from __future__ import annotations
 
+import html
 import json
 import threading
 import urllib.error
@@ -1147,3 +1148,60 @@ class TestSessionIdBounds:
         with pytest.raises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=10)
         assert caught.value.code == 400
+
+
+class TestForensicsLinkEncoding:
+    """html.escape stops markup injection; it does not make a URL path safe.
+
+    A session id containing "?" or "#" produced a link to a different session:
+    everything after the "?" became a query string, and after the "#" a
+    fragment the server never receives. The store now rejects those characters,
+    so this is defence in depth rather than a live exploit, and it also covers
+    ids reaching the viewer from any other source.
+    """
+
+    IDS = ["alpha?part", "with#frag", "per%cent", "sp ace", "naïve", "plain-32"]
+
+    def test_the_href_round_trips_through_the_server_parse(self):
+        import re
+        from urllib.parse import unquote
+
+        from guardllm.gateway.viewer import render_index
+
+        rows = [
+            {
+                "session_id": sid,
+                "steps": 1,
+                "blocked": 0,
+                "contaminated": False,
+                "escalated": False,
+                "idle_seconds": 0.1,
+            }
+            for sid in self.IDS
+        ]
+        page = render_index(rows)
+        for sid in self.IDS:
+            match = re.search(
+                r'href="/forensics/([^"]*)"><code>' + re.escape(html.escape(sid)), page
+            )
+            assert match, f"no link found for {sid!r}"
+            # The server does exactly this to recover the id from the path.
+            assert unquote(match.group(1)) == sid
+
+    def test_no_reserved_character_survives_raw_in_the_href(self):
+        from guardllm.gateway.viewer import render_index
+
+        page = render_index(
+            [
+                {
+                    "session_id": "a?b#c d",
+                    "steps": 1,
+                    "blocked": 0,
+                    "contaminated": False,
+                    "escalated": False,
+                    "idle_seconds": 0.1,
+                }
+            ]
+        )
+        assert 'href="/forensics/a?b#c d"' not in page
+        assert "<script" not in page

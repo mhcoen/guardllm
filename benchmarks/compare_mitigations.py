@@ -2050,6 +2050,11 @@ def run_injection_strategies(
 
     return {
         "record_count": len(records),
+        # Identifies WHICH records these results describe, so a later run can
+        # tell whether a cached provider row belongs to the same data. A count
+        # cannot: two unrelated datasets of the same size compared equal, and
+        # stale vendor rows were copied into a run that never evaluated them.
+        "records_hash": _text_records_hash(records),
         "guardllm_reused": reused_guardllm,
         "azure_prompt_shields_enabled": bool(azure_endpoint and azure_key),
         "azure_signal_definition": {
@@ -2640,6 +2645,23 @@ def _merge_llama_guard_results(
     return injection_only
 
 
+def _text_records_hash(records: list[TextRecord]) -> str:
+    """Identity of the exact text records an injection comparison evaluated.
+
+    Content and label, not just ids and a count: the point is to detect that
+    the evaluated data changed, and a hash over identity alone cannot.
+    """
+    payload = [
+        {"id": r.id, "suite": r.suite, "label_attack": r.label_attack, "text": r.text}
+        for r in records
+    ]
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
 def merge_prior_text_rows(
     current_injection_only: dict[str, Any],
     previous_payload: dict[str, Any],
@@ -2657,6 +2679,17 @@ def merge_prior_text_rows(
     if int(previous_text.get("record_count", -1)) != int(
         current_injection_only.get("record_count", -2)
     ):
+        return current_injection_only
+    # And the same records, not merely the same number of them. Matching on
+    # count alone copied a previous run's provider summaries, latencies and
+    # per-record predictions into a run over entirely different content: one
+    # comparison table then mixed current GuardLLM results with vendor results
+    # measured on other data. A missing hash on either side is treated as a
+    # mismatch, because an artifact that cannot say what it evaluated is
+    # exactly what must not be reused.
+    previous_hash = previous_text.get("records_hash")
+    current_hash = current_injection_only.get("records_hash")
+    if not previous_hash or not current_hash or previous_hash != current_hash:
         return current_injection_only
 
     current_strategies = current_injection_only.setdefault("strategies", {})

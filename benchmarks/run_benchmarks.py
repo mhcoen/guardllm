@@ -721,13 +721,44 @@ def write_report(
     return out
 
 
-def build_checkpoint(summary: dict[str, Any], results: list[CaseResult]) -> dict[str, Any]:
+def _covered_cases_hash(cases: list[dict[str, Any]], suites: set[str]) -> str:
+    """Content hash of the cases in ``suites``, which is what a checkpoint covers.
+
+    Restricted to the covered suites so it stays compatible with
+    ``--allow-extra-suites``: a run may legitimately carry suites the
+    checkpoint knows nothing about, and those must not invalidate it. Within a
+    covered suite, any change to a case is a change to what the recorded
+    numbers describe.
+    """
+    covered = sorted(
+        (c for c in cases if str(c.get("suite")) in suites),
+        key=lambda c: str(c.get("id")),
+    )
+    return dataset_hash(covered)
+
+
+def build_checkpoint(
+    summary: dict[str, Any], results: list[CaseResult], cases: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Record what a run produced AND which data produced it.
+
+    A checkpoint of summary counts and failed ids alone cannot tell that the
+    data changed: replacing a passing case with an unrelated passing case left
+    every recorded number identical and raised nothing. The counts then vouch
+    for a corpus nobody can identify, which is the opposite of what a baseline
+    is for. The fingerprint below is over the cases in the covered suites, so
+    a swapped case, an edited input, and a flipped expectation all invalidate
+    it.
+    """
     failed_case_ids = sorted(r.id for r in results if not r.passed)
-    return {
+    payload: dict[str, Any] = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "expected_summary": summary,
         "expected_failed_case_ids": failed_case_ids,
     }
+    if cases is not None:
+        payload["expected_cases_hash"] = _covered_cases_hash(cases, {str(r.suite) for r in results})
+    return payload
 
 
 def write_checkpoint(path: Path, checkpoint: dict[str, Any]) -> None:
@@ -744,8 +775,36 @@ def compare_checkpoint(
     actual_summary: dict[str, Any],
     actual_results: list[CaseResult],
     allow_extra_suites: bool = False,
+    cases: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     errors: list[str] = []
+
+    # The data first: matching counts against a corpus that has since changed
+    # is a baseline vouching for something it never measured. A checkpoint
+    # written before this field existed has nothing to compare, and says so
+    # rather than passing silently, so an old baseline is visibly unverified
+    # instead of quietly trusted.
+    if cases is not None:
+        recorded = expected.get("expected_cases_hash")
+        # The suites the CHECKPOINT covers, not the ones this run happens to
+        # have. A run may legitimately carry extra suites, which is the whole
+        # point of --allow-extra-suites and is also what a developer with
+        # untracked upstream corpora has locally; those must not change the
+        # fingerprint of what the checkpoint actually recorded.
+        covered_suites = set(expected.get("expected_summary", {}).get("by_suite", {}))
+        if recorded is None:
+            errors.append(
+                "checkpoint predates case fingerprinting: rerun with "
+                "--write-checkpoint to record which cases the numbers describe"
+            )
+        else:
+            actual_hash = _covered_cases_hash(cases, covered_suites)
+            if recorded != actual_hash:
+                errors.append(
+                    f"cases in the checkpoint's suites have changed "
+                    f"(expected {recorded[:12]}..., got {actual_hash[:12]}...): "
+                    "the recorded numbers describe different data"
+                )
 
     if expected.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
         errors.append(
@@ -879,7 +938,7 @@ def main() -> int:
         for r in failed:
             print(f"  {r.id}: {r.details}")
 
-    checkpoint_payload = build_checkpoint(summary, results)
+    checkpoint_payload = build_checkpoint(summary, results, cases)
     if args.write_checkpoint:
         write_path = Path(args.write_checkpoint)
         write_checkpoint(write_path, checkpoint_payload)
@@ -893,6 +952,7 @@ def main() -> int:
             actual_summary=summary,
             actual_results=results,
             allow_extra_suites=args.allow_extra_suites,
+            cases=cases,
         )
         if mismatches:
             print("\ncheckpoint validation: FAILED")

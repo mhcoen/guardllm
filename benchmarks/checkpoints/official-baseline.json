@@ -14,6 +14,10 @@
         "total": 14,
         "passed": 14
       },
+      "egress_feedback_escalation_style": {
+        "total": 9,
+        "passed": 9
+      },
       "error_sanitize_suite": {
         "total": 647,
         "passed": 647
@@ -89,10 +93,6 @@
       "upstream_mcp_bench": {
         "total": 320,
         "passed": 320
-      },
-      "egress_feedback_escalation_style": {
-        "total": 9,
-        "passed": 9
       }
     }
   },
@@ -104,5 +104,6 @@
     "upstream_mcpbench_v5f397445_0041",
     "upstream_mcpbench_v5f397445_0167",
     "upstream_mcpbench_v5f397445_0192"
-  ]
+  ],
+  "expected_cases_hash": "acae4910fcb06a49362afa8f0d2145b2f653e598a6acdbf778ba6a27d2a49703"
 }

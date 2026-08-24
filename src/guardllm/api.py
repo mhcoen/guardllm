@@ -57,6 +57,52 @@ def _string_leaves(node: object) -> list[str]:
     return []
 
 
+def _string_values(node: object) -> list[str]:
+    """Every string VALUE of an argument tree, in traversal order, keys excluded.
+
+    The sibling of ``_string_leaves``, which includes dict keys because a
+    per-field scan should look at a field name too. This one must not: it feeds
+    the joined scan below, and interleaving keys between values breaks exactly
+    the contiguity that scan exists to restore.
+    """
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        out: list[str] = []
+        for value in node.values():
+            out.extend(_string_values(value))
+        return out
+    if isinstance(node, list | tuple | set):
+        out = []
+        for value in node:
+            out.extend(_string_values(value))
+        return out
+    return []
+
+
+def joined_call_payload(args: object) -> str:
+    """The call's string values concatenated, as one outbound payload.
+
+    A per-field scan sees each argument alone, so a secret cut across two
+    fields passes both halves: ``{"left": "AKIA", "right": "IOSFODNN7EXAMPLE"}``
+    was allowed while the same twenty characters in one field were blocked.
+    The same split works on a canary or on a copied passage. What actually
+    leaves the boundary is the whole call, so the whole call is also checked as
+    one string.
+
+    Joined with no separator, because any separator would reinsert the break
+    the attacker created and defeat the point.
+
+    Two limits, stated because this narrows the gap rather than closing it.
+    Values are joined in traversal order, so a caller that controls field
+    order can place the halves so no ordering this produces makes them
+    adjacent. And nothing here sees across calls or turns: a secret sent one
+    half per request is not reassembled by any per-call check. Detecting that
+    needs cross-request accumulation, which is a different mechanism.
+    """
+    return "".join(_string_values(args))
+
+
 class Guard:
     """High-level facade for guardllm security workflows."""
 
@@ -480,6 +526,18 @@ class Guard:
                     allowed=False,
                     tool=tool,
                     reason=outcome.reason,
+                    warnings=prepared.warnings,
+                )
+        # And the whole call as one payload, so a secret cut across two fields
+        # is seen. See joined_call_payload for what this does not reach.
+        joined = joined_call_payload(prepared.args)
+        if joined:
+            outcome = self._pipeline.check_outbound_content(joined, context, has_quoting_directive)
+            if not outcome.allowed:
+                return PreparedCall(
+                    allowed=False,
+                    tool=tool,
+                    reason=f"{outcome.reason} (across argument fields)",
                     warnings=prepared.warnings,
                 )
         return prepared

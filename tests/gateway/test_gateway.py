@@ -1295,3 +1295,80 @@ class TestEvictionKeepsSessionRisk:
         guard.carry_session_risk(contaminated=False, escalated=False)
         assert guard._pipeline.context_contaminated
         assert guard._pipeline.session_escalated
+
+
+class TestSecretSplitAcrossArgumentFields:
+    """A per-field scan sees each argument alone, so a secret cut in two passed
+    both halves while the same characters in one field were blocked."""
+
+    def _call(self, args: dict) -> dict:
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "1",
+                                "type": "function",
+                                "function": {
+                                    "name": "send_email",
+                                    "arguments": json.dumps(args),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {"body": "AKIAIOSFODNN7EXAMPLE"},
+            {"left": "AKIA", "right": "IOSFODNN7EXAMPLE"},
+            {"a": "AKIA", "b": "IOSFODNN7", "c": "EXAMPLE"},
+            {"x": {"p": "AKIA"}, "y": ["IOSFODNN7EXAMPLE"]},
+        ],
+        ids=["one-field", "two-fields", "three-fields", "across-nesting"],
+    )
+    def test_a_split_secret_is_refused(self, args):
+        with pytest.raises(GatewayRefused, match="Secret pattern"):
+            inspect_response(self._call(args), Guard(), GatewayConfig())
+
+    def test_a_split_canary_is_refused(self):
+        guard = Guard(canary_session_id="sess-1")
+        token = guard.canary_token
+        half = len(token) // 2
+        with pytest.raises(GatewayRefused, match="[Cc]anary"):
+            inspect_response(
+                self._call({"a": token[:half], "b": token[half:]}), guard, GatewayConfig()
+            )
+
+    def test_an_ordinary_call_is_unaffected(self):
+        """Joining fields must not invent a finding out of benign text."""
+        inspect_response(
+            self._call({"to": "colleague@example.com", "body": "sending the report now"}),
+            Guard(),
+            GatewayConfig(),
+        )
+
+    def test_keys_are_excluded_from_the_joined_form(self):
+        """Interleaving field names between values would reinsert the very break
+        the joined scan exists to remove."""
+        from guardllm.api import joined_call_payload
+
+        assert joined_call_payload({"left": "AKIA", "right": "IOSFODNN7EXAMPLE"}) == (
+            "AKIAIOSFODNN7EXAMPLE"
+        )
+
+    def test_reordered_fields_remain_a_known_gap(self):
+        """Pinned, not fixed. Values join in traversal order, so a caller that
+        controls field order can place the halves so no ordering this produces
+        makes them adjacent. Covering every permutation is factorial, and
+        nothing per-call reaches a secret split across turns either; that needs
+        cross-request accumulation, a different mechanism. This test exists so
+        the gap is visible rather than assumed closed."""
+        inspect_response(
+            self._call({"right": "IOSFODNN7EXAMPLE", "left": "AKIA"}), Guard(), GatewayConfig()
+        )

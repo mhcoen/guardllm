@@ -724,3 +724,41 @@ def test_audit_logger_writes_nothing_without_a_sink():
     log = AuditLogger()
     log.log_quick("dlp_block", session_id="s1")
     assert len(log.get_events()) == 1
+
+
+class TestPreparedCallJoinsItsFields:
+    """The library path has the same per-field shape as the gateway, so it had
+    the same gap: a secret cut across two arguments passed both halves."""
+
+    def _guard_and_ctx(self):
+        from guardllm import Guard
+        from guardllm.security.types import Destination, PIIClass, PrivacyConfig, SecurityContext
+
+        guard = Guard(
+            privacy=PrivacyConfig(
+                destination_policy={Destination.USER: frozenset({PIIClass.EMAIL})}
+            )
+        )
+        ctx = SecurityContext(mode="client", source_type="mcp_server", source_id="model")
+        return guard, ctx
+
+    def test_a_secret_split_across_arguments_is_refused(self):
+        guard, ctx = self._guard_and_ctx()
+        prepared = guard.prepare_tool_call(
+            "send_email", {"left": "AKIA", "right": "IOSFODNN7EXAMPLE"}, ctx
+        )
+        assert not prepared.allowed
+        assert "across argument fields" in prepared.reason
+
+    def test_an_ordinary_call_still_prepares(self):
+        guard, ctx = self._guard_and_ctx()
+        prepared = guard.prepare_tool_call(
+            "send_email", {"to": "colleague@example.com", "body": "the report"}, ctx
+        )
+        assert prepared.allowed
+
+    def test_values_only_and_in_traversal_order(self):
+        from guardllm.api import joined_call_payload
+
+        assert joined_call_payload({"a": "one", "b": ["two", {"c": "three"}]}) == "onetwothree"
+        assert joined_call_payload({"k": 5, "n": None, "s": "x"}) == "x"

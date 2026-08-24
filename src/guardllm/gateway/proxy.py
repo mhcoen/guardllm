@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from guardllm import Guard
-from guardllm.api import _string_leaves
+from guardllm.api import _string_leaves, joined_call_payload
 from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
@@ -223,6 +223,19 @@ def inspect_response(
                 out = guard.check_outbound_content(leaf, egress)
                 if not out.allowed:
                     reason = f"{name} arguments: {out.reason}"
+                    _record(chain, "tool_call", name, "blocked", reason, guard)
+                    raise GatewayRefused("egress", reason)
+            # Then the whole call as one payload. A per-field scan sees each
+            # argument alone, so a secret cut across two fields passed both
+            # halves: {"left": "AKIA", "right": "IOSFODNN7EXAMPLE"} was allowed
+            # while the same twenty characters in one field were blocked. What
+            # leaves the boundary is the call, so the call is checked too. See
+            # guardllm.api.joined_call_payload for what this does not reach.
+            joined = joined_call_payload(args)
+            if joined:
+                out = guard.check_outbound_content(joined, egress)
+                if not out.allowed:
+                    reason = f"{name} arguments (across fields): {out.reason}"
                     _record(chain, "tool_call", name, "blocked", reason, guard)
                     raise GatewayRefused("egress", reason)
             _record(chain, "tool_call", name, "allowed", gate.reason, guard)

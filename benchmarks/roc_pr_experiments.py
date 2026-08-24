@@ -435,47 +435,111 @@ def _metric_intervals(p: PointEval) -> dict[str, list[float]]:
     }
 
 
+def _text_identity(text: str) -> str:
+    """Content key for split grouping: whitespace-collapsed, case-folded.
+
+    Two records with the same content must land on the same side of the split
+    however they are spelled, so trivial whitespace or case differences do not
+    reintroduce the leakage this grouping exists to prevent.
+    """
+    return " ".join(text.split()).casefold()
+
+
 def _stratified_split_indices(
     records: list[TextRecord],
     seed: int,
     dev_fraction: float,
     dev_max_records: int,
 ) -> tuple[list[int], list[int]]:
-    by_key: dict[tuple[str, bool], list[int]] = defaultdict(list)
+    """Split dev/test by content group, so a text never appears on both sides.
+
+    The split stratified by suite and label but shuffled individual records, so
+    duplicate texts crossed it: on canonical-v1 that was 417 cross-split record
+    pairs over 61 distinct texts, 80 dev records with a test twin and 230 test
+    records with a dev one. Thresholds are selected on dev and then reported as
+    frozen test results, so a text seen while selecting could be counted again
+    as held out. That inflates the operating points, not the untuned headline
+    figure.
+
+    Records sharing a content key move as one unit, through the dev cap as well
+    as the initial split, because moving individuals back to test would undo
+    the grouping at the last step.
+    """
+    # Clusters are global, not per stratum. Grouping inside each
+    # (suite, label) bucket still let one text cross the split when it appeared
+    # in two suites, which is exactly what remained after the first attempt:
+    # the same attack string lived in both promptfoo_redteam_style and
+    # bipia_style and landed on opposite sides. A cluster is keyed by content
+    # alone and is then stratified by where its first record sits.
+    clusters_by_text: dict[str, list[int]] = defaultdict(list)
     for idx, rec in enumerate(records):
-        by_key[(rec.suite, rec.label_attack)].append(idx)
+        clusters_by_text[_text_identity(rec.text)].append(idx)
+
+    by_key: dict[tuple[str, bool], dict[str, list[int]]] = defaultdict(dict)
+    for text_key in sorted(clusters_by_text):
+        cluster = clusters_by_text[text_key]
+        first = records[cluster[0]]
+        by_key[(first.suite, first.label_attack)][text_key] = cluster
 
     rnd = random.Random(seed)
     dev_idx: list[int] = []
     test_idx: list[int] = []
 
-    for _, idxs in by_key.items():
-        local = idxs[:]
-        rnd.shuffle(local)
-        n = len(local)
+    for _, groups in by_key.items():
+        # Whole content groups, shuffled, then filled toward the dev share.
+        # Sorted first so the shuffle is reproducible from the seed regardless
+        # of dict insertion order.
+        clusters = [groups[key] for key in sorted(groups)]
+        rnd.shuffle(clusters)
+        n = sum(len(c) for c in clusters)
         n_dev = int(round(n * dev_fraction))
         if n > 1:
             n_dev = min(max(n_dev, 1), n - 1)
         else:
             n_dev = 0
-        dev_idx.extend(local[:n_dev])
-        test_idx.extend(local[n_dev:])
+        taken = 0
+        for cluster in clusters:
+            # A cluster goes to dev only if dev still has room for all of it
+            # and test would not be emptied; otherwise it goes to test whole.
+            if taken < n_dev and taken + len(cluster) <= n - 1:
+                dev_idx.extend(cluster)
+                taken += len(cluster)
+            else:
+                test_idx.extend(cluster)
 
     if dev_max_records > 0 and len(dev_idx) > dev_max_records:
-        dev_by_key: dict[tuple[str, bool], list[int]] = defaultdict(list)
+        dev_by_key: dict[tuple[str, bool], dict[str, list[int]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
         for idx in dev_idx:
             rec = records[idx]
-            dev_by_key[(rec.suite, rec.label_attack)].append(idx)
+            dev_by_key[(rec.suite, rec.label_attack)][_text_identity(rec.text)].append(idx)
         pruned_dev: list[int] = []
-        for _, idxs in dev_by_key.items():
-            local = idxs[:]
-            rnd.shuffle(local)
-            frac = len(local) / len(dev_idx)
-            take = max(1, int(round(frac * dev_max_records)))
-            pruned_dev.extend(local[:take])
+        for _, groups in dev_by_key.items():
+            clusters = [groups[key] for key in sorted(groups)]
+            rnd.shuffle(clusters)
+            group_total = sum(len(c) for c in clusters)
+            frac = group_total / len(dev_idx)
+            budget = max(1, int(round(frac * dev_max_records)))
+            taken = 0
+            for cluster in clusters:
+                if taken == 0 or taken + len(cluster) <= budget:
+                    pruned_dev.extend(cluster)
+                    taken += len(cluster)
         if len(pruned_dev) > dev_max_records:
-            rnd.shuffle(pruned_dev)
-            pruned_dev = pruned_dev[:dev_max_records]
+            # Trim whole clusters, never individual records, or the last step
+            # would put a text back on both sides.
+            keep_by_cluster: dict[str, list[int]] = defaultdict(list)
+            for idx in pruned_dev:
+                keep_by_cluster[_text_identity(records[idx].text)].append(idx)
+            ordered = [keep_by_cluster[key] for key in sorted(keep_by_cluster)]
+            rnd.shuffle(ordered)
+            trimmed: list[int] = []
+            for cluster in ordered:
+                if len(trimmed) + len(cluster) > dev_max_records:
+                    continue
+                trimmed.extend(cluster)
+            pruned_dev = trimmed
         pruned_set = set(pruned_dev)
         moved_to_test = [idx for idx in dev_idx if idx not in pruned_set]
         dev_idx = sorted(pruned_dev)
@@ -483,7 +547,6 @@ def _stratified_split_indices(
     else:
         dev_idx = sorted(dev_idx)
         test_idx = sorted(test_idx)
-
     return dev_idx, test_idx
 
 
@@ -1558,6 +1621,15 @@ def main() -> int:
         else:
             test_labels, test_preds = _labels_and_preds(test_rows)
             point = _point_from_preds(test_labels, test_preds, None)
+            # meets_budget_dev must come from the DEV split. It was computed
+            # from `point`, which is the test point, so the field labelled dev
+            # was reporting the test result: a non-tunable method has no
+            # threshold to select, but that is a reason for the two flags to
+            # agree by coincidence, not a reason to derive one from the other.
+            # Measured on a four-record run: dev FP/1k was 1000 and test 0 at a
+            # zero budget, and both flags serialized True.
+            dev_labels, dev_preds = _labels_and_preds(dev_rows)
+            dev_point = _point_from_preds(dev_labels, dev_preds, None)
             method_payloads.append(
                 {
                     "name": method.name,
@@ -1565,11 +1637,12 @@ def main() -> int:
                     "curve_source": "dev",
                     "curve_note": "single operating point (non-tunable method)",
                     "curves": None,
+                    "default_point_dev": _point_to_dict(dev_point),
                     "default_point_test": _point_to_dict(point),
                     "selected_operating_points": [
                         {
                             "threshold": None,
-                            "meets_budget_dev": (point.fp_per_1k_neg <= b),
+                            "meets_budget_dev": (dev_point.fp_per_1k_neg <= b),
                             "meets_budget_test": (point.fp_per_1k_neg <= b),
                             "budget": {"fp_per_1k_neg_max": b, "precision_min": None},
                             "test_metrics": _point_to_dict(point),

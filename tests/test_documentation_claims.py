@@ -862,3 +862,136 @@ def test_the_cbx_generators_fetch_their_pin_rather_than_a_branch():
         # And the discredited approach is gone.
         assert '"git", "clone", "--depth", "1", repo_url' not in source
         assert '"git", "reset", "--hard", "origin/HEAD"' not in source
+
+
+def _bench_path():
+    import sys as _sys
+
+    bench = str(ROOT / "benchmarks")
+    if bench not in _sys.path:
+        _sys.path.insert(0, bench)
+
+
+def test_a_checkpoint_notices_that_the_cases_changed():
+    """Summary counts and failed ids cannot tell that the data changed:
+    replacing a passing case with an unrelated passing case left every recorded
+    number identical and raised nothing, so the baseline vouched for a corpus
+    nobody could identify."""
+    _bench_path()
+    from run_benchmarks import CaseResult, build_checkpoint, compare_checkpoint, summarize
+
+    results = [CaseResult("case-1", "s", "k", True, ""), CaseResult("case-2", "s", "k", True, "")]
+    cases = [
+        {"id": "case-1", "suite": "s", "kind": "k", "outbound": "safe", "expect_allowed": True},
+        {
+            "id": "case-2",
+            "suite": "s",
+            "kind": "k",
+            "outbound": "also safe",
+            "expect_allowed": True,
+        },
+    ]
+    checkpoint = build_checkpoint(summarize(results), results, cases)
+    assert not compare_checkpoint(checkpoint, summarize(results), results, cases=cases)
+
+    swapped_cases = [
+        cases[0],
+        {"id": "case-99", "suite": "s", "kind": "k", "outbound": "other", "expect_allowed": True},
+    ]
+    swapped = [CaseResult("case-1", "s", "k", True, ""), CaseResult("case-99", "s", "k", True, "")]
+    assert compare_checkpoint(checkpoint, summarize(swapped), swapped, cases=swapped_cases)
+
+    # An edit that keeps every id and every count must also invalidate it.
+    edited = [cases[0], dict(cases[1], expect_allowed=False)]
+    assert compare_checkpoint(checkpoint, summarize(results), results, cases=edited)
+
+
+def test_a_checkpoint_without_a_fingerprint_says_so():
+    """An old baseline must read as unverified rather than pass silently."""
+    _bench_path()
+    from run_benchmarks import CaseResult, build_checkpoint, compare_checkpoint, summarize
+
+    results = [CaseResult("case-1", "s", "k", True, "")]
+    cases = [{"id": "case-1", "suite": "s", "kind": "k", "expect_allowed": True}]
+    checkpoint = build_checkpoint(summarize(results), results, cases)
+    legacy = {k: v for k, v in checkpoint.items() if k != "expected_cases_hash"}
+    errors = compare_checkpoint(legacy, summarize(results), results, cases=cases)
+    assert errors and "predates case fingerprinting" in errors[0]
+
+
+def test_cached_provider_rows_need_the_same_records_not_just_the_same_count():
+    """Matching on count alone copied a previous run's provider summaries,
+    latencies and per-record predictions into a run over entirely different
+    content, so one table mixed current GuardLLM results with vendor results
+    measured on other data."""
+    _bench_path()
+    from compare_mitigations import merge_prior_text_rows
+
+    def merge(previous_hash, current_hash):
+        current = {
+            "record_count": 1,
+            "records_hash": current_hash,
+            "strategies": {},
+            "predictions": {},
+            "latency_ms": {},
+        }
+        previous = {
+            "injection_scope": "injection",
+            "injection_only": {
+                "record_count": 1,
+                "records_hash": previous_hash,
+                "strategies": {"openai_policy_adapter": {"f1": 0.99}},
+                "predictions": {"openai_policy_adapter": [{"id": "old"}]},
+                "latency_ms": {"openai_policy_adapter": 1.0},
+            },
+        }
+        merged = merge_prior_text_rows(current, previous, injection_scope="injection")
+        return "openai_policy_adapter" in merged["strategies"]
+
+    assert merge("hash-a", "hash-a"), "identical data should still reuse"
+    assert not merge("hash-a", "hash-b"), "different data must not reuse"
+    assert not merge(None, "hash-a"), "an artifact that cannot say what it evaluated must not reuse"
+    assert not merge("hash-a", None)
+
+
+def test_the_roc_split_keeps_duplicate_texts_on_one_side():
+    """Thresholds are selected on dev and reported as frozen test results, so a
+    text seen while selecting must not be counted again as held out. The split
+    grouped by suite and label but shuffled individual records, which put 61
+    distinct texts on both sides of the real corpus."""
+    _bench_path()
+    from compare_mitigations import build_text_records
+    from roc_pr_experiments import _stratified_split_indices, _text_identity
+    from run_benchmarks import load_cases
+
+    records = build_text_records(load_cases(None, dataset_id=""), injection_scope="injection")
+    dev, test = _stratified_split_indices(
+        records, seed=20260223, dev_fraction=0.2, dev_max_records=700
+    )
+
+    dev_texts = {_text_identity(records[i].text) for i in dev}
+    test_texts = {_text_identity(records[i].text) for i in test}
+    assert not (dev_texts & test_texts), "a text appears on both sides of the split"
+
+    assert not set(dev) & set(test)
+    assert len(dev) + len(test) == len(records)
+    again = _stratified_split_indices(records, seed=20260223, dev_fraction=0.2, dev_max_records=700)
+    assert (dev, test) == again, "the split must be reproducible from its seed"
+
+
+def test_meets_budget_dev_is_computed_from_the_dev_split():
+    """For a non-tunable method the dev flag was derived from the test point,
+    so a field labelled dev reported the test result: on a four-record run dev
+    FP/1k was 1000 and test 0 at a zero budget, and both serialized True.
+
+    Asserted on source shape, because the computation sits inside main() and
+    cannot be exercised without running a whole experiment. It is a guard
+    against the regression returning, not a behavioural test.
+    """
+    source = (ROOT / "benchmarks" / "roc_pr_experiments.py").read_text()
+    assert "dev_labels, dev_preds = _labels_and_preds(dev_rows)" in source
+    assert "dev_point = _point_from_preds(dev_labels, dev_preds, None)" in source
+    assert '"meets_budget_dev": (dev_point.fp_per_1k_neg <= b)' in source
+    assert '"meets_budget_test": (point.fp_per_1k_neg <= b)' in source
+    # The discredited form must not come back.
+    assert '"meets_budget_dev": (point.fp_per_1k_neg <= b)' not in source

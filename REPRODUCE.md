@@ -395,10 +395,10 @@ Output: `benchmarks/runs/rocpr-canonical-local/roc_curve.svg` and `pr_curve.svg`
 
 ### Run GuardLLM vs. baselines on all cases
 
-This loads cases directly from the committed fixture files (see "How Benchmark Data Is Organized" above). No dataset build step is required.
+This loads cases directly from the committed fixture files (see "How Benchmark Data Is Organized" above). `--dataset-id ""` selects that path; without it the tool defaults to `--dataset-id canonical-v1`, which requires the Tier 3 build step above and fails on a fresh clone because `benchmarks/datasets/` is gitignored.
 
 ```bash
-python benchmarks/compare_mitigations.py --run-id comparison-local
+python benchmarks/compare_mitigations.py --dataset-id "" --run-id comparison-local
 ```
 
 This evaluates `guardllm`, `isolation_only`, `source_gate_only`, `regex_rule_based`, and `no_defense` strategies on all benchmark cases. No external API calls are made.

@@ -64,9 +64,16 @@ def build() -> dict:
             "git_sha_short": source["git_sha_short"],
             "dataset_hash": source["dataset_hash"],
             "suite_filter": source["suite_filter"],
-            # comparison.json is produced by compare_mitigations.py.
-            # run_benchmarks.py writes latest.json and does not generate it.
-            "reproduce": "python benchmarks/compare_mitigations.py",
+            # comparison.json is produced by compare_mitigations.py, which
+            # defaults to --dataset-id canonical-v1 and so needs the dataset
+            # built first; the bare command failed on a clean clone because
+            # benchmarks/datasets/ is gitignored. The build step is part of the
+            # reproduce path. (Regenerating today yields the current corpus,
+            # not this frozen snapshot; see the note in REPRODUCE.md.)
+            "reproduce": (
+                "python benchmarks/build_dataset.py --dataset-id canonical-v1 "
+                "&& python benchmarks/compare_mitigations.py"
+            ),
         },
         "surface_controls": {
             "case_count": surface["count"],

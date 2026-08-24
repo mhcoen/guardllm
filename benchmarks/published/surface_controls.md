@@ -15,7 +15,7 @@ page comes from this extract, which is generated from the tracked
 | dataset hash | `e1cf2c24a9f1f8e27056a40073e841db7a526707debfd2adc41867309b015e89` |
 | suite filter | `None` |
 | generated at | `1771886961` |
-| reproduce | `python benchmarks/compare_mitigations.py` |
+| reproduce | `python benchmarks/build_dataset.py --dataset-id canonical-v1 && python benchmarks/compare_mitigations.py` |
 
 ## Results
 

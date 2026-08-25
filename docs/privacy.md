@@ -22,6 +22,12 @@
 </details>
 <!-- toc:end -->
 
+> Illustrated: [04 Nothing Crosses By Name](mechanisms/04-privacy-vault.html) shows
+> substitution at the model boundary and the two deny-by-default gates that decide
+> whether a real value comes back.
+
+
+
 Personal data that reaches a model provider has left your control, whatever the
 provider's retention policy says. The privacy vault replaces it with an opaque
 token before the prompt is sent, and puts the real value back only where your

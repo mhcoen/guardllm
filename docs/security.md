@@ -120,6 +120,11 @@ These source types integrate directly with source-gate and provenance behavior.
 
 ## Session Risk Signals
 
+> Illustrated: [01 What the Guard Remembers](mechanisms/01-session-risk.html) follows a
+> contamination mark from ingest to the tool gate that reads it, and
+> [02 A Marker Only the Model Sees](mechanisms/02-canary.html) follows the escalation
+> signal in the other direction.
+
 The pipeline carries two independent, monotonic, logical-session risk signals that tighten tool authorization. Both are cleared by `reset()`; a canary-enabled host passes a new canary session ID when that reset also starts a new logical session.
 
 - **Contamination (forward propagation)** - `_context_contaminated` is set in `process_inbound` when untrusted content enters the session. `check_tool_execution` then applies `PolicyConfig.contaminated_tool_policy` (default `allow`).

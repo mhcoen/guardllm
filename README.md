@@ -17,6 +17,10 @@ LLM applications routinely process untrusted content (web results, emails, docum
 
 ## How GuardLLM Works
 
+> **New to GuardLLM? Start with the [visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/).** Four short
+> illustrated explanations, one mechanism each, showing how session risk, canary
+> tokens, request binding, and privacy restoration work outside the model.
+
 ![GuardLLM trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
 
 Data changes hands at three party crossings: ingress, the model, and egress. Authorization and integrity are gates inside the trusted region, so they admit or refuse a flow and never move data across a boundary. The four edges on the retained session state are the loop. Ingress writes labels, the authorization gates and egress checks read them, and a high-confidence egress block writes escalation back, so a block now tightens a later call in the same session. Content passes through the model. Labels travel around it, which is why a decision at egress can still read what ingress recorded. The model crossing is the one no control inspects ([T-IN13](docs/threat_model.md)).
@@ -257,6 +261,7 @@ Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Ca
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md) | [Documentation index](docs/README.md)
+- **Visual mechanism guide**: [All four strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html)
 - **Demos**: [Executable demos](demo/README.md) | [System map](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html)
 - **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/README.md)

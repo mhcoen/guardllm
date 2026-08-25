@@ -21,6 +21,22 @@ This directory contains architecture and integration documentation for using gua
 - [troubleshooting.md](troubleshooting.md): common failure modes, fixes, and FAQ.
 - [production_checklist.md](production_checklist.md): deployment checklist for production hardening and operations.
 
+## Visual mechanism guide
+
+Four illustrated explanations, one mechanism each, for readers meeting the
+architecture for the first time. They are normative about mechanism and carry no
+measurements: the Markdown documents above remain the authoritative specification.
+
+- [All four strips](mechanisms/index.html), with a map of how they interlock.
+- [01 What the Guard Remembers](mechanisms/01-session-risk.html): a fact recorded at
+  ingest denies a tool call two turns later, and why four point tools cannot.
+- [02 A Marker Only the Model Sees](mechanisms/02-canary.html): canary tokens, and
+  what a match proves.
+- [03 The Call That Came Back](mechanisms/03-request-binding.html): request binding
+  and deferred-execution replay.
+- [04 Nothing Crosses By Name](mechanisms/04-privacy-vault.html): substitution at the
+  model boundary and the two gates on the way back.
+
 ## Runnable material
 
 - [Executable demos](../demo/README.md): self-contained pages generated from the

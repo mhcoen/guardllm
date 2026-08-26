@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally with no external API calls, processing inbound content in under 0.1ms, roughly 10,000x faster than neural-based alternatives. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
+LLM applications routinely process untrusted content (web results, emails, documents, calendar data, MCP tool traffic) from sources the developer does not control. Existing defenses are either ML-based (slow, opaque, model-dependent) or point tools that work in isolation without sharing security context. GuardLLM (`guardllm`) is a standalone Python library that secures the full data lifecycle of LLM-based applications. Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. It runs entirely locally, with no external API calls and no network round trip on the decision path. It is model-agnostic and works with any LLM, including models that ship with limited built-in safety controls.
 
 > **GuardLLM is not protecting LLMs. It is protecting the companies that use them.**
 >
@@ -118,6 +118,11 @@ Production protection depends on mediating every relevant path through GuardLLM 
 
 ## Get Started
 
+> **Do not install from PyPI.** The published `guardllm` package is 1.1.0 and predates
+> both the session-risk feedback loop this README describes and the detector, DLP, canary,
+> and isolation hardening in 1.2.0. Install from source until a current release is
+> published.
+
 Install the current version from source:
 
 ```bash
@@ -131,11 +136,6 @@ git clone https://github.com/mhcoen/guardllm.git
 cd guardllm
 pip install -e '.[dev]'
 ```
-
-> **Do not install from PyPI.** The published `guardllm` package is 1.1.0 and predates
-> both the session-risk feedback loop this README describes and the detector, DLP, canary,
-> and isolation hardening in 1.2.0. Install from source until a current release is
-> published.
 
 1. Follow the quick-start guide: [docs/quick_start.md](docs/quick_start.md)
 2. Work through a [tutorial](tutorials/README.md). Each is a page to read and a script to run:
@@ -255,6 +255,8 @@ and GuardLLM's own surface result are backed by the tracked artifact.
 \* Llama Guard 4 was run locally on an A100 GPU with 80GB of RAM and incurred no network penalties in invocation.
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
+
+**On the latency column.** GuardLLM's `0.07ms` is a local function call; every other row is a model. Against the two systems that run a neural network locally that is `387x` ProtectAI DeBERTa and `2550x` Llama Guard 4 on an A100. Against the hosted filters it runs from `2991x` to `10690x`, but most of that gap is a network round trip rather than inference, so the local comparisons are the honest ones to reason about. The vendor latencies these ratios are computed from carry the same caveat as the rest of their column: reported, not currently reproducible from a tracked artifact.
 
 Non-text controls: `5224/5224` (`100%`) across 8 security kinds. Every figure here is generated from the [published surface evidence](benchmarks/published/surface_controls.md), which carries the run id, commit, and dataset hash that produced it.
 

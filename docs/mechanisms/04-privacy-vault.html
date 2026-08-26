@@ -167,8 +167,9 @@
             <text x="132" y="223" class="lbl-s" text-anchor="middle">token &harr; value, near side only</text>
             <path d="M132 172 V186" class="memo-stroke faint"></path>
 
-            <text x="340" y="206" class="lbl-s">two of five substituted, and the result reports</text>
-            <text x="340" y="226" class="taint-lbl">reason=&apos;clean&apos; &middot; detection_incomplete=False</text>
+            <text x="340" y="200" class="lbl-s">two of five substituted; the result still reports</text>
+            <text x="340" y="218" class="taint-lbl">reason=&apos;clean&apos; &middot; detection_incomplete=False</text>
+            <text x="340" y="238" class="memo-lbl">warnings: no detector for address, person</text>
           </svg>
         </div>
         <figcaption>
@@ -178,7 +179,9 @@
           seriously, and this is a default configuration, not a broken one:
           <code>DEFAULT_TOKENIZE_CLASSES</code> includes <code>person</code> and
           <code>address</code>, while <code>PrivacyConfig().detectors</code> is empty. The
-          classes are switched on and nothing is registered to find them. Structural patterns
+          classes are switched on and nothing is registered to find them. The verdict stays
+          <code>clean</code>, because none of the checks that ran failed; what tells you is the
+          warning, which names the classes nothing scanned for. Structural patterns
           like an address or a phone number carry their own shape and are matched without help;
           a name does not, so it needs a detector supplied through
           <code>PrivacyConfig(detectors=...)</code> or a host-declared value list. Until one is,
@@ -413,14 +416,17 @@
       It does not withhold the context, and it is not anonymization.
     </p>
     <p>
-      <strong>It cannot find what nothing looks for, and it will not tell you so.</strong>
-      Structural patterns and host-declared values are exact. A name or a street address with
-      neither, and no registered detector, crosses in the clear. The reporting is narrower than
-      it looks: <code>detection_incomplete</code> is set when a registered detector says its own
-      coverage was partial, so a class that is enabled with no detector behind it produces no
-      report at all. Panel 01 is that case, and it comes back
-      <code>reason=&apos;clean&apos;</code>. A control that never ran has nothing to say, which
-      is the same shape as the missing ledger entry in strip 05.
+      <strong>It cannot find what nothing looks for.</strong> Structural patterns and
+      host-declared values are exact. A name or a street address with neither, and no registered
+      detector, crosses in the clear. Be careful which signal you read for it.
+      <code>detection_incomplete</code> is not the one: that flag is set when a registered
+      detector reports its own coverage was partial, and a detector that was never registered
+      reports nothing, so panel 01 comes back <code>clean</code> with the flag unset. The
+      warning is the one. It names every configured class that has no structural pattern, no
+      seeded value and no detector behind it, which at a default configuration is
+      <code>person</code> and <code>address</code>, and it exists because this strip could not
+      otherwise be written honestly: a clean result on text containing a name was
+      indistinguishable from a clean result on text without one.
     </p>
     <p>
       <strong>The invariant is narrower than &ldquo;only issued tokens resolve&rdquo;.</strong>

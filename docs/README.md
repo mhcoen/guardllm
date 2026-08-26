@@ -23,11 +23,11 @@ This directory contains architecture and integration documentation for using gua
 
 ## Visual mechanism guide
 
-Five illustrated explanations, one mechanism each, for readers meeting the
+Six illustrated explanations, one mechanism each, for readers meeting the
 architecture for the first time. They are normative about mechanism and carry no
 measurements: the Markdown documents above remain the authoritative specification.
 
-- [All five strips](mechanisms/index.html), with a map of how they interlock.
+- [All six strips](mechanisms/index.html), with a map of how they interlock.
 - [01 What the Guard Remembers](mechanisms/01-session-risk.html): a fact recorded at
   ingest denies a tool call two turns later, and why four point tools cannot.
 - [02 A Marker Only the Model Sees](mechanisms/02-canary.html): canary tokens, and
@@ -38,6 +38,8 @@ measurements: the Markdown documents above remain the authoritative specificatio
   model boundary and the two gates on the way back.
 - [05 The Path Around the Guard](mechanisms/05-mediated-paths.html): why installed is
   not the same as in the way, and what the gateway does about it.
+- [06 One Call, Two Questions](mechanisms/06-two-questions.html): the tool gate rules
+  on the action, egress rules on the bytes, and passing one is not passing the other.
 
 ## Runnable material
 

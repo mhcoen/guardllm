@@ -17,9 +17,11 @@ LLM applications routinely process untrusted content (web results, emails, docum
 
 ## How GuardLLM Works
 
-> **New to GuardLLM? Start with the [visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/).** Four short
+> **New to GuardLLM? Start with the [visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/).** Six short
 > illustrated explanations, one mechanism each, showing how session risk, canary
-> tokens, request binding, and privacy restoration work outside the model.
+> tokens, request binding, and privacy restoration work outside the model, what
+> a path that skips the library costs the paths that do not, and why one tool
+> call is judged twice.
 
 ![GuardLLM trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
 
@@ -261,7 +263,7 @@ Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Ca
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md) | [Documentation index](docs/README.md)
-- **Visual mechanism guide**: [All four strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html) | [Mediated paths](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html)
+- **Visual mechanism guide**: [All six strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html) | [Mediated paths](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html) | [Two questions](https://mhcoen.github.io/guardllm/docs/mechanisms/06-two-questions.html)
 - **Demos**: [Executable demos](demo/README.md) | [System map](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html)
 - **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/README.md)

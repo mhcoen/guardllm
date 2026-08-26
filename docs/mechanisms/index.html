@@ -146,7 +146,7 @@
     <p class="eyebrow">GuardLLM</p>
     <h1>The Mechanism Strips</h1>
     <p class="standfirst">
-      Five short strips, one mechanism each. They exist because the hard part of this library
+      Six short strips, one mechanism each. They exist because the hard part of this library
       is not any single check, it is that a decision late in a session can read something an
       earlier stage wrote down. That is difficult to say in a paragraph and easy to show
       across panels.
@@ -157,7 +157,7 @@
     <h2>How they fit together</h2>
     <figure>
       <div class="fig-scroll">
-        <svg viewBox="0 0 780 396" role="img" aria-label="Strips one and two both write session risk that the tool gate later reads; strips four and three are an ordering within a single call, where tokens must be resolved before arguments are bound; strip five is the precondition, since none of it applies to a path that skips the guard.">
+        <svg viewBox="0 0 780 396" role="img" aria-label="Strips one and two both write session risk that the tool gate later reads; strips four, three and six are a sequence within a single call, where tokens are resolved, then arguments bound, then two independent questions decided before dispatch; strip five is the precondition, since none of it applies to a path that skips the guard.">
           <defs>
             <marker id="ix" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
               <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -199,22 +199,29 @@
 
           <text x="16" y="230" class="lbl-s">within a single call</text>
 
-          <rect x="16" y="242" width="200" height="52" rx="3" class="memo-box"></rect>
-          <text x="116" y="264" class="memo-lbl" text-anchor="middle">resolve tokens</text>
-          <text x="116" y="282" class="lbl-s" text-anchor="middle">strip 04</text>
+          <rect x="16" y="242" width="176" height="52" rx="3" class="memo-box"></rect>
+          <text x="104" y="264" class="memo-lbl" text-anchor="middle">resolve tokens</text>
+          <text x="104" y="282" class="lbl-s" text-anchor="middle">strip 04</text>
 
-          <line x1="228" y1="268" x2="276" y2="268" class="memo-stroke" marker-end="url(#ixm)"></line>
+          <line x1="194" y1="268" x2="224" y2="268" class="memo-stroke" marker-end="url(#ixm)"></line>
 
-          <rect x="288" y="242" width="200" height="52" rx="3" class="memo-box"></rect>
-          <text x="388" y="264" class="memo-lbl" text-anchor="middle">bind exact bytes</text>
-          <text x="388" y="282" class="lbl-s" text-anchor="middle">strip 03</text>
+          <rect x="228" y="242" width="176" height="52" rx="3" class="memo-box"></rect>
+          <text x="316" y="264" class="memo-lbl" text-anchor="middle">bind exact bytes</text>
+          <text x="316" y="282" class="lbl-s" text-anchor="middle">strip 03</text>
 
-          <line x1="500" y1="268" x2="548" y2="268" class="arrow" marker-end="url(#ix)"></line>
+          <line x1="406" y1="268" x2="436" y2="268" class="memo-stroke" marker-end="url(#ixm)"></line>
 
-          <rect x="560" y="242" width="204" height="52" rx="3" class="box"></rect>
-          <text x="662" y="273" class="lbl" text-anchor="middle">dispatch</text>
+          <rect x="440" y="230" width="188" height="76" rx="3" class="memo-box"></rect>
+          <text x="534" y="252" class="memo-lbl" text-anchor="middle">may the action run?</text>
+          <text x="534" y="272" class="memo-lbl" text-anchor="middle">may the bytes leave?</text>
+          <text x="534" y="292" class="lbl-s" text-anchor="middle">strip 06</text>
 
-          <text x="16" y="318" class="lbl-s">the order matters: bind a tokenized argument and the restored call fails its own check</text>
+          <line x1="630" y1="268" x2="654" y2="268" class="arrow" marker-end="url(#ix)"></line>
+
+          <rect x="658" y="242" width="106" height="52" rx="3" class="box"></rect>
+          <text x="711" y="273" class="lbl" text-anchor="middle">dispatch</text>
+
+          <text x="16" y="322" class="lbl-s">the order matters: bind a tokenized argument and the restored call fails its own check</text>
 
           <line x1="16" y1="342" x2="764" y2="342" class="arrow dash faint"></line>
           <rect x="16" y="352" width="748" height="34" rx="3" class="taint-box"></rect>
@@ -223,10 +230,11 @@
       </div>
       <figcaption>
         Strips 01 and 02 are the same loop seen from both ends: one writes session risk on the
-        way in, the other on the way out, and the tool gate reads whatever is there. Strips 04
-        and 03 are not a loop but a sequence, and getting them the wrong way round breaks the
-        call. Strip 05 sits underneath all of it: every arrow here assumes the application
-        actually routed that path through the library.
+        way in, the other on the way out, and the tool gate reads whatever is there. Strips 04,
+        03 and 06 are not a loop but a sequence, and getting the first two the wrong way round
+        breaks the call. Strip 06 is where that sequence ends, and the point of it is that the
+        last step is two verdicts rather than one. Strip 05 sits underneath all of it: every
+        arrow here assumes the application actually routed that path through the library.
       </figcaption>
     </figure>
   </section>
@@ -288,6 +296,17 @@
           ledger and allows what it would otherwise deny.
         </p>
         <p class="shows">A-AS1 &middot; A-AS2 &middot; mediated paths &middot; what the gateway fixes</p>
+      </a>
+
+      <a class="card" href="06-two-questions.html">
+        <span class="n">06</span>
+        <p class="t">One Call, Two Questions</p>
+        <p class="claim">
+          A tool call looks like one decision. It is two, asked of different things and sharing
+          no code: an AWS key sails through the gate that authorized the send, and is stopped
+          by the check that never knew which tool it was reading.
+        </p>
+        <p class="shows">check_tool_call vs check_outbound &middot; A-AS9 &middot; every string leaf</p>
       </a>
 
     </div>

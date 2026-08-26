@@ -157,6 +157,10 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 > Illustrated: [05 The Path Around the Guard](mechanisms/05-mediated-paths.html) shows a
 > session where `A-AS1` is false, and the correctly mediated tool call that then allows
 > what it would otherwise deny.
+>
+> Illustrated: [06 One Call, Two Questions](mechanisms/06-two-questions.html) takes
+> `A-AS9` apart, measuring the same argument refused by the tool gate for its shape and
+> allowed with a credential in it, and the two ways a per-field egress check still misses.
 
 | A-AS1  | The application calls `process_inbound` before sending content to the model         | Sanitizer / detector never run; no protection                  |
 | A-AS2  | The application calls `authorize` / `check_tool_call` before tool invocation        | Policy gate is bypassed                                        |

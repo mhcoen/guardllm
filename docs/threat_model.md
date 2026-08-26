@@ -154,6 +154,10 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 
 | ID     | Assumption                                                                          | Failure mode if violated                                       |
 |--------|--------------------------------------------------------------------------------------|----------------------------------------------------------------|
+> Illustrated: [05 The Path Around the Guard](mechanisms/05-mediated-paths.html) shows a
+> session where `A-AS1` is false, and the correctly mediated tool call that then allows
+> what it would otherwise deny.
+
 | A-AS1  | The application calls `process_inbound` before sending content to the model         | Sanitizer / detector never run; no protection                  |
 | A-AS2  | The application calls `authorize` / `check_tool_call` before tool invocation        | Policy gate is bypassed                                        |
 | A-AS3  | Source identifiers passed to `context_*` are honest about the actual source         | Trust labels are wrong; downstream decisions misroute          |

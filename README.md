@@ -112,7 +112,7 @@ GuardLLM applies a defense-in-depth security model across untrusted content hand
 
 However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
 
-Production protection depends on mediating every relevant path through GuardLLM and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. See the [production checklist](docs/production_checklist.md) and the documented compatibility exceptions in [SECURITY.md](SECURITY.md).
+Production protection depends on mediating every relevant path through GuardLLM and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. What that means in practice, and why one unmediated path degrades the paths that are mediated, is illustrated in [The Path Around the Guard](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html). See the [production checklist](docs/production_checklist.md) and the documented compatibility exceptions in [SECURITY.md](SECURITY.md).
 
 ## Get Started
 
@@ -261,7 +261,7 @@ Full benchmark details: [Benchmark Methodology](benchmarks/methodology.md) | [Ca
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md) | [Documentation index](docs/README.md)
-- **Visual mechanism guide**: [All four strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html)
+- **Visual mechanism guide**: [All four strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html) | [Mediated paths](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html)
 - **Demos**: [Executable demos](demo/README.md) | [System map](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html)
 - **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/README.md)

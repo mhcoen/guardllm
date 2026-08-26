@@ -266,9 +266,22 @@ evidence sit above the interface rather than inside it.
 ## What this does not do
 
 - **It does not find what no tier detects.** A name or a street address with no
-  seeded value and no registered detector passes through in the clear. The
-  vault reports `detection_incomplete` when it knows its own coverage was
-  partial; it cannot report what nothing looked for.
+  seeded value and no registered detector passes through in the clear. Note
+  what carries that news, because `detection_incomplete` does not: that flag
+  means a detector which ran could not finish, so a class with no detector
+  behind it sets nothing and the result still reads `reason='clean'`. What you
+  get instead is a warning on the result naming the classes nothing looked for:
+
+  ```text
+  No detector for configured class(es): address, person. Nothing scanned for
+  them, so a clean result here is not evidence that no value of those classes
+  was present.
+  ```
+
+  It is emitted whenever a configured class has no structural pattern, no
+  seeded value and no registered detector, which at the default configuration
+  means `PERSON` and `ADDRESS`. Seeding a value of that class, registering a
+  detector for it, or narrowing `PrivacyConfig.classes` all clear it.
 - **It does not survive the process unless you ask it to.** The vault is in
   memory and scoped to the session by default. A restart loses the mapping,
   and tokens issued before it will no longer resolve; they fail closed rather

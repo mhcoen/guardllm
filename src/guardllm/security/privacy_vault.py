@@ -38,7 +38,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, replace
 
 from guardllm.security import token_codec as codec
-from guardllm.security.pii_detect import SeededValues, detect
+from guardllm.security.pii_detect import STRUCTURAL_CLASSES, SeededValues, detect
 from guardllm.security.types import (
     CORRECTED,
     EXACT,
@@ -953,6 +953,14 @@ class PrivacyVault:
 
         warnings: list[str] = []
         warnings.extend(found.detector_warnings)
+        uncovered = self._uncovered_classes()
+        if uncovered:
+            warnings.append(
+                "No detector for configured class(es): "
+                + ", ".join(c.value for c in uncovered)
+                + ". Nothing scanned for them, so a clean result here is not evidence that no "
+                "value of those classes was present."
+            )
         if found.detection_incomplete and deny_action == "fail":
             # `"fail"` marks the host-assembled path (`Guard.deidentify`), as
             # against `"marker"` for untrusted ingest. The host asked for
@@ -1099,6 +1107,31 @@ class PrivacyVault:
             detection_incomplete=found.detection_incomplete,
             inference_used=bool(cfg.detectors),
         )
+
+    def _uncovered_classes(self) -> tuple[PIIClass, ...]:
+        """Configured classes that nothing in this deployment looks for.
+
+        A class can be switched on and still have no detector behind it. The
+        shipped structural patterns cover most of ``PIIClass``, but PERSON and
+        ADDRESS are deliberately not inferred from free text, and both are in
+        ``DEFAULT_TOKENIZE_CLASSES``. A host that enables the vault and changes
+        nothing else has therefore asked for name coverage it does not have.
+
+        This is a configuration state, not a detection failure, so it does not
+        set ``detection_incomplete``: that flag means a detector which ran could
+        not finish, and a detector that was never registered cannot report
+        anything. The distinction is the reason this is reported separately.
+        Without it, ``reason='clean'`` on text containing a name reads as "no
+        name was found" when it means "nothing looked".
+        """
+        cfg = self._config
+        # CREDENTIAL is covered, just not by the structural table: ``detect``
+        # runs ``credential_spans`` for it on the original text, with its own
+        # handling for secrets split by invisible characters.
+        covered = {PIIClass.CREDENTIAL} | set(STRUCTURAL_CLASSES) | set(self.seeded.classes())
+        for detector in cfg.detectors:
+            covered |= set(detector.classes)
+        return tuple(sorted(cfg.scanned_classes() - covered, key=lambda c: c.value))
 
     @staticmethod
     def _has_ambiguous_run(content: str) -> bool:

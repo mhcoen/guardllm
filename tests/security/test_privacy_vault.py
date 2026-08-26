@@ -4331,3 +4331,69 @@ class TestUnicodeEvasionAtTheBoundary:
         result = _vault().deidentify("write to alice@example.com please")
         assert "alice@example.com" not in result.content
         assert "[[GL:EMAIL:" in result.content
+
+
+class TestUncoveredClassesAreReported:
+    """An enabled class with no detector behind it must not read as clean.
+
+    ``DEFAULT_TOKENIZE_CLASSES`` includes PERSON and ADDRESS, and the library
+    deliberately declines to infer either from free text, so a host that turns
+    the vault on and changes nothing has asked for name coverage it does not
+    have. ``detection_incomplete`` cannot carry this: it means a detector that
+    ran could not finish, and a detector that was never registered reports
+    nothing at all.
+    """
+
+    def test_the_default_configuration_says_what_it_cannot_find(self):
+        from guardllm import Guard
+        from guardllm.security.types import PrivacyConfig
+
+        result = Guard(privacy=PrivacyConfig()).deidentify(
+            "Marguerite Vasquez, m.vasquez@clinic.example, 44 Sycamore Lane"
+        )
+        # The mechanism still works for what it can find.
+        assert "[[GL:EMAIL:" in result.content
+        # And crucially, does not claim the rest was looked at.
+        assert "Marguerite Vasquez" in result.content
+        assert result.detection_incomplete is False
+        assert any("address, person" in w for w in result.warnings), result.warnings
+
+    def test_a_registered_detector_removes_the_warning(self):
+        from guardllm import Guard
+        from guardllm.security.types import PIIClass, PrivacyConfig
+
+        class NameDetector:
+            id = "test-ner"
+            classes = frozenset({PIIClass.PERSON, PIIClass.ADDRESS})
+
+            def find(self, text):
+                return []
+
+        result = Guard(privacy=PrivacyConfig(detectors=(NameDetector(),))).deidentify(
+            "Marguerite Vasquez at 44 Sycamore Lane"
+        )
+        assert not [w for w in result.warnings if "No detector" in w]
+
+    def test_seeding_a_value_covers_its_class(self):
+        from guardllm.security.privacy_vault import PrivacyVault
+        from guardllm.security.types import PIIClass, PrivacyConfig
+
+        vault = PrivacyVault(PrivacyConfig())
+        assert PIIClass.PERSON in vault._uncovered_classes()
+        vault.seed({"Marguerite Vasquez": PIIClass.PERSON})
+        assert PIIClass.PERSON not in vault._uncovered_classes()
+
+    def test_narrowing_the_configured_classes_removes_the_warning(self):
+        from guardllm import Guard
+        from guardllm.security.types import PIIClass, PrivacyConfig
+
+        config = PrivacyConfig(classes=frozenset({PIIClass.EMAIL, PIIClass.PHONE}))
+        result = Guard(privacy=config).deidentify("m.vasquez@clinic.example")
+        assert not [w for w in result.warnings if "No detector" in w]
+
+    def test_credential_is_not_reported_uncovered(self):
+        """It is covered by ``credential_spans``, not the structural table."""
+        from guardllm.security.privacy_vault import PrivacyVault
+        from guardllm.security.types import PIIClass, PrivacyConfig
+
+        assert PIIClass.CREDENTIAL not in PrivacyVault(PrivacyConfig())._uncovered_classes()

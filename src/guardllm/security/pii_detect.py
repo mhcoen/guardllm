@@ -621,6 +621,15 @@ _DETECTORS: tuple[DetectorSpec, ...] = (
 )
 
 
+#: Classes the shipped structural patterns can find unaided. Every other member
+#: of ``PIIClass`` needs a host-seeded value (tier 2) or a registered
+#: ``Detector`` (tier 3) before anything looks for it at all. PERSON and ADDRESS
+#: are the two that matter in practice: the module docstring above explains why
+#: the library declines to infer them from free text, and ``_uncovered_classes``
+#: in privacy_vault reports when a deployment has enabled one anyway.
+STRUCTURAL_CLASSES: frozenset[PIIClass] = frozenset(d.pii_class for d in _DETECTORS)
+
+
 #: Maps every group name in a compiled alternation, both the detector group and
 #: its optional inner value group, to the spec and the value group to read.
 #: Precomputed so the match loop does no string building and no membership test
@@ -760,6 +769,7 @@ class SeededValues:
 
     def __init__(self) -> None:
         self._values: dict[str, PIIClass] = {}
+        self._classes: set[PIIClass] = set()
         self._automaton: _AhoCorasick | None = None
         self._dirty = False
 
@@ -771,10 +781,21 @@ class SeededValues:
             norm = raw.strip().casefold()
             if norm:
                 self._values[norm] = cls
+                self._classes.add(cls)
         self._dirty = True
+
+    def classes(self) -> frozenset[PIIClass]:
+        """Which classes any declared value could match.
+
+        Tracked as values are added rather than derived on demand: this is read
+        once per de-identification call to decide whether a configured class has
+        anything looking for it, and a deployment can seed thousands of values.
+        """
+        return frozenset(self._classes)
 
     def clear(self) -> None:
         self._values.clear()
+        self._classes.clear()
         self._automaton = None
         self._dirty = False
 

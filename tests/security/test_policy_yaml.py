@@ -196,3 +196,28 @@ class TestPolicyFileVersion:
         parse_policy(f"version: {POLICY_FILE_VERSION}\npolicy:")
         with pytest.raises(ValueError, match="unknown top-level key"):
             parse_policy("verison: 1\npolicy: {}")
+
+
+class TestDeclaredDestructiveTools:
+    """The declaration has to be expressible where policy is written.
+
+    Leaving it constructor-only would half-fix the gap it exists to close: a
+    deployment that keeps its policy in a file would still have no way to say
+    that its own dangerous tool is dangerous.
+    """
+
+    def test_a_file_can_name_the_deployments_destructive_tools(self):
+        policy = parse_policy(
+            "policy:\n  enable_destructive: true\n  destructive_tools: [wire_funds, ledger_write]\n"
+        )
+        assert policy.destructive_tools == frozenset({"wire_funds", "ledger_write"})
+
+    def test_an_empty_list_is_not_the_same_as_omitting_the_key(self):
+        """Replacing the built-in set with nothing is a real choice; keeping the
+        built-in set is what silence means."""
+        assert parse_policy("policy:\n  destructive_tools: []\n").destructive_tools == frozenset()
+        assert parse_policy("policy:\n  enable_destructive: true\n").destructive_tools is None
+
+    def test_a_bare_string_is_refused_rather_than_iterated(self):
+        with pytest.raises(ValueError, match="expected a list of strings"):
+            parse_policy("policy:\n  destructive_tools: wire_funds\n")

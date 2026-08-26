@@ -98,8 +98,11 @@ _STR_FIELDS = frozenset(
         "require_message_binding",
     }
 )
-#: Lists of tool or source names that become frozensets.
-_STR_SET_FIELDS = frozenset({"untrusted_deny_tools", "require_source_id_for"})
+#: Lists of tool or source names that become frozensets. ``destructive_tools``
+#: REPLACES the library's built-in set rather than extending it, so an empty
+#: list is meaningful (nothing is destructive) and is not the same as omitting
+#: the key (keep the built-in set).
+_STR_SET_FIELDS = frozenset({"untrusted_deny_tools", "require_source_id_for", "destructive_tools"})
 #: Host-shaped mappings the library does not interpret here. Their contents are
 #: validated where they are used, not on the way in.
 _MAPPING_FIELDS = frozenset({"capability_scopes", "rate_limits", "argument_limits"})

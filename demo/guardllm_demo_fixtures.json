@@ -1006,7 +1006,7 @@
         "anomalies": [],
         "confidence": "explicit",
         "matched_directive": "api",
-        "reason": "Authorization verified"
+        "reason": "Authorization verified [session risk present: session contaminated=require_auth]"
       },
       "clean_control_write": {
         "allowed": true,
@@ -1287,6 +1287,7 @@
                 "confirm_all_below": null,
                 "contaminated_action": "block",
                 "contaminated_tool_policy": "require_auth",
+                "destructive_tools": null,
                 "directive_patterns": {},
                 "dlp_ngram_overlap_min": 0.4,
                 "dlp_sensitive_lcs_min": 12,
@@ -1372,6 +1373,7 @@
                 "confirm_all_below": null,
                 "contaminated_action": "block",
                 "contaminated_tool_policy": "require_auth",
+                "destructive_tools": null,
                 "directive_patterns": {},
                 "dlp_ngram_overlap_min": 0.4,
                 "dlp_sensitive_lcs_min": 12,
@@ -1471,6 +1473,7 @@
                 "confirm_all_below": null,
                 "contaminated_action": "block",
                 "contaminated_tool_policy": "require_auth",
+                "destructive_tools": null,
                 "directive_patterns": {},
                 "dlp_ngram_overlap_min": 0.4,
                 "dlp_sensitive_lcs_min": 12,
@@ -1510,7 +1513,7 @@
             "anomalies": [],
             "confidence": "explicit",
             "matched_directive": "api",
-            "reason": "Authorization verified"
+            "reason": "Authorization verified [session risk present: session contaminated=require_auth]"
           },
           "state_after": {
             "context_contaminated": true,
@@ -1614,6 +1617,7 @@
                 "confirm_all_below": null,
                 "contaminated_action": "block",
                 "contaminated_tool_policy": "require_auth",
+                "destructive_tools": null,
                 "directive_patterns": {},
                 "dlp_ngram_overlap_min": 0.4,
                 "dlp_sensitive_lcs_min": 12,
@@ -1716,6 +1720,7 @@
                 "confirm_all_below": null,
                 "contaminated_action": "block",
                 "contaminated_tool_policy": "require_auth",
+                "destructive_tools": null,
                 "directive_patterns": {},
                 "dlp_ngram_overlap_min": 0.4,
                 "dlp_sensitive_lcs_min": 12,
@@ -1755,7 +1760,7 @@
             "anomalies": [],
             "confidence": "explicit",
             "matched_directive": "api",
-            "reason": "Authorization verified"
+            "reason": "Authorization verified [session risk present: session contaminated=require_auth]"
           },
           "state_after": {
             "context_contaminated": true,
@@ -1784,7 +1789,7 @@
         "anomalies": [],
         "confidence": "explicit",
         "matched_directive": "api",
-        "reason": "Authorization verified"
+        "reason": "Authorization verified [session risk present: session contaminated=require_auth]"
       }
     },
     "policy": {

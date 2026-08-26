@@ -580,6 +580,18 @@ class SecurityPipeline:
         # Surface non-blocking anomaly signals (burst, novel recipient) rather
         # than discarding them.
         policy_result.anomalies = rate_result.anomalies
+        # Session risk was present and did not stop the call: either the policy
+        # is "allow", or it is "require_auth" and an authorization was supplied.
+        # Name the signal and its setting either way. Without this the caller
+        # sees only the policy engine's own reason, typically "Non-destructive
+        # tool, implicit allow", which attributes the outcome to the tool's
+        # classification when classification had nothing to do with it: the
+        # same call is refused under "deny" whether the tool is declared or not.
+        # Two reviewers read that string as evidence that declaring the tool
+        # would have changed the answer. It would not.
+        if active_signals:
+            noted = "; ".join(f"{label}={policy}" for label, policy in active_signals)
+            policy_result.reason = f"{policy_result.reason} [session risk present: {noted}]"
         return policy_result
 
     def record_tool_execution(

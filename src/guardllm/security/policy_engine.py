@@ -123,8 +123,11 @@ class PolicyEngine:
                     confidence="none",
                 )
 
-        # Destructive tools require explicit enablement
-        if tool in self._destructive_tools:
+        # Destructive tools require explicit enablement. Same per-context
+        # override as the client path, so a deployment's declaration holds in
+        # server mode too rather than only where it happened to be read.
+        declared = ctx.policy.destructive_tools
+        if tool in (declared if declared is not None else self._destructive_tools):
             if not ctx.policy.enable_destructive:
                 return GateResult(
                     allowed=False,
@@ -147,7 +150,11 @@ class PolicyEngine:
         current_message_hash: str | None = None,
     ) -> GateResult:
         """Client mode: verify authorization event."""
-        is_destructive = tool in self._destructive_tools
+        # A per-context override wins over the set this engine was built with,
+        # so a host can name its own destructive tools through PolicyConfig
+        # instead of reaching for a PolicyEngine it does not construct.
+        declared = ctx.policy.destructive_tools
+        is_destructive = tool in (declared if declared is not None else self._destructive_tools)
 
         # Destructive tools must be enabled in policy
         if is_destructive and not ctx.policy.enable_destructive:

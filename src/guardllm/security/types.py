@@ -171,6 +171,19 @@ class PolicyConfig:
     # kept as a constructor field to avoid a breaking change post-2.0.0.
     directive_patterns: dict[str, Any] = field(default_factory=dict)
     enable_destructive: bool = False
+    #: Tools this deployment treats as destructive, replacing the library's
+    #: built-in set rather than extending it, so a host can also declare fewer.
+    #: ``None`` keeps the built-in set.
+    #:
+    #: The set was reachable only as a ``PolicyEngine`` constructor argument,
+    #: which ``Guard`` builds itself, so a host with a ``wire_funds`` tool had
+    #: no supported way to say that it was destructive: the built-in set names
+    #: gmail, calendar, slack, file and shell tools and nothing else. Note the
+    #: scope of what this changes. It gates ``enable_destructive``, the
+    #: authorization requirement, and ``require_message_binding="destructive"``.
+    #: It does NOT feed the session-risk gate, which refuses a declared and an
+    #: undeclared tool alike under ``contaminated_tool_policy="deny"``.
+    destructive_tools: frozenset[str] | None = None
 
     # Server mode (None = no allowlist, {} = deny all tools)
     capability_scopes: dict[str, Any] | None = None
@@ -226,6 +239,18 @@ class PolicyConfig:
     require_message_binding: str = "off"
 
     def __post_init__(self) -> None:
+        if self.destructive_tools is not None:
+            if isinstance(self.destructive_tools, str) or not all(
+                isinstance(t, str) for t in self.destructive_tools
+            ):
+                # A bare string is iterable, so `destructive_tools="wire_funds"`
+                # would silently declare eleven single-character tools and leave
+                # the real one unguarded.
+                raise ValueError(
+                    "destructive_tools must be a collection of tool-name strings, "
+                    f"got {type(self.destructive_tools).__name__}"
+                )
+            self.destructive_tools = frozenset(self.destructive_tools)
         _VALID_CONTAMINATED_TOOL_POLICIES = {"allow", "require_auth", "deny"}
         if self.contaminated_tool_policy not in _VALID_CONTAMINATED_TOOL_POLICIES:
             raise ValueError(

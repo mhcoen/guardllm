@@ -70,6 +70,15 @@ class-to-policy mappings that a file cannot name, so it stays a Python object.
 - `tool_allowlist`: client-mode allowlist map for tool authorization policy (`None` = no allowlist, fall through; `{}` = deny all tools; `{tool: ...}` = allow listed tools only).
 - `directive_patterns`: **reserved / not yet wired.** Accepted for forward compatibility but not consulted by the policy engine today. The library validates an `AuthorizationEvent`'s contents, not its origin; ensuring only trusted adapters can construct events is a host obligation (see A-AS8 in `docs/threat_model.md`). Its disposition (deprecate vs. wire as a source-string consistency check) is undecided; retained as a constructor field to avoid a breaking change post-2.0.0.
 - `enable_destructive`: enable destructive tools (default `False`).
+- `destructive_tools`: the tools this deployment treats as destructive, as a
+  list of names. Absent keeps the library's built-in set, which names gmail,
+  calendar, slack, file and shell tools; a list **replaces** that set rather
+  than extending it, so `[]` means nothing is destructive. Set this if your
+  dangerous action is not one the library ships a name for. It gates
+  `enable_destructive`, the authorization requirement, and
+  `require_message_binding: destructive`. It does **not** feed the session-risk
+  gate, which refuses a declared and an undeclared tool alike under
+  `contaminated_tool_policy: deny`.
 - `capability_scopes`: server-mode allowed tool scope mapping (`None` = no allowlist; `{}` = deny all tools).
 - `client_id`: optional logical client identity.
 Both `rate_limits` and `argument_limits` are validated by `PolicyConfig` at construction: an unknown key, a wrong type, or a `pattern` that does not compile is refused there rather than raising from the middle of whichever tool call happens to carry that argument.

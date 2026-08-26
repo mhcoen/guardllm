@@ -381,7 +381,16 @@ def test_mcp_tool_surface_fixture(executed_scenarios):
     assert unescalated["result"]["allowed"] is True
     # Explicitly verified, not implicitly allowed: this is what proves the
     # artifacts the denied call carried were sound.
-    assert unescalated["result"]["reason"] == "Authorization verified"
+    assert unescalated["result"]["reason"].startswith("Authorization verified")
+    # The control session is contaminated, just not escalated, so the gate also
+    # records that session risk was present and names the setting that let the
+    # call through. Asserted because the distinction this control draws depends
+    # on it: the call cleared the contamination policy on its authorization,
+    # rather than never having been subject to one.
+    assert (
+        "[session risk present: session contaminated=require_auth]"
+        in unescalated["result"]["reason"]
+    )
     assert unescalated["terminal_layer"] == "rate_limit"
     assert after["result"]["reason"] == (
         "Tool call denied: session contaminated=require_auth; egress escalated=deny"

@@ -32,10 +32,11 @@ measurements: the Markdown documents above remain the authoritative specificatio
   ingest denies a tool call two turns later, and why four point tools cannot.
 - [02 A Marker Only the Model Sees](mechanisms/02-canary.html): canary tokens, and
   what a match proves.
-- [03 The Call That Came Back](mechanisms/03-request-binding.html): request binding
+- [03 The Call That Came Back Changed](mechanisms/03-request-binding.html): request binding
   and deferred-execution replay.
-- [04 Nothing Crosses By Name](mechanisms/04-privacy-vault.html): substitution at the
-  model boundary and the two gates on the way back.
+- [04 What the Provider Sees Instead](mechanisms/04-privacy-vault.html): substitution at the
+  model boundary, what a default configuration does not detect, and the two gates on the way
+  back.
 - [05 The Path Around the Guard](mechanisms/05-mediated-paths.html): why installed is
   not the same as in the way, and what the gateway does about it.
 - [06 One Call, Two Questions](mechanisms/06-two-questions.html): the tool gate rules

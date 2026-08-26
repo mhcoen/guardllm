@@ -22,7 +22,7 @@
 </details>
 <!-- toc:end -->
 
-> Illustrated: [04 Nothing Crosses By Name](mechanisms/04-privacy-vault.html) shows
+> Illustrated: [04 What the Provider Sees Instead](mechanisms/04-privacy-vault.html) shows
 > substitution at the model boundary and the two deny-by-default gates that decide
 > whether a real value comes back.
 

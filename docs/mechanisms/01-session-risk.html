@@ -438,13 +438,14 @@
         <figcaption>
           Same call, same user. The only thing that changed between the two turns is a fact
           recorded earlier, on a different channel, by a different stage, and the gate can read
-          it. Which is the mechanism. What the gate then <em>does</em> is a separate choice, and
-          <code>contaminated_tool_policy</code> ships as <code>allow</code>: the top row is what
+          it. That is the mechanism. What the gate then <em>does</em> with the fact is a
+          separate choice, and this gate does not consult the library&rsquo;s destructive-tool
+          set to make it: under <code>deny</code> a declared tool and an undeclared one are
+          both refused with the same string, and under <code>allow</code> both pass. The policy
+          is the only variable, and it ships as <code>allow</code>, so the top row is what
           happens out of the box. That is deliberate, and the README says several defaults are
-          permissive for compatibility, but it means the refusal below it is something you turn
-          on. Declaring the tool destructive does not substitute for it. A fully enabled,
-          fully authorized <code>gmail_send_email</code> in a contaminated session is still
-          permitted while the policy stays <code>allow</code>.
+          permissive for compatibility. It also means the refusal below it is something you
+          turn on.
         </figcaption>
       </figure>
     </section>

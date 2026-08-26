@@ -269,12 +269,11 @@
           </svg>
         </div>
         <figcaption>
-          The token is HMAC-SHA256 over the session id, keyed with a host secret, truncated to
-          the first sixteen hex characters. Both halves of that matter. The key is what makes it
-          unguessable, since a plain digest of a session id would be reproducible by anyone who
-          could guess the id; the truncation keeps sixty-four bits of the tag&rsquo;s two hundred
-          fifty-six, which is a deliberate trade rather than an accident of formatting. The
-          second copy living outside the model is what makes the rest of this work.
+          The token is the first sixteen hex characters of HMAC-SHA256 over the session id
+          under a host secret. Unique per session, reproducible by the host, not guessable, and
+          the key is what buys that last one: a plain digest of a session id is reproducible by
+          anyone who can guess the id. The second copy living outside the model is what makes
+          the rest of this work.
         </figcaption>
       </figure>
     </section>
@@ -515,6 +514,9 @@
       remembers. Egress there is checked against a token that was never placed, and the check
       does not fail: it passes, quietly, having compared against the wrong string. Set the
       variable in any deployment with more than one process, or with a process that restarts.
+      The truncation is the other deployment fact worth knowing: sixteen hex characters is
+      sixty-four bits of the tag&rsquo;s two hundred fifty-six, a deliberate trade rather than
+      an accident of formatting.
     </p>
     <p>
       It is also narrow by design. It catches the exact string leaving, not a paraphrase of

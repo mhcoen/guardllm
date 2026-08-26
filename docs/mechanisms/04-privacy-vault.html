@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nothing Crosses By Name</title>
+<title>What the Provider Sees Instead</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
@@ -111,11 +111,13 @@
 
   <header>
     <p class="eyebrow">GuardLLM &middot; mechanism strip 04</p>
-    <h1>Nothing Crosses By Name</h1>
+    <h1>What the Provider Sees Instead</h1>
     <p class="standfirst">
       When the model runs at a third party, every byte of every prompt crosses that boundary.
-      Personal data is replaced before the crossing with tokens, and coming back is not
-      automatic: two separate gates decide, and both of them default to no.
+      Personal data <em>the detectors recognize</em> is replaced before the crossing with
+      tokens, and coming back is not automatic: two separate gates decide, and both of them
+      default to no. Those four words are the difference between a mechanism and a promise, and
+      panel 01 shows why.
     </p>
   </header>
 
@@ -129,41 +131,58 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 186" role="img" aria-label="Host content containing an email address and a person's name is tokenized before crossing the boundary to the model provider; the vault keeps the mapping on the near side.">
+          <svg viewBox="0 0 640 254" role="img" aria-label="Five values enter deidentify at a default configuration. The email address and the phone number cross as tokens; the person name, the street address and the nickname cross in the clear, and the result reports clean.">
             <defs>
               <marker id="v1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
               </marker>
             </defs>
 
-            <rect x="16" y="20" width="248" height="86" rx="3" class="box-f"></rect>
-            <text x="32" y="44" class="lbl-s">host content</text>
-            <line x1="32" y1="54" x2="248" y2="54" class="arrow dash faint"></line>
-            <text x="32" y="76" class="lbl">Email jane@clinic.example</text>
-            <text x="32" y="96" class="lbl">about Marguerite&rsquo;s referral</text>
+            <rect x="16" y="20" width="232" height="150" rx="3" class="box-f"></rect>
+            <text x="30" y="42" class="lbl-s">host content</text>
+            <line x1="30" y1="52" x2="234" y2="52" class="arrow dash faint"></line>
+            <text x="30" y="74" class="lbl-s">Marguerite Vasquez</text>
+            <text x="30" y="96" class="lbl-s">m.vasquez@clinic.example</text>
+            <text x="30" y="118" class="lbl-s">617-555-0142</text>
+            <text x="30" y="140" class="lbl-s">44 Sycamore Lane</text>
+            <text x="30" y="162" class="lbl-s">goes by Margo</text>
 
-            <line x1="276" y1="60" x2="330" y2="60" class="memo-stroke" marker-end="url(#v1)"></line>
-            <text x="303" y="50" class="memo-lbl" text-anchor="middle">deidentify</text>
+            <line x1="260" y1="95" x2="310" y2="95" class="memo-stroke" marker-end="url(#v1)"></line>
+            <text x="285" y="85" class="memo-lbl" text-anchor="middle">deidentify</text>
 
-            <line x1="392" y1="8" x2="392" y2="178" class="border-line"></line>
-            <text x="400" y="20" class="lbl-s">boundary</text>
+            <line x1="328" y1="8" x2="328" y2="200" class="border-line"></line>
+            <text x="336" y="20" class="lbl-s">boundary</text>
 
-            <rect x="404" y="20" width="220" height="86" rx="3" class="box-f"></rect>
-            <text x="420" y="44" class="lbl-s">what the provider sees</text>
-            <line x1="420" y1="54" x2="608" y2="54" class="arrow dash faint"></line>
-            <text x="420" y="76" class="memo-lbl">[[GL:EMAIL:7QX4M2KPZ3T8W9F]]</text>
-            <text x="420" y="96" class="memo-lbl">[[GL:PERSON:W5TW61AVNDJ7DYR]]</text>
+            <rect x="340" y="20" width="284" height="150" rx="3" class="box-f"></rect>
+            <text x="354" y="42" class="lbl-s">what the provider sees</text>
+            <line x1="354" y1="52" x2="610" y2="52" class="arrow dash faint"></line>
+            <text x="354" y="74" class="taint-lbl">Marguerite Vasquez</text>
+            <text x="354" y="96" class="memo-lbl">[[GL:EMAIL:MBGMQC190KJS0GG]]</text>
+            <text x="354" y="118" class="memo-lbl">[[GL:PHONE:N4VH2865KVNQG1S]]</text>
+            <text x="354" y="140" class="taint-lbl">44 Sycamore Lane</text>
+            <text x="354" y="162" class="taint-lbl">goes by Margo</text>
 
-            <rect x="196" y="126" width="180" height="46" rx="3" class="memo-box"></rect>
-            <text x="286" y="146" class="memo-lbl" text-anchor="middle">vault</text>
-            <text x="286" y="163" class="lbl-s" text-anchor="middle">token &harr; value</text>
-            <path d="M303 74 V126" class="memo-stroke faint"></path>
+            <rect x="16" y="186" width="232" height="46" rx="3" class="memo-box"></rect>
+            <text x="132" y="206" class="memo-lbl" text-anchor="middle">vault</text>
+            <text x="132" y="223" class="lbl-s" text-anchor="middle">token &harr; value, near side only</text>
+            <path d="M132 172 V186" class="memo-stroke faint"></path>
+
+            <text x="340" y="206" class="lbl-s">two of five substituted, and the result reports</text>
+            <text x="340" y="226" class="taint-lbl">reason=&apos;clean&apos; &middot; detection_incomplete=False</text>
           </svg>
         </div>
         <figcaption>
-          The mapping never crosses. The model works with stable placeholders, so it can still
-          reason about &ldquo;the same person&rdquo; appearing twice without ever being told who
-          that is.
+          The mapping never crosses, and the model works with stable placeholders, so it can
+          still reason about the same person appearing twice without being told who that is.
+          That is the mechanism. The three values that crossed as written are the part to take
+          seriously, and this is a default configuration, not a broken one:
+          <code>DEFAULT_TOKENIZE_CLASSES</code> includes <code>person</code> and
+          <code>address</code>, while <code>PrivacyConfig().detectors</code> is empty. The
+          classes are switched on and nothing is registered to find them. Structural patterns
+          like an address or a phone number carry their own shape and are matched without help;
+          a name does not, so it needs a detector supplied through
+          <code>PrivacyConfig(detectors=...)</code> or a host-declared value list. Until one is,
+          a name crosses by name.
         </figcaption>
       </figure>
     </section>
@@ -214,7 +233,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 178" role="img" aria-label="Restoration passes through two independent deny-by-default gates: a per-destination policy and a per-tool-field policy.">
+          <svg viewBox="0 0 640 222" role="img" aria-label="Restoration passes through two independent deny-by-default gates: a per-destination policy and a per-tool-field policy.">
             <defs>
               <marker id="v3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -239,13 +258,24 @@
             <text x="538" y="104" class="lbl-s" text-anchor="middle">tool may hold it</text>
             <text x="538" y="122" class="taint-lbl" text-anchor="middle">defaults to nothing</text>
 
-            <text x="16" y="164" class="lbl-s">including the user: being a person on a screen is not, by itself, an entitlement</text>
+            <text x="16" y="152" class="lbl-s">including the user: being a person on a screen is not, by itself, an entitlement</text>
+
+            <line x1="16" y1="166" x2="624" y2="166" class="arrow dash faint"></line>
+            <text x="16" y="188" class="lbl-s">fresh config, every destination:</text>
+            <text x="212" y="188" class="taint-lbl">mail [redacted:email]</text>
+            <text x="16" y="208" class="lbl-s">destination_policy={TOOL: EMAIL}:</text>
+            <text x="212" y="208" class="memo-lbl">to tool, the real address &middot; to user, still [redacted:email]</text>
           </svg>
         </div>
         <figcaption>
-          Two gates rather than one, because &ldquo;who may see it&rdquo; and &ldquo;where may
-          it be written&rdquo; are different questions. Every destination starts at nothing,
-          the user included.
+          Two gates rather than one, because who may see it and where may it be written are
+          different questions. Every destination starts at nothing, the user included, and both
+          rows above were run rather than assumed. The second row is the whole claim in one
+          line: with one class opened for one destination, the token resolves for the tool and
+          the same call to <code>reidentify</code> still returns
+          <code>[redacted:email]</code> for the user. Opening one gate does not open the other,
+          and passing <code>allowed_classes</code> on its own changes nothing while the
+          destination gate is shut.
         </figcaption>
       </figure>
     </section>
@@ -290,7 +320,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 158" role="img" aria-label="Ordinary identifier classes are tokenized, while credentials are refused outright because issuing a token would imply the value can come back.">
+          <svg viewBox="0 0 640 168" role="img" aria-label="Ordinary identifier classes are tokenized, while credentials are refused outright because issuing a token would imply the value can come back.">
             <defs>
               <marker id="v5m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" class="memo-fill"></polygon>
@@ -301,7 +331,7 @@
             </defs>
 
             <rect x="16" y="26" width="176" height="44" rx="3" class="box"></rect>
-            <text x="104" y="53" class="lbl-s" text-anchor="middle">email, phone, person</text>
+            <text x="104" y="53" class="lbl-s" text-anchor="middle">email, phone, SSN, IBAN</text>
             <line x1="204" y1="48" x2="268" y2="48" class="memo-stroke" marker-end="url(#v5m)"></line>
             <text x="236" y="38" class="memo-lbl" text-anchor="middle">tokenize</text>
             <rect x="280" y="26" width="200" height="44" rx="3" class="memo-box"></rect>
@@ -314,14 +344,22 @@
             <rect x="280" y="92" width="200" height="44" rx="3" class="taint-box"></rect>
             <text x="380" y="119" class="taint-lbl" text-anchor="middle">does not cross at all</text>
 
-            <text x="496" y="112" class="lbl-s">a token implies</text>
-            <text x="496" y="128" class="lbl-s">it can come back</text>
+            <text x="496" y="106" class="lbl-s">a token implies</text>
+            <text x="496" y="122" class="lbl-s">it can come back</text>
+
+            <text x="16" y="152" class="taint-lbl">Guard.deidentify returns allowed=False, content=&quot;&quot;, &quot;Class &apos;credential&apos; must not cross the model boundary&quot;</text>
           </svg>
         </div>
         <figcaption>
-          A model has no legitimate use for a credential, so issuing one a placeholder would
-          be offering the wrong affordance. A credential in a prompt the host assembled is
-          treated as a bug in the host, not as data to be managed.
+          A model has no legitimate use for a credential, so issuing it a placeholder would be
+          offering the wrong affordance. A credential in a prompt the host assembled is treated
+          as a bug in the host, not as data to be managed. Refused is stronger than it sounds:
+          <code>deidentify</code> returns <code>allowed=False</code> with empty content, so the
+          prompt does not continue without the credential, there is no prompt at all. The left
+          column lists the classes a default configuration actually matches, all of them
+          structural. The same qualifier as panel 01 applies here, and one more from panel 02:
+          this is the credential the secret scanner recognizes, and that scanner does not look
+          at runs shorter than twenty characters.
         </figcaption>
       </figure>
     </section>
@@ -367,10 +405,22 @@
   <section class="coda">
     <h2>The honest edges</h2>
     <p>
-      <strong>It cannot find what nothing looks for.</strong> Structural patterns and
-      host-declared values are exact. A name or a street address with neither, and no
-      registered detector, crosses in the clear. The vault reports when it knows its own
-      coverage was partial; it cannot report what nothing looked for.
+      <strong>The tokens are pseudonyms, not redaction.</strong> Everything around a token
+      crosses as written. A provider that sees the same stable placeholder beside
+      &ldquo;referral&rdquo;, a clinic name and a date has most of what it needs, and the
+      stability that lets the model reason about one person across a conversation is the same
+      property that makes those mentions linkable. What the vault withholds is the identifier.
+      It does not withhold the context, and it is not anonymization.
+    </p>
+    <p>
+      <strong>It cannot find what nothing looks for, and it will not tell you so.</strong>
+      Structural patterns and host-declared values are exact. A name or a street address with
+      neither, and no registered detector, crosses in the clear. The reporting is narrower than
+      it looks: <code>detection_incomplete</code> is set when a registered detector says its own
+      coverage was partial, so a class that is enabled with no detector behind it produces no
+      report at all. Panel 01 is that case, and it comes back
+      <code>reason=&apos;clean&apos;</code>. A control that never ran has nothing to say, which
+      is the same shape as the missing ledger entry in strip 05.
     </p>
     <p>
       <strong>The invariant is narrower than &ldquo;only issued tokens resolve&rdquo;.</strong>

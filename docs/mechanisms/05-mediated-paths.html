@@ -254,7 +254,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 200" role="img" aria-label="The same correctly mediated wire_funds call is denied in the session whose fetch was mediated and allowed in the session whose fetch went direct.">
+          <svg viewBox="0 0 640 212" role="img" aria-label="The same correctly mediated wire_funds call is denied in the session whose fetch was mediated and allowed in the session whose fetch went direct.">
             <text x="16" y="22" class="lbl-s">identical call, correctly routed through the tool gate in BOTH sessions</text>
             <rect x="16" y="32" width="608" height="30" rx="3" class="box"></rect>
             <text x="32" y="52" class="lbl-s">check_tool_call("wire_funds", {amount: 50000})</text>
@@ -270,12 +270,19 @@
             <line x1="344" y1="114" x2="608" y2="114" class="taint-stroke faint"></line>
             <text x="344" y="138" class="lbl-s" opacity="0.7">state is empty</text>
             <text x="344" y="166" class="taint-lbl" style="font-size:13px">ALLOWED</text>
+
+            <text x="16" y="198" class="lbl-s">both columns need contaminated_tool_policy=deny; at its default of allow, both are ALLOWED</text>
           </svg>
         </div>
         <figcaption>
           This is the beat worth sitting with. The tool gate was called correctly, ran
           correctly, and returned the right answer for the facts it had. One unmediated path
-          upstream is enough to make a mediated path downstream wrong.
+          upstream is enough to make a mediated path downstream wrong. The contrast needs
+          <code>contaminated_tool_policy=deny</code> to be visible at all: at its shipped
+          default of <code>allow</code> both columns read ALLOWED, and the missing ledger entry
+          costs nothing because nothing was going to read it. That does not soften the point,
+          it sharpens it. Turning the policy on is what makes the ledger matter, and an
+          unmediated path is what makes the ledger wrong.
         </figcaption>
       </figure>
     </section>

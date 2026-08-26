@@ -256,7 +256,7 @@ and GuardLLM's own surface result are backed by the tracked artifact.
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 
-**On the latency column.** GuardLLM's `0.07ms` is a local function call; every other row is a model. Against the two systems that run a neural network locally that is `387x` ProtectAI DeBERTa and `2550x` Llama Guard 4 on an A100. Against the hosted filters it runs from `2991x` to `10690x`, but most of that gap is a network round trip rather than inference, so the local comparisons are the honest ones to reason about. The vendor latencies these ratios are computed from carry the same caveat as the rest of their column: reported, not currently reproducible from a tracked artifact.
+**On the latency column.** GuardLLM's `0.07ms` is a local function call. Against the two systems that run a neural network locally, that is `387x` ProtectAI DeBERTa and `2550x` Llama Guard 4 on an A100. Against the hosted filters it is `2991x` to `10690x`, most of which is network round trip, so the local comparisons are the ones to reason from. The vendor latencies behind these ratios carry the column's caveat: reported, not reproducible from a tracked artifact.
 
 Non-text controls: `5224/5224` (`100%`) across 8 security kinds. Every figure here is generated from the [published surface evidence](benchmarks/published/surface_controls.md), which carries the run id, commit, and dataset hash that produced it.
 

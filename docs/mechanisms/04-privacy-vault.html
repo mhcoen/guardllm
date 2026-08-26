@@ -341,14 +341,17 @@
             <text x="496" y="106" class="lbl-s">a token implies</text>
             <text x="496" y="122" class="lbl-s">it can come back</text>
 
-            <text x="16" y="148" class="taint-lbl">Guard.deidentify returns allowed=False, content=&quot;&quot;</text>
+            <text x="16" y="148" class="taint-lbl">Guard.deidentify returns allowed=False, denied=[CREDENTIAL]</text>
             <text x="16" y="164" class="taint-lbl">&quot;Class &apos;credential&apos; must not cross the model boundary&quot;</text>
           </svg>
         </div>
         <figcaption>
-          Refused means no prompt: <code>Guard.deidentify</code> returns
-          <code>allowed=False</code> with empty content and the reason <code>Class
-          &apos;credential&apos; must not cross the model boundary</code>. A token would imply the
+          Refused, not tokenized: <code>Guard.deidentify</code> returns
+          <code>allowed=False</code> and <code>denied=[CREDENTIAL]</code>, with the reason
+          <code>Class &apos;credential&apos; must not cross the model boundary</code>. The
+          content comes back unchanged, because nothing was substituted. Refusing is the
+          library&apos;s answer; not sending it is the host&apos;s part, the same contract as
+          every other refusal here. A token would imply the
           value can come back, and a model has no use for a credential; one in a prompt the host
           assembled is a bug in the host. Refusal does not depend on length once the shape is
           known: a 20-character AWS key, a 15-character Slack-shaped token, a 40-character GitHub

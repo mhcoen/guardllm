@@ -198,11 +198,12 @@
           </svg>
         </div>
         <figcaption>
-          This is a question about the <em>call</em>. Is this tool allowed here, is the session
-          in a state that permits it, has the user authorized it, is it inside its rate budget,
-          is it still bound to the message it was approved against. It does look at the
-          arguments, but only at their shape: a body containing <code>../../etc/passwd</code>
-          is refused here, by validation, before any of the rest runs.
+          <code>check_tool_call</code> runs argument validation, the session-risk gate, policy,
+          the rate limit and binding, reading the tool name, the argument shape and the session
+          state. Shape is all it reads of the arguments: body <code>see ../../etc/passwd</code> is
+          refused, <code>Validation failed: Parameter body contains path traversal</code>; body
+          <code>key AKIAIOSFODNN7EXAMPLE</code> is allowed, <code>Non-destructive tool, implicit
+          allow</code>.
         </figcaption>
       </figure>
     </section>
@@ -291,15 +292,13 @@
           </svg>
         </div>
         <figcaption>
-          A question about the <em>bytes</em>. It does not know which tool it is looking at and
-          does not need to: a credential, a canary, a long passage copied out of untrusted
-          input, or a privacy token that was never restored is the same problem in an email
-          body as in a webhook. Not the content alone, though. The canary is session state, the
-          provenance check compares against text this session ingested earlier, and the limiter
-          reads a caller and a counter. The tool name is the thing it never sees, and that is
-          what makes the check reusable across every channel. The rate limiter here is the one panel 02
-          showed, asked a second time with <code>action=outbound</code>.
-          Notice that no other check in this box appears in panel 02.
+          <code>check_outbound</code> runs the unrestored-vault-token check, the canary, secrets
+          and overlap, provenance, and the egress rate limit. What it never reads is the tool name,
+          which is what lets one check serve every channel. It does read session memory: the canary
+          is session state, and provenance compares against text this session ingested, retained
+          for that purpose. The limiter is the one panel 02 showed, asked again with
+          <code>action=outbound</code>. Apart from that limiter, no check in this box appears in
+          panel 02.
         </figcaption>
       </figure>
     </section>
@@ -389,13 +388,12 @@
           </svg>
         </div>
         <figcaption>
-          Both rows were measured, and in both the naive check passes. A per-field scan sees
-          each argument alone, so a secret cut in half passes twice; and the field a developer
-          thinks of as &quot;the content&quot; is rarely the only string the call carries.
-          What leaves the boundary is the whole call, so the whole call is what gets asked.
-          Narrowed, not closed: values join in traversal order, so a caller who controls field
-          order can keep the halves apart, and nothing per-call reassembles a secret sent one
-          half per request. That limit is pinned by
+          Row A: the body is clean; the key sits in <code>attachment.filename</code>. Checking the
+          body alone allows the call. <code>prepare_tool_call</code>, which walks every string leaf,
+          refuses it: <code>Secret pattern detected: AWS access key</code>. Row B: subject and body
+          are each clean; <code>joined_call_payload</code>, the string values concatenated, is
+          refused. The join follows field order, so a caller who controls it can keep the halves
+          apart, and nothing per-call reassembles a secret sent one half per request. Pinned by
           <code>tests/gateway/test_gateway.py::test_reordered_fields_remain_a_known_gap</code>.
         </figcaption>
       </figure>

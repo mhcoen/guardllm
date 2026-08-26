@@ -172,17 +172,14 @@
           </svg>
         </div>
         <figcaption>
-          The mapping never crosses, and the model works with stable placeholders, so it can
-          still reason about the same person appearing twice without being told who that is.
-          The three values that crossed as written are the part to take seriously, and this is a
-          default configuration, not a broken one:
-          <code>DEFAULT_TOKENIZE_CLASSES</code> includes <code>person</code> and
-          <code>address</code>, while <code>PrivacyConfig().detectors</code> is empty. The
-          classes are switched on and nothing is registered to find them. Structural patterns
-          like an address or a phone number carry their own shape and are matched without help;
-          a name does not, so it needs a detector supplied through
-          <code>PrivacyConfig(detectors=...)</code> or a host-declared value list. Until one is,
-          a name crosses by name.
+          The mapping never crosses, and tokens are stable within a session, so the model can
+          follow one person across a conversation without being told who. The three values that
+          crossed are a default configuration, not a fault: <code>DEFAULT_TOKENIZE_CLASSES</code>
+          includes <code>person</code> and <code>address</code>,
+          <code>PrivacyConfig().detectors</code> is empty, and neither class has a structural
+          pattern, because inferring a name from free text is labelling from content. The result
+          reads <code>clean</code>; the warning names the two classes. Coverage comes from
+          <code>PrivacyConfig(detectors=...)</code> or seeded values.
         </figcaption>
       </figure>
     </section>
@@ -215,13 +212,11 @@
           </svg>
         </div>
         <figcaption>
-          Models mangle text. The body is an error-correcting codeword, so a single damaged
-          symbol still resolves and two damaged symbols are refused rather than resolved to
-          somebody else. The colons matter for a different reason: the entropy scanner asks its
-          randomness question only of runs at least <code>_ENTROPY_MIN_LENGTH</code> long, which
-          is 20 in <code>security/outbound_dlp.py</code>, and the longest run a token contains
-          is 15. Five characters of margin, named here because a reader who lowers that floor is
-          exactly the reader who will find the vault&rsquo;s own tokens reported as secrets.
+          The body is a Reed-Solomon codeword, twelve payload symbols and three parity. One
+          damaged symbol still resolves; two are refused rather than resolved to somebody else.
+          The colons keep every run to 15 characters, and the entropy scanner questions only runs
+          of <code>_ENTROPY_MIN_LENGTH</code>, 20, in <code>security/outbound_dlp.py</code>, so a
+          body full of real tokens scans clean with five characters of margin.
         </figcaption>
       </figure>
     </section>
@@ -269,14 +264,12 @@
           </svg>
         </div>
         <figcaption>
-          Two gates rather than one, because who may see it and where may it be written are
-          different questions. Every destination starts at nothing, the user included, and both
-          rows above were run rather than assumed. The second row is the whole claim in one
-          line: with one class opened for one destination, the token resolves for the tool and
-          the same call to <code>reidentify</code> still returns
-          <code>[redacted:email]</code> for the user. Opening one gate does not open the other,
-          and passing <code>allowed_classes</code> on its own changes nothing while the
-          destination gate is shut.
+          Who may see it and where may it be written are different questions, so there are two
+          gates: <code>destination_policy</code> names the classes a channel may receive,
+          <code>restore_policy</code> names the field of the tool that may hold one. Every
+          destination starts at nothing, <code>USER</code> included, because a channel is not an
+          entitlement. Opening one gate does not open the other, and
+          <code>allowed_classes</code> alone changes nothing while the destination gate is shut.
         </figcaption>
       </figure>
     </section>
@@ -353,17 +346,15 @@
           </svg>
         </div>
         <figcaption>
-          A model has no legitimate use for a credential, so issuing it a placeholder would be
-          offering the wrong affordance. A credential in a prompt the host assembled is treated
-          as a bug in the host, not as data to be managed. Refused is stronger than it sounds:
-          <code>deidentify</code> returns <code>allowed=False</code> with empty content, so the
-          prompt does not continue without the credential, there is no prompt at all. The left
-          column lists the classes a default configuration actually matches, all of them
-          structural. One qualifier, and it is not the one panel 02
-          might suggest: a credential matching a known shape is refused at any length, measured
-          down to fifteen characters. The twenty-character floor belongs to the entropy path,
-          which is what catches a secret whose shape nothing knows, so it is the
-          <em>unrecognized</em> credential that has a minimum length.
+          Refused means no prompt: <code>Guard.deidentify</code> returns
+          <code>allowed=False</code> with empty content and the reason <code>Class
+          &apos;credential&apos; must not cross the model boundary</code>. A token would imply the
+          value can come back, and a model has no use for a credential; one in a prompt the host
+          assembled is a bug in the host. Refusal does not depend on length once the shape is
+          known: a 20-character AWS key, a 15-character Slack-shaped token, a 40-character GitHub
+          token, all refused. The 20-character floor belongs to the entropy path, for a secret
+          whose shape nothing recognizes. The left column is every class a default configuration
+          matches, all structural.
         </figcaption>
       </figure>
     </section>

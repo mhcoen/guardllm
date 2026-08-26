@@ -247,7 +247,7 @@
 
             <rect x="16" y="70" width="132" height="52" rx="3" class="box-f"></rect>
             <text x="82" y="92" class="lbl" text-anchor="middle">trusted host</text>
-            <text x="82" y="110" class="lbl-s" text-anchor="middle">canary_session_id</text>
+            <text x="82" y="110" class="lbl-s" text-anchor="middle">canary_token</text>
 
             <line x1="160" y1="96" x2="222" y2="96" class="memo-stroke" marker-end="url(#c1m)"></line>
             <text x="191" y="86" class="memo-lbl" text-anchor="middle">mints</text>
@@ -269,9 +269,12 @@
           </svg>
         </div>
         <figcaption>
-          The token is <code>HMAC-SHA256(session_id)</code>, so it is unique per session and
-          reproducible by the host without being guessable. The second copy living outside the
-          model is what makes the rest of this work.
+          The token is HMAC-SHA256 over the session id, keyed with a host secret, truncated to
+          the first sixteen hex characters. Both halves of that matter. The key is what makes it
+          unguessable, since a plain digest of a session id would be reproducible by anyone who
+          could guess the id; the truncation keeps sixty-four bits of the tag&rsquo;s two hundred
+          fifty-six, which is a deliberate trade rather than an accident of formatting. The
+          second copy living outside the model is what makes the rest of this work.
         </figcaption>
       </figure>
     </section>
@@ -479,14 +482,18 @@
             <text x="598" y="72" class="lbl-s" text-anchor="middle">later</text>
             <text x="598" y="88" class="lbl-s" text-anchor="middle">call</text>
 
-            <text x="16" y="130" class="lbl-s">this is the loop from strip 01, running the other way:</text>
-            <text x="16" y="148" class="lbl-s">there, ingest tightened the gate &middot; here, a caught leak does</text>
+            <text x="16" y="130" class="lbl-s">escalated_tool_policy decides what the gate does with the flag</text>
+            <text x="16" y="148" class="taint-lbl">require_auth (the default): refused unless something authorizes it</text>
           </svg>
         </div>
         <figcaption>
-          One blocked exfiltration makes the rest of the session stricter under
-          <code>escalated_tool_policy</code>. Catching a leak once is not the end of the
-          incident; it is the start of a tighter session.
+          One blocked exfiltration makes the rest of the session stricter. What stricter means
+          is <code>escalated_tool_policy</code>, and it ships as <code>require_auth</code>: the
+          next call comes back <code>Authorization required: egress escalated=require_auth</code>
+          unless something authorizes it, while <code>deny</code> refuses it either way. This is
+          the loop from strip 01 running the other way. There, ingest tightened the gate; here, a
+          caught leak does. Catching a leak once is not the end of the incident; it is the start
+          of a tighter session.
         </figcaption>
       </figure>
     </section>
@@ -502,6 +509,14 @@
       no longer implies the model put it there.
     </p>
     <p>
+      The key has a placement problem of its own. Unless
+      <code>EPISODIC_CANARY_SECRET</code> is set, the secret is a random value generated per
+      process, so the marker minted by one worker is not the marker a different worker
+      remembers. Egress there is checked against a token that was never placed, and the check
+      does not fail: it passes, quietly, having compared against the wrong string. Set the
+      variable in any deployment with more than one process, or with a process that restarts.
+    </p>
+    <p>
       It is also narrow by design. It catches the exact string leaving, not a paraphrase of
       the instructions around it. Overlap and provenance checks cover that ground, which is
       why the canary runs first and they still run at all.
@@ -509,17 +524,19 @@
     <p>
       And the joined-field scan in panel 04 narrows a gap rather than closing it. Values are
       joined in traversal order, so a caller that controls field order can keep the halves
-      apart, and nothing per-call reassembles a token sent one half per request. Both limits
-      are pinned by a test in the repository rather than left to be assumed.
+      apart, and nothing per-call reassembles a token sent one half per request. Both limits are
+      pinned rather than assumed, by
+      <code>tests/gateway/test_gateway.py::test_reordered_fields_remain_a_known_gap</code>,
+      whose docstring says in as many words that the gap is visible rather than closed.
     </p>
     <p class="note">
       Mechanism only. Every name here is a real call or setting:
       <code>canary_token</code>, <code>detect_canary</code>,
       <code>escalated_tool_policy</code>. The token shown is invented for the drawing.
-      No benchmark numbers appear, because numbers go stale and mechanisms do not.
+      No benchmark numbers appear, because numbers go stale and mechanisms do not. Verified
+      against GuardLLM 2.0.0, commit <code>36be295</code>. API names, policy fields and
+      orderings can change too, not only numbers.
     </p>
-      Verified against GuardLLM 2.0.0, commit <code>4a8fefa</code>. API names, policy
-      fields and orderings can change too, not only numbers.
   </section>
 
 </div>

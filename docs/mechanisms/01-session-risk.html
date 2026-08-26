@@ -293,7 +293,9 @@
         <figcaption>
           Assume the injection detector never recognizes this sentence. It does not need to. The
           source is untrusted because of the channel it arrived on, not because anything
-          classified its words: provenance comes from the channel, never from the content.
+          classified its words. Detection changes nothing here: it adds a warning to the
+          returned result and does not move the label. The text itself is retained, which is
+          what lets a later egress check compare an outbound payload against what came in.
         </figcaption>
       </figure>
     </section>
@@ -334,10 +336,10 @@
           </svg>
         </div>
         <figcaption>
-          The mark costs nothing and blocks nothing. The page still reaches the model, sanitized
-          and wrapped in an isolation boundary as configured. What matters here is that the
-          trust label is recorded whether or not anything detected the instruction, and that
-          this is the panel every point tool in the next figure is missing.
+          The mark costs nothing and blocks nothing: the page still reaches the model, sanitized
+          and wrapped in an isolation boundary. The trust label is recorded whether or not
+          anything detected the instruction. Panel 06 shows that no point tool has an
+          equivalent of this write.
         </figcaption>
       </figure>
     </section>
@@ -390,7 +392,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 168" role="img" aria-label="The tool gate reads the contamination mark recorded in panel 3 and denies the wire transfer under contaminated_tool_policy.">
+          <svg viewBox="0 0 640 212" role="img" aria-label="The tool gate reads the contamination mark recorded in panel 3, then applies contaminated_tool_policy. At its default of allow the call is permitted; set to deny, the same call is refused.">
             <defs>
               <marker id="a5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -400,33 +402,49 @@
               </marker>
             </defs>
 
-            <rect x="16" y="20" width="196" height="52" rx="3" class="box-f"></rect>
-            <text x="114" y="52" class="lbl" text-anchor="middle">wire_funds</text>
+            <rect x="16" y="28" width="180" height="46" rx="3" class="box-f"></rect>
+            <text x="106" y="57" class="lbl" text-anchor="middle">wire_funds</text>
 
-            <line x1="114" y1="80" x2="114" y2="106" class="arrow" marker-end="url(#a5)"></line>
+            <line x1="106" y1="76" x2="106" y2="100" class="arrow" marker-end="url(#a5)"></line>
 
-            <rect x="16" y="114" width="196" height="52" rx="3" class="box-f"></rect>
-            <text x="114" y="138" class="lbl" text-anchor="middle">tool gate</text>
-            <text x="114" y="156" class="lbl-s" text-anchor="middle">check_tool_call</text>
+            <rect x="16" y="108" width="180" height="54" rx="3" class="box-f"></rect>
+            <text x="106" y="132" class="lbl" text-anchor="middle">tool gate</text>
+            <text x="106" y="150" class="lbl-s" text-anchor="middle">check_tool_call</text>
 
-            <path d="M224 140 H300" class="taint-stroke" marker-end="url(#a5t)"></path>
-            <text x="262" y="130" class="taint-lbl" text-anchor="middle">reads</text>
+            <path d="M198 135 H248" class="taint-stroke" marker-end="url(#a5t)"></path>
+            <text x="223" y="127" class="taint-lbl" text-anchor="middle">reads</text>
 
-            <rect x="312" y="106" width="196" height="60" rx="3" class="box-f"></rect>
-            <circle cx="330" cy="132" r="4" class="taint-fill"></circle>
-            <text x="344" y="137" class="taint-lbl">contaminated = true</text>
-            <text x="328" y="157" class="lbl-s" opacity="0.75">recorded in panel 03</text>
+            <rect x="260" y="106" width="178" height="58" rx="3" class="box-f"></rect>
+            <circle cx="278" cy="130" r="4" class="taint-fill"></circle>
+            <text x="292" y="135" class="taint-lbl">contaminated = true</text>
+            <text x="276" y="155" class="lbl-s" opacity="0.75">recorded in panel 03</text>
 
-            <path d="M114 20 V12 H560 V96" class="taint-stroke dash" marker-end="url(#a5t)" opacity="0.55"></path>
+            <text x="460" y="20" class="lbl-s">contaminated_tool_policy</text>
 
-            <rect x="500" y="104" width="124" height="62" rx="3" class="taint-box"></rect>
-            <text x="562" y="130" class="taint-lbl" text-anchor="middle" style="font-size:13px">DENIED</text>
-            <text x="562" y="152" class="lbl-s" text-anchor="middle">contaminated_tool_policy</text>
+            <path d="M440 130 H450 V70 H454" class="arrow" marker-end="url(#a5)"></path>
+            <path d="M440 140 H450 V162 H454" class="taint-stroke" marker-end="url(#a5t)"></path>
+
+            <rect x="460" y="30" width="164" height="76" rx="3" class="box-f"></rect>
+            <text x="542" y="54" class="lbl-s" text-anchor="middle">allow (the default)</text>
+            <text x="542" y="80" class="lbl" text-anchor="middle">ALLOWED</text>
+            <text x="542" y="98" class="lbl-s" text-anchor="middle">implicit allow</text>
+
+            <rect x="460" y="124" width="164" height="76" rx="3" class="taint-box"></rect>
+            <text x="542" y="148" class="lbl-s" text-anchor="middle">deny</text>
+            <text x="542" y="174" class="taint-lbl" text-anchor="middle" style="font-size:13px">DENIED</text>
+            <text x="542" y="192" class="lbl-s" text-anchor="middle">session contaminated</text>
           </svg>
         </div>
         <figcaption>
-          Same call, same user, same policy. The only thing that changed is a fact recorded two
-          turns earlier, on a different channel, by a different stage.
+          Same call, same user. The only thing that changed between the two turns is a fact
+          recorded earlier, on a different channel, by a different stage, and the gate can read
+          it. Which is the mechanism. What the gate then <em>does</em> is a separate choice, and
+          <code>contaminated_tool_policy</code> ships as <code>allow</code>: the top row is what
+          happens out of the box. That is deliberate, and the README says several defaults are
+          permissive for compatibility, but it means the refusal below it is something you turn
+          on. Declaring the tool destructive does not substitute for it. A fully enabled,
+          fully authorized <code>gmail_send_email</code> in a contaminated session is still
+          permitted while the policy stays <code>allow</code>.
         </figcaption>
       </figure>
     </section>
@@ -472,19 +490,23 @@
   <section class="coda">
     <h2>The loop runs backwards too</h2>
     <p>
-      The same memory works in the other direction. When an outbound check blocks a
-      high-confidence exfiltration attempt, that also gets written down, and it tightens
-      the tool gate for the rest of the session. A leak that was caught once makes the next
-      request harder, not easier.
+      The same memory works in the other direction, and it is worth being exact about what
+      triggers it, because there is no confidence threshold to tune. Two outbound results
+      write escalation: a remembered canary detected at egress, and a DLP hard block. A
+      provenance refusal and a rate-limit refusal do not, though both still refuse.
+      <code>escalated_tool_policy</code> then decides what the gate does with the flag, and it
+      ships as <code>require_auth</code>, so a later call is refused unless something
+      authorizes it. A leak that was caught once makes the next request harder, not easier.
     </p>
     <p class="note">
       Mechanism only. Every name on these panels is a real setting or call in the library:
       <code>process_inbound</code>, <code>check_tool_call</code>,
       <code>contaminated_tool_policy</code>. No benchmark numbers appear here on purpose,
-      because numbers go stale and mechanisms do not.
+      because numbers go stale and mechanisms do not. Panel 05 was measured both ways, at the
+      default policy and hardened. Verified against GuardLLM 2.0.0, commit
+      <code>36be295</code>. API names, policy fields and orderings can change too, not only
+      numbers.
     </p>
-      Verified against GuardLLM 2.0.0, commit <code>4a8fefa</code>. API names, policy
-      fields and orderings can change too, not only numbers.
   </section>
 
 </div>

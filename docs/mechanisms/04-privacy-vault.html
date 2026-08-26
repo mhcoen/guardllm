@@ -191,13 +191,17 @@
             <text x="340" y="154" class="taint-lbl">two refused, never guessed</text>
 
             <line x1="16" y1="170" x2="624" y2="170" class="arrow dash faint"></line>
-            <text x="16" y="186" class="lbl-s">the colons are load-bearing: they keep every run under 16 characters, so the secret scanner never sees a candidate</text>
+            <text x="16" y="186" class="lbl-s">the colons are load-bearing: they keep every run to 15 characters, below the scanner's 20-character floor</text>
           </svg>
         </div>
         <figcaption>
           Models mangle text. The body is an error-correcting codeword, so a single damaged
           symbol still resolves and two damaged symbols are refused rather than resolved to
-          somebody else.
+          somebody else. The colons matter for a different reason: the entropy scanner asks its
+          randomness question only of runs at least <code>_ENTROPY_MIN_LENGTH</code> long, which
+          is 20 in <code>security/outbound_dlp.py</code>, and the longest run a token contains
+          is 15. Five characters of margin, named here because a reader who lowers that floor is
+          exactly the reader who will find the vault&rsquo;s own tokens reported as secrets.
         </figcaption>
       </figure>
     </section>
@@ -383,10 +387,10 @@
       Mechanism only. <code>deidentify</code>, <code>reidentify</code>,
       <code>prepare_tool_call</code>, <code>restore_policy</code> and
       <code>destination_policy</code> are real. Token bodies and addresses are invented. No
-      benchmark numbers appear, because numbers go stale and mechanisms do not.
+      benchmark numbers appear, because numbers go stale and mechanisms do not. Verified against
+      GuardLLM 2.0.0, commit <code>36be295</code>. API names, policy fields and orderings can
+      change too, not only numbers.
     </p>
-      Verified against GuardLLM 2.0.0, commit <code>4a8fefa</code>. API names, policy
-      fields and orderings can change too, not only numbers.
   </section>
 
 </div>

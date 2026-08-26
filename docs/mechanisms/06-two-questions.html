@@ -154,9 +154,8 @@
           </svg>
         </div>
         <figcaption>
-          It is a natural reading, and it is the source of most of the confusion in this
-          series. There is no single gate. The call is put to two checks that share no code,
-          read different things, and can disagree.
+          It is a natural reading. There is no single gate. The call is put to two checks that
+          share no code, read different things, and can disagree.
         </figcaption>
       </figure>
     </section>
@@ -260,7 +259,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 176" role="img" aria-label="check_outbound reads only the content, runs the vault token check, canary, DLP, provenance and the egress budget, and rules on the payload.">
+          <svg viewBox="0 0 640 176" role="img" aria-label="check_outbound reads the bytes and the session state, running the vault token check, canary, DLP, provenance and the egress budget, and rules on the payload. It never reads the tool name.">
             <defs>
               <marker id="a4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -269,9 +268,9 @@
 
             <text x="16" y="22" class="lbl-s">reads</text>
             <rect x="16" y="46" width="146" height="86" rx="3" class="box"></rect>
-            <text x="30" y="76" class="lbl-s">the content,</text>
-            <text x="30" y="98" class="lbl-s">and nothing</text>
-            <text x="30" y="120" class="lbl-s">else</text>
+            <text x="30" y="76" class="lbl-s">the bytes, and</text>
+            <text x="30" y="98" class="lbl-s">this session&rsquo;s</text>
+            <text x="30" y="120" class="lbl-s">memory of them</text>
 
             <path d="M174 89 H222" class="arrow" marker-end="url(#a4)"></path>
 
@@ -287,13 +286,20 @@
             <rect x="518" y="62" width="106" height="54" rx="3" class="box-f"></rect>
             <text x="571" y="86" class="lbl" text-anchor="middle">the payload</text>
             <text x="571" y="104" class="lbl-s" text-anchor="middle">may it leave</text>
+
+            <text x="16" y="166" class="memo-lbl">what it never reads: the tool name</text>
           </svg>
         </div>
         <figcaption>
           A question about the <em>bytes</em>. It does not know which tool it is looking at and
           does not need to: a credential, a canary, a long passage copied out of untrusted
           input, or a privacy token that was never restored is the same problem in an email
-          body as in a webhook. Notice that not one of these checks appears in panel 02.
+          body as in a webhook. Not the content alone, though. The canary is session state, the
+          provenance check compares against text this session ingested earlier, and the limiter
+          reads a caller and a counter. The tool name is the thing it never sees, and that is
+          what makes the check reusable across every channel. <code>L6</code> here is the same
+          limiter panel 02 showed, asked a second time with <code>action=outbound</code>.
+          Notice that no other check in this box appears in panel 02.
         </figcaption>
       </figure>
     </section>
@@ -331,7 +337,7 @@
             <text x="511" y="140" class="lbl" text-anchor="middle">refused</text>
             <text x="511" y="160" class="lbl-s" text-anchor="middle">by both, independently</text>
 
-            <text x="16" y="206" class="lbl-s">measured, not asserted &middot; one contaminated session, one AWS key</text>
+            <text x="16" y="206" class="lbl-s">measured &middot; the denied-action rows set contaminated_tool_policy=deny, which is not the default</text>
           </svg>
         </div>
         <figcaption>
@@ -351,7 +357,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 220" role="img" aria-label="Two ways a per-field content check misses. First, the credential sits in a nested attachment filename rather than the body. Second, it is split across the subject and the body so neither field contains it, but the joined payload does.">
+          <svg viewBox="0 0 640 244" role="img" aria-label="Two ways a per-field content check misses. First, the credential sits in a nested attachment filename rather than the body. Second, it is split across the subject and the body so neither field contains it, but the joined payload does.">
             <text x="16" y="20" class="lbl-s">it was never in the field you checked</text>
 
             <rect x="16" y="30" width="292" height="34" rx="3" class="box"></rect>
@@ -377,6 +383,8 @@
             <text x="344" y="176" class="taint-lbl">each field alone &rarr; both clean</text>
             <rect x="330" y="188" width="294" height="26" rx="3" class="memo-box"></rect>
             <text x="344" y="206" class="memo-lbl">the joined payload &rarr; denied</text>
+
+            <text x="16" y="234" class="lbl-s">joined in traversal order, so this catches halves that land adjacent</text>
           </svg>
         </div>
         <figcaption>
@@ -384,6 +392,10 @@
           each argument alone, so a secret cut in half passes twice; and the field a developer
           thinks of as &quot;the content&quot; is rarely the only string the call carries.
           What leaves the boundary is the whole call, so the whole call is what gets asked.
+          Narrowed, not closed: values join in traversal order, so a caller who controls field
+          order can keep the halves apart, and nothing per-call reassembles a secret sent one
+          half per request. That limit is pinned by
+          <code>tests/gateway/test_gateway.py::test_reordered_fields_remain_a_known_gap</code>.
         </figcaption>
       </figure>
     </section>
@@ -400,17 +412,30 @@
       the library can do that for a channel it was never shown.
     </p>
     <p>
-      Two arrangements take it off your hands. <code>prepare_tool_call</code> runs the content
-      checks over every string leaf of the argument tree, which is the panel 06 fix, when the
-      privacy vault is enabled. And in gateway mode it is not yours to remember at all: the
-      proxy checks every string in a call's arguments, plus the joined payload, before the call
-      is allowed through.
+      Two arrangements take it off your hands, and one of them is off until you turn it on.
+      <code>prepare_tool_call</code> runs the content checks over every string leaf of the
+      argument tree, which is what the last panel showed, but only when the privacy vault is on, and
+      <code>Guard()</code> constructs without one: called on a default guard it returns
+      <code>allowed=True</code> with the reason <code>privacy disabled</code>, having scanned
+      nothing. So out of the box in library mode there is no per-leaf scan and no joined scan,
+      and the second question gets asked only where the application asks it. That is
+      <code>A-AS9</code> restated.
+    </p>
+    <p>
+      In gateway mode it is not yours to remember at all: the proxy checks every string in a
+      call's arguments, plus the joined payload, before the call is allowed through. That claim
+      is the one thing here not drawn from a panel, so it is worth naming what holds it up:
+      <code>test_a_credential_in_an_argument_is_refused</code>,
+      <code>test_a_nested_argument_is_reached</code>,
+      <code>test_a_split_secret_is_refused</code> and
+      <code>test_a_split_canary_is_refused</code>, all in
+      <code>tests/gateway/test_gateway.py</code>.
     </p>
     <p class="note">
       Mechanism only. <code>check_tool_call</code>, <code>check_outbound</code>,
       <code>prepare_tool_call</code> and <code>A-AS9</code> are real, and every outcome shown
       was run rather than reasoned about: the panel 03 pair, the panel 05 matrix, and both rows
-      of panel 06. Verified against GuardLLM 2.0.0, commit <code>82c5f5a</code>. API names,
+      of panel 06. Verified against GuardLLM 2.0.0, commit <code>36be295</code>. API names,
       layer numbering and orderings can change too, not only numbers.
     </p>
   </section>

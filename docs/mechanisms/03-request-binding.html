@@ -248,7 +248,7 @@
             <text x="560" y="99" class="memo-lbl" text-anchor="end">yes</text>
 
             <rect x="16" y="118" width="608" height="36" rx="3" class="taint-box"></rect>
-            <text x="32" y="141" class="taint-lbl">3 &nbsp; same arguments, byte for byte?</text>
+            <text x="32" y="141" class="taint-lbl">3 &nbsp; same canonical arguments?</text>
             <text x="608" y="141" class="taint-lbl" text-anchor="end">no: recipient changed</text>
 
             <rect x="16" y="160" width="608" height="36" rx="3" class="taint-box"></rect>
@@ -363,6 +363,16 @@
       modification, not forgery by something that can construct bindings of its own.
     </p>
     <p>
+      It also detects change rather than reuse, which is the sharper limit and the one this
+      strip does not otherwise show. <code>verify_binding</code> is a pure function that keeps
+      no record of what it has already accepted. The same binding, with the same arguments and
+      the same message hash, verifies every time it is asked for as long as its TTL lasts.
+      Every refusal drawn above came from something <em>differing</em>: a changed recipient, an
+      advanced conversation, an expired window. An exact replay inside the window differs in
+      nothing, and passes. Consuming a binding on first use would take state this function does
+      not keep.
+    </p>
+    <p>
       If bindings ever had to travel between processes, this would need to become a keyed HMAC
       over the tool, argument hash, message hash, creation time and TTL, checked against a
       server-held secret. That is written down as future work rather than quietly implied by
@@ -372,10 +382,9 @@
       Mechanism only. <code>bind_request</code>, <code>verify_binding</code>,
       <code>args_hash</code>, <code>message_hash</code> and <code>ttl</code> are real. The
       addresses are invented. No benchmark numbers appear, because numbers go stale and
-      mechanisms do not.
+      mechanisms do not. Verified against GuardLLM 2.0.0, commit <code>36be295</code>. API
+      names, policy fields and orderings can change too, not only numbers.
     </p>
-      Verified against GuardLLM 2.0.0, commit <code>4a8fefa</code>. API names, policy
-      fields and orderings can change too, not only numbers.
   </section>
 
 </div>

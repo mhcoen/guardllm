@@ -116,8 +116,7 @@
       When the model runs at a third party, every byte of every prompt crosses that boundary.
       Personal data <em>the detectors recognize</em> is replaced before the crossing with
       tokens, and coming back is not automatic: two separate gates decide, and both of them
-      default to no. Those four words are the difference between a mechanism and a promise, and
-      panel 01 shows why.
+      default to no.
     </p>
   </header>
 
@@ -157,8 +156,8 @@
             <text x="354" y="42" class="lbl-s">what the provider sees</text>
             <line x1="354" y1="52" x2="610" y2="52" class="arrow dash faint"></line>
             <text x="354" y="74" class="taint-lbl">Marguerite Vasquez</text>
-            <text x="354" y="96" class="memo-lbl">[[GL:EMAIL:MBGMQC190KJS0GG]]</text>
-            <text x="354" y="118" class="memo-lbl">[[GL:PHONE:N4VH2865KVNQG1S]]</text>
+            <text x="354" y="96" class="memo-lbl">[[GL:EMAIL:7QX4M2KPZ3T8W9F]]</text>
+            <text x="354" y="118" class="memo-lbl">[[GL:PHONE:K3D9R6TB1YH4M0C]]</text>
             <text x="354" y="140" class="taint-lbl">44 Sycamore Lane</text>
             <text x="354" y="162" class="taint-lbl">goes by Margo</text>
 
@@ -167,21 +166,19 @@
             <text x="132" y="223" class="lbl-s" text-anchor="middle">token &harr; value, near side only</text>
             <path d="M132 172 V186" class="memo-stroke faint"></path>
 
-            <text x="340" y="200" class="lbl-s">two of five substituted; the result still reports</text>
-            <text x="340" y="218" class="taint-lbl">reason=&apos;clean&apos; &middot; detection_incomplete=False</text>
-            <text x="340" y="238" class="memo-lbl">warnings: no detector for address, person</text>
+            <text x="340" y="196" class="lbl-s">two of five substituted</text>
+            <text x="340" y="214" class="lbl-s faint">reason=&apos;clean&apos;, detection_incomplete=False</text>
+            <text x="340" y="234" class="taint-lbl">warnings: no detector for address, person</text>
           </svg>
         </div>
         <figcaption>
           The mapping never crosses, and the model works with stable placeholders, so it can
           still reason about the same person appearing twice without being told who that is.
-          That is the mechanism. The three values that crossed as written are the part to take
-          seriously, and this is a default configuration, not a broken one:
+          The three values that crossed as written are the part to take seriously, and this is a
+          default configuration, not a broken one:
           <code>DEFAULT_TOKENIZE_CLASSES</code> includes <code>person</code> and
           <code>address</code>, while <code>PrivacyConfig().detectors</code> is empty. The
-          classes are switched on and nothing is registered to find them. The verdict stays
-          <code>clean</code>, because none of the checks that ran failed; what tells you is the
-          warning, which names the classes nothing scanned for. Structural patterns
+          classes are switched on and nothing is registered to find them. Structural patterns
           like an address or a phone number carry their own shape and are matched without help;
           a name does not, so it needs a detector supplied through
           <code>PrivacyConfig(detectors=...)</code> or a host-declared value list. Until one is,
@@ -198,7 +195,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 190" role="img" aria-label="The token format uses colons to break it into short runs so the entropy scanner does not flag it, and its body carries error-correcting symbols.">
+          <svg viewBox="0 0 640 204" role="img" aria-label="The token format uses colons to break it into short runs so the entropy scanner does not flag it, and its body carries error-correcting symbols.">
             <text x="16" y="24" class="lbl-s">anatomy</text>
             <rect x="16" y="36" width="380" height="44" rx="3" class="memo-box"></rect>
             <text x="30" y="64" class="memo-lbl" style="font-size:13px">[[GL: EMAIL : 7QX4M2KPZ3T8W9F ]]</text>
@@ -213,7 +210,8 @@
             <text x="340" y="154" class="taint-lbl">two refused, never guessed</text>
 
             <line x1="16" y1="170" x2="624" y2="170" class="arrow dash faint"></line>
-            <text x="16" y="186" class="lbl-s">the colons are load-bearing: they keep every run to 15 characters, below the scanner's 20-character floor</text>
+            <text x="16" y="180" class="lbl-s">the colons are load-bearing: they keep every run to 15 characters,</text>
+            <text x="16" y="196" class="lbl-s">below the entropy scanner&apos;s 20-character floor</text>
           </svg>
         </div>
         <figcaption>
@@ -323,7 +321,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 168" role="img" aria-label="Ordinary identifier classes are tokenized, while credentials are refused outright because issuing a token would imply the value can come back.">
+          <svg viewBox="0 0 640 180" role="img" aria-label="Ordinary identifier classes are tokenized, while credentials are refused outright because issuing a token would imply the value can come back.">
             <defs>
               <marker id="v5m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" class="memo-fill"></polygon>
@@ -334,7 +332,7 @@
             </defs>
 
             <rect x="16" y="26" width="176" height="44" rx="3" class="box"></rect>
-            <text x="104" y="53" class="lbl-s" text-anchor="middle">email, phone, SSN, IBAN</text>
+            <text x="104" y="53" class="lbl-s" text-anchor="middle">email, phone, card, SSN, IBAN</text>
             <line x1="204" y1="48" x2="268" y2="48" class="memo-stroke" marker-end="url(#v5m)"></line>
             <text x="236" y="38" class="memo-lbl" text-anchor="middle">tokenize</text>
             <rect x="280" y="26" width="200" height="44" rx="3" class="memo-box"></rect>
@@ -350,7 +348,8 @@
             <text x="496" y="106" class="lbl-s">a token implies</text>
             <text x="496" y="122" class="lbl-s">it can come back</text>
 
-            <text x="16" y="152" class="taint-lbl">Guard.deidentify returns allowed=False, content=&quot;&quot;, &quot;Class &apos;credential&apos; must not cross the model boundary&quot;</text>
+            <text x="16" y="148" class="taint-lbl">Guard.deidentify returns allowed=False, content=&quot;&quot;</text>
+            <text x="16" y="164" class="taint-lbl">&quot;Class &apos;credential&apos; must not cross the model boundary&quot;</text>
           </svg>
         </div>
         <figcaption>
@@ -360,9 +359,11 @@
           <code>deidentify</code> returns <code>allowed=False</code> with empty content, so the
           prompt does not continue without the credential, there is no prompt at all. The left
           column lists the classes a default configuration actually matches, all of them
-          structural. The same qualifier as panel 01 applies here, and one more from panel 02:
-          this is the credential the secret scanner recognizes, and that scanner does not look
-          at runs shorter than twenty characters.
+          structural. One qualifier, and it is not the one panel 02
+          might suggest: a credential matching a known shape is refused at any length, measured
+          down to fifteen characters. The twenty-character floor belongs to the entropy path,
+          which is what catches a secret whose shape nothing knows, so it is the
+          <em>unrecognized</em> credential that has a minimum length.
         </figcaption>
       </figure>
     </section>
@@ -424,9 +425,7 @@
       reports nothing, so panel 01 comes back <code>clean</code> with the flag unset. The
       warning is the one. It names every configured class that has no structural pattern, no
       seeded value and no detector behind it, which at a default configuration is
-      <code>person</code> and <code>address</code>, and it exists because this strip could not
-      otherwise be written honestly: a clean result on text containing a name was
-      indistinguishable from a clean result on text without one.
+      <code>person</code> and <code>address</code>.
     </p>
     <p>
       <strong>The invariant is narrower than &ldquo;only issued tokens resolve&rdquo;.</strong>
@@ -444,7 +443,7 @@
       <code>prepare_tool_call</code>, <code>restore_policy</code> and
       <code>destination_policy</code> are real. Token bodies and addresses are invented. No
       benchmark numbers appear, because numbers go stale and mechanisms do not. Verified against
-      GuardLLM 2.0.0, commit <code>36be295</code>. API names, policy fields and orderings can
+      GuardLLM 2.0.0, commit <code>b3710a9</code>. API names, policy fields and orderings can
       change too, not only numbers.
     </p>
   </section>

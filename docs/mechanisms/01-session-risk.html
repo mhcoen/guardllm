@@ -374,7 +374,8 @@
             <text x="554" y="144" class="lbl-s" text-anchor="middle">permitted</text>
 
             <text x="404" y="52" class="lbl">Every check passes.</text>
-            <text x="404" y="72" class="lbl-s">Each one is correct, on its own terms.</text>
+            <text x="404" y="72" class="lbl-s">Each is correct on its</text>
+            <text x="404" y="88" class="lbl-s">own terms.</text>
           </svg>
         </div>
         <figcaption>
@@ -427,7 +428,7 @@
             <rect x="460" y="30" width="164" height="76" rx="3" class="box-f"></rect>
             <text x="542" y="54" class="lbl-s" text-anchor="middle">allow (the default)</text>
             <text x="542" y="80" class="lbl" text-anchor="middle">ALLOWED</text>
-            <text x="542" y="98" class="lbl-s" text-anchor="middle">implicit allow</text>
+            <text x="542" y="98" class="lbl-s" text-anchor="middle">session risk present</text>
 
             <rect x="460" y="124" width="164" height="76" rx="3" class="taint-box"></rect>
             <text x="542" y="148" class="lbl-s" text-anchor="middle">deny</text>
@@ -505,7 +506,7 @@
       <code>contaminated_tool_policy</code>. No benchmark numbers appear here on purpose,
       because numbers go stale and mechanisms do not. Panel 05 was measured both ways, at the
       default policy and hardened. Verified against GuardLLM 2.0.0, commit
-      <code>36be295</code>. API names, policy fields and orderings can change too, not only
+      <code>b3710a9</code>. API names, policy fields and orderings can change too, not only
       numbers.
     </p>
   </section>

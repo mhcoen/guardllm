@@ -206,7 +206,7 @@
           <line x1="194" y1="268" x2="224" y2="268" class="memo-stroke" marker-end="url(#ixm)"></line>
 
           <rect x="228" y="242" width="176" height="52" rx="3" class="memo-box"></rect>
-          <text x="316" y="264" class="memo-lbl" text-anchor="middle">bind exact bytes</text>
+          <text x="316" y="264" class="memo-lbl" text-anchor="middle">bind canonical args</text>
           <text x="316" y="282" class="lbl-s" text-anchor="middle">strip 03</text>
 
           <line x1="406" y1="268" x2="436" y2="268" class="memo-stroke" marker-end="url(#ixm)"></line>
@@ -249,7 +249,7 @@
         <p class="claim">
           An instruction buried in a fetched page gets a fact written down. Two turns later a
           perfectly well-formed transfer is refused, because the gate can read that fact and
-          four separate point tools cannot.
+          four separate point tools cannot. The refusal needs a setting the library ships off.
         </p>
         <p class="shows">session risk &middot; contaminated_tool_policy &middot; why the composition falls short</p>
       </a>
@@ -273,7 +273,7 @@
           returns with the recipient changed and three turns elapsed, it is no longer the call
           that was approved.
         </p>
-        <p class="shows">args_hash &middot; message_hash &middot; ttl &middot; replay</p>
+        <p class="shows">args_hash &middot; message_hash &middot; ttl &middot; change, not reuse</p>
       </a>
 
       <a class="card" href="04-privacy-vault.html">
@@ -293,7 +293,7 @@
         <p class="claim">
           Installed is not the same as in the way. One fetch that skips the library leaves no
           record, and a later call that <em>was</em> routed correctly then reads an empty
-          ledger and allows what it would otherwise deny.
+          ledger and allows what a hardened policy would have refused.
         </p>
         <p class="shows">A-AS1 &middot; A-AS2 &middot; mediated paths &middot; what the gateway fixes</p>
       </a>
@@ -317,7 +317,7 @@
     <dl>
       <div class="row">
         <dt><span class="swatch sw-taint"></span>red</dt>
-        <dd>Something untrusted, something recorded against the session, or a refusal. Red is never decorative.</dd>
+        <dd>Something untrusted, something recorded against the session, a refusal, or a value that crossed unprotected. Red is never decorative.</dd>
       </div>
       <div class="row">
         <dt><span class="swatch sw-memo"></span>green</dt>
@@ -340,8 +340,9 @@
       Every API name, policy setting and field path in these strips is real and was read out
       of the source rather than recalled. Token values, email addresses and account numbers
       are invented for the drawings. Verified against GuardLLM 2.0.0, commit
-      <code>36be295</code>: names, policy fields and orderings change too, not only numbers,
-      so the stamp is repeated on every page in the series.
+      <code>b3710a9</code>, the most recent commit that changed library behaviour rather than
+      prose: names, policy fields and orderings change too, not only numbers, so the stamp is
+      repeated on every page in the series.
     </p>
   </section>
 

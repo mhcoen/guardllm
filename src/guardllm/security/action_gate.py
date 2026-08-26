@@ -1,4 +1,4 @@
-"""Part 3: Action gate — user confirmation for write operations.
+"""Part 3: Action gate, user confirmation for write operations.
 
 Presents proposed actions to the user and requires explicit
 confirmation before execution. The gate is the last line of defense
@@ -41,7 +41,7 @@ class ActionProposal:
     heightened_scrutiny: bool = False  # True if class_hiding_possible
 
 
-# Hardcoded warning text — NOT LLM-generated (INV-MUSE-7)
+# Hardcoded warning text, NOT LLM-generated (INV-MUSE-7)
 _WEB_DERIVED_WARNING = "\u26a0\ufe0f  Your conversation context includes content from web search."
 
 

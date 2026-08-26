@@ -209,7 +209,7 @@ class TestOutboundDLP:
         untrusted = "x" * 50  # < 100 char threshold for DLP
         dlp.ingest_untrusted(untrusted)
         dlp.check(untrusted, ctx)
-        # May pass or fail depending on n-gram — but at least no verbatim block
+        # May pass or fail depending on n-gram, but at least no verbatim block
         # For single repeated char, n-gram overlap would be 100% since it's the same
         # Let's test with something that clearly passes
         result2 = dlp.check("completely different content", ctx)

@@ -99,7 +99,7 @@ none, and refuses at load any policy that needs one**, naming it.
 
 That refusal is the feature. The alternative is to answer such a call with
 "undefined", and in Rego an undefined reference makes the enclosing rule body
-undefined, so a `deny` rule that reaches one does not deny — it fails to fire,
+undefined, so a `deny` rule that reaches one does not deny: it fails to fire,
 and the call is allowed. A policy you tested with `opa eval` and watched deny
 would load, evaluate, and permit, with nothing anywhere saying why.
 

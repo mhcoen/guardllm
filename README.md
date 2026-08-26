@@ -21,7 +21,7 @@ GuardLLM (`guardllm`) is a Python library that puts deterministic security contr
 
 Data changes hands at three party crossings: ingress, the model, and egress. Authorization and integrity are gates inside the trusted region, so they admit or refuse a flow and never move data across a boundary. The four edges on the retained session state are the loop. Ingress writes labels, the authorization gates and egress checks read them, and a remembered canary or a DLP hard block at egress writes escalation back, so a block now tightens a later call in the same session. Content passes through the model. Labels travel around it, which is why a decision at egress can still read what ingress recorded. The model crossing is the one no control inspects ([T-IN13](docs/threat_model.md)).
 
-Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content.
+Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. Not every check reads them. Request binding reads neither: it is an intra-process consistency check over the tool, its arguments, the message, and a TTL. Error sanitization is unconditional and takes no context at all.
 
 > New to GuardLLM? The [visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/) draws six mechanisms one at a time: session risk, canary tokens, request binding, the privacy vault, mediated paths, and the two questions asked of one tool call.
 

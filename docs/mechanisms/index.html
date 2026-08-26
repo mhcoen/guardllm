@@ -157,7 +157,7 @@
     <h2>How they fit together</h2>
     <figure>
       <div class="fig-scroll">
-        <svg viewBox="0 0 780 396" role="img" aria-label="Strips one and two both write session risk that the tool gate later reads; strips four, three and six are a sequence within a single call, where tokens are resolved, then arguments bound, then two independent questions decided before dispatch; strip five is the precondition, since none of it applies to a path that skips the guard.">
+        <svg viewBox="0 0 780 340" role="img" aria-label="Strips one and two both write session risk that the tool gate later reads. Strips four, three and six are a sequence within a single call: tokens are resolved, then arguments bound, then two independent questions decided before dispatch.">
           <defs>
             <marker id="ix" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
               <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -223,9 +223,6 @@
 
           <text x="16" y="322" class="lbl-s">the order matters: bind a tokenized argument and the restored call fails its own check</text>
 
-          <line x1="16" y1="342" x2="764" y2="342" class="arrow dash faint"></line>
-          <rect x="16" y="352" width="748" height="34" rx="3" class="taint-box"></rect>
-          <text x="32" y="374" class="taint-lbl">strip 05: none of the above applies to a path that never reaches the guard</text>
         </svg>
       </div>
       <figcaption>
@@ -233,8 +230,9 @@
         way in, the other on the way out, and the tool gate reads whatever is there. Strips 04,
         03 and 06 are not a loop but a sequence, and getting the first two the wrong way round
         breaks the call. Strip 06 is where that sequence ends, and the point of it is that the
-        last step is two verdicts rather than one. Strip 05 sits underneath all of it: every
-        arrow here assumes the application actually routed that path through the library.
+        last step is two verdicts rather than one. Strip 05 is not on this diagram because it is
+        a condition on the whole of it: every arrow here assumes the application actually routed
+        that path through the library.
       </figcaption>
     </figure>
   </section>
@@ -260,7 +258,7 @@
         <p class="claim">
           A token placed where only the model can read it, with a copy kept where the model
           cannot reach. If it ever appears on the way out, private context leaked, and no
-          amount of re-casing or splitting hides it.
+          amount of re-casing, spacing or hyphenating hides it.
         </p>
         <p class="shows">canary_token &middot; canonicalized matching &middot; escalation</p>
       </a>

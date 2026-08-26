@@ -187,8 +187,8 @@
             <text x="340" y="50" class="memo-lbl" text-anchor="middle" style="font-size:12px">check_tool_call</text>
             <text x="250" y="74" class="lbl-s">argument validation</text>
             <text x="250" y="92" class="lbl-s">session-risk gate</text>
-            <text x="250" y="110" class="lbl-s">L9 policy</text>
-            <text x="250" y="128" class="lbl-s">L6 rate limit &middot; L11 binding</text>
+            <text x="250" y="110" class="lbl-s">policy</text>
+            <text x="250" y="128" class="lbl-s">rate limit &middot; binding</text>
 
             <path d="M458 89 H506" class="arrow" marker-end="url(#a2)"></path>
 
@@ -276,10 +276,10 @@
 
             <rect x="234" y="28" width="212" height="126" rx="3" class="memo-box"></rect>
             <text x="340" y="50" class="memo-lbl" text-anchor="middle" style="font-size:12px">check_outbound</text>
-            <text x="250" y="74" class="lbl-s">L13 unrestored token</text>
-            <text x="250" y="92" class="lbl-s">L5 canary</text>
-            <text x="250" y="110" class="lbl-s">L3 secrets &middot; overlap</text>
-            <text x="250" y="128" class="lbl-s">L4 provenance &middot; L6 budget</text>
+            <text x="250" y="74" class="lbl-s">unrestored token</text>
+            <text x="250" y="92" class="lbl-s">canary</text>
+            <text x="250" y="110" class="lbl-s">secrets &middot; overlap</text>
+            <text x="250" y="128" class="lbl-s">provenance &middot; egress budget</text>
 
             <path d="M458 89 H506" class="arrow" marker-end="url(#a4)"></path>
 
@@ -297,8 +297,8 @@
           body as in a webhook. Not the content alone, though. The canary is session state, the
           provenance check compares against text this session ingested earlier, and the limiter
           reads a caller and a counter. The tool name is the thing it never sees, and that is
-          what makes the check reusable across every channel. <code>L6</code> here is the same
-          limiter panel 02 showed, asked a second time with <code>action=outbound</code>.
+          what makes the check reusable across every channel. The rate limiter here is the one panel 02
+          showed, asked a second time with <code>action=outbound</code>.
           Notice that no other check in this box appears in panel 02.
         </figcaption>
       </figure>

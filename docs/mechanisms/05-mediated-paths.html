@@ -225,23 +225,30 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 156" role="img" aria-label="Session state after the direct fetch is empty, where the mediated version would have recorded contamination.">
-            <text x="16" y="24" class="lbl-s">what it should hold</text>
-            <rect x="16" y="34" width="288" height="96" rx="3" class="box-f"></rect>
-            <line x1="32" y1="58" x2="288" y2="58" class="arrow faint"></line>
-            <circle cx="40" cy="82" r="4" class="taint-fill"></circle>
-            <text x="54" y="87" class="taint-lbl">contaminated = true</text>
-            <text x="32" y="114" class="lbl-s" opacity="0.75">source: web tool</text>
+          <svg viewBox="0 0 640 172" role="img" aria-label="The session ledger in both sessions. The mediated fetch called process_inbound, which wrote contaminated equals true. The bypassed fetch called nothing, so its ledger has no entry.">
+            <text x="16" y="22" class="lbl-s">the same ledger, in both sessions, before the tool gate is asked</text>
+            <rect x="16" y="32" width="608" height="30" rx="3" class="box"></rect>
+            <text x="32" y="52" class="lbl-s">session state</text>
 
-            <text x="336" y="24" class="lbl-s">what it holds</text>
-            <rect x="336" y="34" width="288" height="96" rx="3" class="box-f"></rect>
-            <line x1="352" y1="58" x2="608" y2="58" class="arrow faint"></line>
-            <text x="352" y="87" class="lbl-s" opacity="0.6">(nothing)</text>
+            <rect x="16" y="80" width="296" height="82" rx="3" class="memo-box"></rect>
+            <text x="32" y="104" class="lbl-s">fetch routed through the guard</text>
+            <line x1="32" y1="114" x2="296" y2="114" class="memo-stroke faint"></line>
+            <circle cx="40" cy="136" r="4" class="taint-fill"></circle>
+            <text x="54" y="141" class="taint-lbl">contaminated = true</text>
+            <text x="32" y="157" class="lbl-s" opacity="0.75">written by process_inbound</text>
+
+            <rect x="328" y="80" width="296" height="82" rx="3" class="taint-box"></rect>
+            <text x="344" y="104" class="lbl-s">fetch went direct</text>
+            <line x1="344" y1="114" x2="608" y2="114" class="taint-stroke faint"></line>
+            <text x="344" y="141" class="lbl-s" opacity="0.6">no entry</text>
+            <text x="344" y="157" class="lbl-s" opacity="0.75">nothing was called</text>
           </svg>
         </div>
         <figcaption>
-          No error, no warning, no failed call. A control that was never invoked has nothing to
-          report, which is exactly what makes this failure quiet.
+          The mediated fetch called <code>process_inbound</code>, which wrote
+          <code>contaminated=true</code>. The bypassed fetch called nothing, so no entry was
+          written. Panel 04 reads both: its left column reads the entry, its right column reads
+          the blank.
         </figcaption>
       </figure>
     </section>

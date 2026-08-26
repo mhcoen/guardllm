@@ -230,34 +230,64 @@
     <section class="panel">
       <div class="panel-head">
         <span class="num">01</span>
-        <p class="beat">An ordinary request</p>
+        <p class="beat">An ordinary request, and the stack it passes through</p>
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 120" role="img" aria-label="A user asks the agent to summarize a vendor page; nothing is marked.">
+          <svg viewBox="0 0 640 226" role="img" aria-label="A user asks the agent to summarize a page. The proposed fetch passes through four checks a team already has, JSON Schema, Casbin RBAC, a rate limiter and OPA policy, before reaching the web tool. None of the four is GuardLLM.">
             <defs>
               <marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
               </marker>
             </defs>
-            <circle cx="66" cy="46" r="13" class="box"></circle>
-            <path d="M46 78 a20 18 0 0 1 40 0" class="box"></path>
-            <text x="66" y="108" class="lbl-s" text-anchor="middle">user</text>
 
-            <line x1="104" y1="56" x2="236" y2="56" class="arrow" marker-end="url(#a1)"></line>
-            <text x="170" y="44" class="lbl-s" text-anchor="middle">&ldquo;summarize this page&rdquo;</text>
+            <circle cx="58" cy="32" r="12" class="box"></circle>
+            <path d="M40 60 a18 16 0 0 1 36 0" class="box"></path>
+            <text x="58" y="82" class="lbl-s" text-anchor="middle">user</text>
 
-            <rect x="248" y="26" width="128" height="60" rx="3" class="box-f"></rect>
-            <text x="312" y="61" class="lbl" text-anchor="middle">agent</text>
+            <line x1="86" y1="42" x2="146" y2="42" class="arrow" marker-end="url(#a1)"></line>
+            <text x="116" y="32" class="lbl-s" text-anchor="middle">&ldquo;summarize&rdquo;</text>
 
-            <line x1="388" y1="56" x2="516" y2="56" class="arrow" marker-end="url(#a1)"></line>
-            <text x="452" y="44" class="lbl-s" text-anchor="middle">fetch</text>
+            <rect x="158" y="16" width="118" height="52" rx="3" class="box-f"></rect>
+            <text x="217" y="47" class="lbl" text-anchor="middle">agent</text>
 
-            <rect x="528" y="26" width="96" height="60" rx="3" class="box"></rect>
-            <text x="576" y="61" class="lbl" text-anchor="middle">web tool</text>
+            <line x1="288" y1="42" x2="348" y2="42" class="arrow" marker-end="url(#a1)"></line>
+            <text x="318" y="32" class="lbl-s" text-anchor="middle">proposes</text>
+
+            <rect x="360" y="16" width="150" height="52" rx="3" class="box-f"></rect>
+            <text x="435" y="47" class="lbl" text-anchor="middle">fetch a page</text>
+
+            <path d="M435 70 V96" class="arrow" marker-end="url(#a1)"></path>
+
+            <text x="16" y="92" class="lbl-s">the checks a team already has</text>
+
+            <rect x="16" y="102" width="140" height="54" rx="3" class="box"></rect>
+            <text x="86" y="126" class="lbl-s" text-anchor="middle">JSON Schema</text>
+            <text x="86" y="144" class="lbl-s" text-anchor="middle">the shape</text>
+
+            <rect x="172" y="102" width="140" height="54" rx="3" class="box"></rect>
+            <text x="242" y="126" class="lbl-s" text-anchor="middle">Casbin RBAC</text>
+            <text x="242" y="144" class="lbl-s" text-anchor="middle">who is asking</text>
+
+            <rect x="328" y="102" width="140" height="54" rx="3" class="box"></rect>
+            <text x="398" y="126" class="lbl-s" text-anchor="middle">rate limiter</text>
+            <text x="398" y="144" class="lbl-s" text-anchor="middle">how often</text>
+
+            <rect x="484" y="102" width="140" height="54" rx="3" class="box"></rect>
+            <text x="554" y="126" class="lbl-s" text-anchor="middle">OPA policy</text>
+            <text x="554" y="144" class="lbl-s" text-anchor="middle">what is allowed</text>
+
+            <path d="M320 160 V184" class="arrow" marker-end="url(#a1)"></path>
+
+            <rect x="252" y="190" width="136" height="28" rx="3" class="box"></rect>
+            <text x="320" y="209" class="lbl-s" text-anchor="middle">web tool</text>
           </svg>
         </div>
-        <figcaption>Nothing suspicious yet. This is the shape of most agent traffic.</figcaption>
+        <figcaption>
+          Four third-party checks, none of them GuardLLM: JSON Schema, Casbin RBAC, a rate
+          limiter, OPA policy. GuardLLM sits with them, not in place of them. Panel 04 sends one
+          request through this same stack; panel 06 returns to it.
+        </figcaption>
       </figure>
     </section>
 
@@ -291,11 +321,11 @@
           </svg>
         </div>
         <figcaption>
-          Assume the injection detector never recognizes this sentence. It does not need to. The
-          source is untrusted because of the channel it arrived on, not because anything
-          classified its words. Detection changes nothing here: it adds a warning to the
-          returned result and does not move the label. The text itself is retained, which is
-          what lets a later egress check compare an outbound payload against what came in.
+          <code>contaminated</code> tracks the channel and nothing else: benign text on an
+          untrusted channel contaminates, injected text on a trusted channel does not. Detection
+          adds a warning to the returned result and moves no flag. The text itself is retained,
+          which is what lets a later egress check compare an outbound payload against what came
+          in.
         </figcaption>
       </figure>
     </section>
@@ -437,16 +467,14 @@
           </svg>
         </div>
         <figcaption>
-          Same call, same user. The only thing that changed between the two turns is a fact
-          recorded earlier, on a different channel, by a different stage, and the gate can read
-          it. That is the mechanism. What the gate then <em>does</em> with the fact is a
-          separate choice, and this gate does not consult the library&rsquo;s destructive-tool
-          set to make it: under <code>deny</code> a declared tool and an undeclared one are
-          both refused with the same string, and under <code>allow</code> both pass. The policy
-          is the only variable, and it ships as <code>allow</code>, so the top row is what
-          happens out of the box. That is deliberate, and the README says several defaults are
-          permissive for compatibility. It also means the refusal below it is something you
-          turn on.
+          <code>contaminated_tool_policy</code> ships as <code>allow</code>, one of the
+          defaults the README calls deliberately permissive for compatibility. The gate does not
+          consult the destructive-tool set: under <code>deny</code> a declared tool and an
+          undeclared one are refused with the identical string, and under <code>allow</code>
+          both pass. What the gate reads is the fact panel 03 wrote, two turns earlier, on a
+          different channel, by a different stage. Under <code>allow</code> the call passes with
+          <code>[session risk present: session contaminated=allow]</code> appended to its
+          reason. Under <code>deny</code> the same call, same user, same fact, is refused.
         </figcaption>
       </figure>
     </section>
@@ -492,13 +520,12 @@
   <section class="coda">
     <h2>The loop runs backwards too</h2>
     <p>
-      The same memory works in the other direction, and it is worth being exact about what
-      triggers it, because there is no confidence threshold to tune. Two outbound results
-      write escalation: a remembered canary detected at egress, and a DLP hard block. A
-      provenance refusal and a rate-limit refusal do not, though both still refuse.
-      <code>escalated_tool_policy</code> then decides what the gate does with the flag, and it
-      ships as <code>require_auth</code>, so a later call is refused unless something
-      authorizes it. A leak that was caught once makes the next request harder, not easier.
+      The same memory works in the other direction, and there is no confidence threshold to
+      tune. Two outbound results write <code>escalated=True</code>: a remembered canary, and a
+      DLP hard block. A provenance refusal or a rate-limit refusal refuses without writing it.
+      <code>escalated_tool_policy</code> ships as <code>require_auth</code>, so a later call is
+      refused unless something authorizes it. A leak that was caught once makes the next request
+      harder, not easier. Strip 02 draws this from the other end.
     </p>
     <p class="note">
       Mechanism only. Every name on these panels is a real setting or call in the library:

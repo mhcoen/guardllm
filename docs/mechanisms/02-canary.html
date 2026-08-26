@@ -355,7 +355,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 210" role="img" aria-label="Re-cased, space-separated and zero-width-split forms all canonicalize to the same string. A split across adjacent argument fields is caught by joining the call, but a split whose field ordering separates the halves is not.">
+          <svg viewBox="0 0 640 190" role="img" aria-label="Re-cased, space-separated, hyphenated and zero-width-split forms all canonicalize to the same string before the comparison.">
             <defs>
               <marker id="c4m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" class="memo-fill"></polygon>
@@ -371,7 +371,7 @@
             <rect x="16" y="110" width="268" height="30" rx="3" class="box"></rect>
             <text x="28" y="130" class="lbl-s">CAN&#8203;ARY&#8209;a1b2&#8203;c3d4&hellip;</text>
             <rect x="16" y="148" width="268" height="30" rx="3" class="box"></rect>
-            <text x="28" y="168" class="lbl-s">{a:&ldquo;CANARY-a1b2&rdquo;, b:&ldquo;c3d4&hellip;&rdquo;}</text>
+            <text x="28" y="168" class="lbl-s">CANARY-a1b2-c3d4-e5f6-a7b8</text>
 
             <path d="M296 49 H340 V100" class="memo-stroke faint"></path>
             <path d="M296 87 H340" class="memo-stroke faint"></path>
@@ -383,16 +383,14 @@
             <rect x="408" y="84" width="216" height="44" rx="3" class="memo-box"></rect>
             <text x="516" y="111" class="memo-lbl" text-anchor="middle" style="font-size:12px">canarya1b2c3d4e5f6a7b8</text>
 
-            <text x="408" y="152" class="lbl-s">case, whitespace, hyphens and</text>
-            <text x="408" y="168" class="lbl-s">zero-width forms fold away</text>
-            <text x="408" y="184" class="taint-lbl">field ORDER can still defeat it</text>
+            <text x="408" y="150" class="lbl-s">case, whitespace, hyphens</text>
+            <text x="408" y="166" class="lbl-s">and zero-width forms fold away</text>
           </svg>
         </div>
         <figcaption>
-          Both sides are canonicalized before comparison, so re-casing it, spacing it out or
-          hiding a zero-width character inside it does not help. The fourth row is weaker: a
-          call's field values are joined and scanned as one payload, which catches halves that
-          sit next to each other in traversal order and misses halves placed so they do not.
+          Both sides are canonicalized before <code>detect_canary</code> compares them.
+          Measured five ways: verbatim, re-cased, spaces inserted, a hyphen every four
+          characters, a zero-width character inside. All five detected.
         </figcaption>
       </figure>
     </section>
@@ -439,10 +437,10 @@
           </svg>
         </div>
         <figcaption>
-          The canary check runs ahead of generic secret and entropy detection, because a
-          session-scoped marker is a more specific signal than &ldquo;this looks random&rdquo;. A
-          quoting directive, which relaxes other overlap checks, does not exempt it: quoting
-          never authorizes disclosing private context.
+          The canary runs before generic secret and entropy detection: a session-scoped marker
+          is more specific than &ldquo;this looks random&rdquo;. It also runs before
+          <code>has_quoting_directive</code>, the host flag that skips the overlap checks when
+          the user asked for text quoted back, so the marker is refused either way.
         </figcaption>
       </figure>
     </section>
@@ -486,13 +484,13 @@
           </svg>
         </div>
         <figcaption>
-          One blocked exfiltration makes the rest of the session stricter. What stricter means
-          is <code>escalated_tool_policy</code>, and it ships as <code>require_auth</code>: the
-          next call comes back <code>Authorization required: egress escalated=require_auth</code>
-          unless something authorizes it, while <code>deny</code> refuses it either way. This is
-          the loop from strip 01 running the other way. There, ingest tightened the gate; here, a
-          caught leak does. Catching a leak once is not the end of the incident; it is the start
-          of a tighter session.
+          Two outbound results write <code>escalated=True</code>: a remembered canary, and a
+          DLP hard block. A provenance refusal or a rate-limit refusal refuses without writing
+          it. <code>escalated_tool_policy</code> ships as <code>require_auth</code>, so the next
+          call returns <code>Authorization required: egress escalated=require_auth</code> unless
+          something authorizes it. Set to <code>deny</code>, the next call is refused either way.
+          This is strip 01&rsquo;s loop running the other way: there ingest tightened the gate,
+          here a caught leak does.
         </figcaption>
       </figure>
     </section>

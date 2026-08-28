@@ -2677,9 +2677,7 @@ const baseShow=show;show=function(n,moveFocus=true){baseShow(n,moveFocus);paint(
         )
 
     act_data_html = (
-        f'<script id="vordur-acts" type="application/json">{act_json}</script>'
-        if act_json
-        else ""
+        f'<script id="vordur-acts" type="application/json">{act_json}</script>' if act_json else ""
     )
     act_script_html = f"<script>{act_script}</script>" if act_script else ""
 

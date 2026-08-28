@@ -2254,9 +2254,7 @@ def write_markdown(
     lines.append("# Mitigation Comparison")
     lines.append("")
     strategy_names = [
-        x
-        for x in ("vordur", "isolation_only", "source_gate_only", "no_defense")
-        if x in strategies
+        x for x in ("vordur", "isolation_only", "source_gate_only", "no_defense") if x in strategies
     ]
     header = "| suite | " + " | ".join(strategy_names) + " | delta_vs_no_defense |"
     divider = "|---|" + "|".join("---:" for _ in strategy_names) + "|---:|"
@@ -2988,8 +2986,7 @@ def main() -> int:
     guard_f1 = float(guard_text.get("f1", 0.0))
     if guard_recall < float(args.min_guardllm_recall):
         print(
-            f"ERROR: vordur recall {guard_recall}% is below threshold "
-            f"{args.min_guardllm_recall}%."
+            f"ERROR: vordur recall {guard_recall}% is below threshold {args.min_guardllm_recall}%."
         )
         return 2
     if guard_f1 < float(args.min_guardllm_f1):

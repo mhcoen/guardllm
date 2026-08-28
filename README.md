@@ -127,91 +127,79 @@ Two calls, one session. `process_inbound` records that the session ingested untr
 
 ## Capabilities and API
 
-Every capability the README names, with the call or setting that reaches it. Rows marked config are reached through `PolicyConfig` or `PrivacyConfig` rather than a method.
+Every capability this README names, with the call or setting that reaches it.
+Entries marked `config` are reached through `PolicyConfig` or `PrivacyConfig`
+rather than through a method.
 
 **Context creation**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Web or search origin | `Guard.context_web` | |
-| MCP server traffic | `Guard.context_mcp_server` | |
-| MCP client traffic | `Guard.context_mcp_client` | |
-| Document or file origin | `Guard.context_document` | |
-| Host-assembled sensitive content | `Guard.context_internal_sensitive` | |
+- `Guard.context_web(...)`: web or search result origin
+- `Guard.context_mcp_server(...)`: MCP server tool traffic
+- `Guard.context_mcp_client(...)`: MCP client tool traffic
+- `Guard.context_document(...)`: document or file origin
+- `Guard.context_internal_sensitive(...)`: host-assembled sensitive content
 
 **Session risk**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Untrusted ingest writes `contaminated=True` | `Guard.process_inbound` | |
-| Gate tool calls on contamination (ships as `allow`) | `PolicyConfig.contaminated_tool_policy`, config | [SECURITY.md](SECURITY.md#documented-compatibility-exceptions) |
-| A remembered canary or a DLP hard block writes `escalated=True` | `Guard.check_outbound` | |
-| Gate later calls on escalation (ships as `require_auth`) | `PolicyConfig.escalated_tool_policy`, config | |
+- `Guard.process_inbound(...)`: untrusted ingest writes `contaminated=True`
+- `PolicyConfig.contaminated_tool_policy` (config): gates tool calls on that fact. Ships as `allow`, a [documented compatibility exception](SECURITY.md#documented-compatibility-exceptions)
+- `Guard.check_outbound(...)`: a remembered canary or a DLP hard block writes `escalated=True`
+- `PolicyConfig.escalated_tool_policy` (config): gates later calls on that fact. Ships as `require_auth`
 
 **Inbound**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Sanitize, isolate and detect in one call | `Guard.process_inbound` | |
-| Multi-span provenance | `Guard.process_inbound_compound` | |
-| Mint the session canary | `Guard.canary_token`, property | |
-| Detect the canary at egress | `Guard.check_outbound` | |
+- `Guard.process_inbound(...)`: sanitize, isolate and detect in one call
+- `Guard.process_inbound_compound(...)`: several spans with different provenance in one call
+- `Guard.canary_token` (property): mint the session canary
+- `Guard.check_outbound(...)`: detect the canary on the way out
 
-**Privacy vault** (opt-in: `Guard(privacy=PrivacyConfig(...))`)
+**Privacy vault**, opt-in with `Guard(privacy=PrivacyConfig(...))`, all of it in [privacy.md](docs/privacy.md)
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Declare known values | `Guard.seed_private_values` | [privacy](docs/privacy.md) |
-| Tokenize before the provider | `Guard.deidentify` | [privacy](docs/privacy.md) |
-| Restore for one destination | `Guard.reidentify` | [privacy](docs/privacy.md) |
-| Per-destination gate, defaults to nothing | `PrivacyConfig.destination_policy`, config | [privacy](docs/privacy.md) |
-| Per-tool-field gate, defaults to nothing | `PrivacyConfig.restore_policy`, config | [privacy](docs/privacy.md) |
-| Host detector protocol | `PrivacyConfig.detectors`, config | [privacy](docs/privacy.md) |
-| Resolve tokens in tool arguments | `Guard.prepare_tool_call` | [privacy](docs/privacy.md) |
-| Persist the vault across a restart | `Guard.persist_vault`, `Guard(vault_store=...)` | [privacy](docs/privacy.md) |
+- `Guard.seed_private_values(...)`: declare values from an already-authenticated session
+- `Guard.deidentify(...)`: tokenize personal data before the prompt reaches the provider
+- `Guard.reidentify(...)`: restore real values for one destination
+- `Guard.prepare_tool_call(...)`: resolve tokens in tool arguments before authorization and binding
+- `Guard.persist_vault(...)` with `Guard(vault_store=...)`: survive a restart
+- `PrivacyConfig.destination_policy` (config): which classes may reach a channel, defaults to nothing
+- `PrivacyConfig.restore_policy` (config): which field of which tool may hold one, defaults to nothing
+- `PrivacyConfig.detectors` (config): the host detector protocol
 
 **Authorization and action**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Authorization check | `Guard.authorize` | |
-| Tool gate | `Guard.check_tool_call` | |
-| Full guarded flow | `Guard.guard_tool_call` | |
-| Confirmation gate | `Guard.confirm_action` | |
-| Declare destructive tools | `PolicyConfig.destructive_tools`, config | [configuration](docs/configuration.md) |
-| Client allowlist (unset allows non-destructive tools) | `PolicyConfig.tool_allowlist`, config | [SECURITY.md](SECURITY.md#documented-compatibility-exceptions) |
-| Server scopes (unset allows non-destructive tools) | `PolicyConfig.capability_scopes`, config | [SECURITY.md](SECURITY.md#documented-compatibility-exceptions) |
-| Source gates and quarantine | `PolicyConfig.source_gate_overrides`, config | |
+- `Guard.authorize(...)`: check tool authorization against policy
+- `Guard.check_tool_call(...)`: the tool gate
+- `Guard.guard_tool_call(...)`: the full guarded flow, async
+- `Guard.confirm_action(...)`: the confirmation gate, async
+- `PolicyConfig.destructive_tools` (config): declare your own destructive tools ([configuration.md](docs/configuration.md))
+- `PolicyConfig.tool_allowlist` (config): client allowlist. Unset allows non-destructive tools, a [documented compatibility exception](SECURITY.md#documented-compatibility-exceptions)
+- `PolicyConfig.capability_scopes` (config): server scopes, with the same caveat as above
+- `PolicyConfig.source_gate_overrides` (config): source gates and quarantine
 
 **Integrity and replay**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| Bind a proposed call | `Guard.bind_request` | |
-| Hash the current message | `Guard.hash_message` | |
-| Require message binding | `PolicyConfig.require_message_binding`, config | |
-| Argument validation | `Guard.validate_tool_args` | |
-| Argument limits | `PolicyConfig.argument_limits`, config | [configuration](docs/configuration.md) |
-| Rate limits and anomaly checks | `PolicyConfig.rate_limits`, `rate_limit_overrides`, config | |
+- `Guard.bind_request(...)`: bind a proposed call to its arguments, message and a TTL
+- `Guard.hash_message(...)`: the message hash binding compares against
+- `Guard.validate_tool_args(...)`: validate arguments before any security check
+- `PolicyConfig.require_message_binding` (config): fail closed when a current message hash is absent
+- `PolicyConfig.argument_limits` (config): per-argument size and shape limits ([configuration.md](docs/configuration.md))
+- `PolicyConfig.rate_limits`, `rate_limit_overrides` (config): rate limits and anomaly signals
 
 **Outbound and audit**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| DLP and provenance at egress | `Guard.check_outbound` | |
-| Content check without the quota | `Guard.check_outbound_content` | |
-| Error sanitization | `Guard.sanitize_exception` | |
-| Audit hooks | `Guard(audit_logger=...)`, constructor | |
+- `Guard.check_outbound(...)`: DLP and provenance at egress
+- `Guard.check_outbound_content(...)`: the same checks without consuming egress quota
+- `Guard.sanitize_exception(...)`: strip internal detail from user-facing errors
+- `Guard(audit_logger=...)` (constructor): structured audit events
 
 **Deployment**
 
-| Capability | Reach | Docs |
-|---|---|---|
-| OpenAI-compatible proxy | `python -m vordur.gateway` | [gateway](docs/gateway.md) |
-| YAML policy | `vordur.config.load_policy` | [configuration](docs/configuration.md) |
-| Rego, evaluated locally | `vordur.policy.RegoPolicy` | [rego](docs/rego.md) |
-| Session forensics viewer | gateway only, no library call | [gateway](docs/gateway.md) |
-| Diagnostic bundle | `vordur.support.write_bundle`, `python -m vordur.support` | [support](docs/support.md) |
+- `python -m vordur.gateway`: the OpenAI-compatible proxy ([gateway.md](docs/gateway.md))
+- `vordur.config.load_policy(path)`: build a `PolicyConfig` from YAML ([configuration.md](docs/configuration.md))
+- `vordur.policy.RegoPolicy(path)`: evaluate a Rego policy locally ([rego.md](docs/rego.md))
+- `vordur.support.write_bundle(path)`, or `python -m vordur.support`: a diagnostic bundle ([support.md](docs/support.md))
+- The session forensics viewer is served by the gateway and has no library call ([gateway.md](docs/gateway.md))
+
+Full signatures, defaults and return types are in [api_spec.md](docs/api_spec.md).
 
 ## Benchmark Highlights
 

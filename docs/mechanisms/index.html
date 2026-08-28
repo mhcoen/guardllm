@@ -338,9 +338,10 @@
       Every API name, policy setting and field path in these strips is real and was read out
       of the source rather than recalled. Token values, email addresses and account numbers
       are invented for the drawings. Verified against Vörður 2.0.0, commit
-      <code>b3710a9</code>, the most recent commit that changed library behaviour rather than
-      prose: names, policy fields and orderings change too, not only numbers, so the stamp is
-      repeated on every page in the series.
+      <code>a0e51be</code>. Names, policy fields and orderings change too, not only numbers, so
+      the stamp is repeated on every page in the series. It is no longer the only guard on
+      these claims: <code>tests/test_mechanism_strips.py</code> re-runs each one against the
+      library and fails if either the library or the drawing moves without the other.
     </p>
   </section>
 

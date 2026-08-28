@@ -7,7 +7,7 @@
 
 Vörður (package `vordur`) is a Python library that puts deterministic security controls in the application around an LLM. It makes no external API calls, so the decision path has no network round trip, and it has three runtime dependencies, none of them a model.
 
-> **Vörður is not protecting LLMs. It is protecting the companies that use them.**
+> **Vörður doesn't protect LLMs. It protects the companies that use them.**
 >
 > Vörður assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate Vörður by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through Vörður.
 

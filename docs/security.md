@@ -4,38 +4,38 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-guardllm uses a defense-in-depth security pipeline designed to harden MCP servers and MCP clients against prompt injection, data exfiltration, replay attacks, and trust-boundary violations from unknown-provenance content sources such as web search results, emails, documents, calendar data, and other untrusted inputs.
+Vörður uses a defense-in-depth security pipeline designed to harden MCP servers and MCP clients against prompt injection, data exfiltration, replay attacks, and trust-boundary violations from unknown-provenance content sources such as web search results, emails, documents, calendar data, and other untrusted inputs.
 
 ## Defense Layers
 
 | Layer | Name | Purpose | Primary Module |
 |---|---|---|---|
-| L0 | Input Sanitization | Strip hidden HTML, dangerous attributes/comments, invisible Unicode, and normalize content before further processing | `guardllm.security.sanitizer` |
-| L1 | Content Isolation | Wrap untrusted input in `<untrusted_content ...>` tags with source attribution | `guardllm.security.isolation` |
-| L2 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `guardllm.security.source_gate` |
-| L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, hex decode-then-scan entropy detection, and deobfuscated variants (reversed text, spelled-out characters) | `guardllm.security.outbound_dlp` |
-| L4 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `guardllm.security.provenance` |
-| L5 | Canary Detection | Provision and remember a session canary, then block if that exact private value appears at egress | `guardllm.security.canary` |
-| L6 | Rate Limiting | Per-context action throttling for abuse resistance | `guardllm.security.rate_limiter` |
-| L7 | Error Sanitization | Sanitize error payloads before returning to clients | `guardllm.security.error_sanitizer` |
+| L0 | Input Sanitization | Strip hidden HTML, dangerous attributes/comments, invisible Unicode, and normalize content before further processing | `vordur.security.sanitizer` |
+| L1 | Content Isolation | Wrap untrusted input in `<untrusted_content ...>` tags with source attribution | `vordur.security.isolation` |
+| L2 | Source Gate | Enforce provenance-based KG extraction policies (`allow`, `quarantine`, `block`) | `vordur.security.source_gate` |
+| L3 | Outbound DLP | Block high-overlap egress, secret-like patterns, hex decode-then-scan entropy detection, and deobfuscated variants (reversed text, spelled-out characters) | `vordur.security.outbound_dlp` |
+| L4 | Provenance Tracking | Track untrusted spans and block suspicious reuse across trust boundaries, including deobfuscated content variants | `vordur.security.provenance` |
+| L5 | Canary Detection | Provision and remember a session canary, then block if that exact private value appears at egress | `vordur.security.canary` |
+| L6 | Rate Limiting | Per-context action throttling for abuse resistance | `vordur.security.rate_limiter` |
+| L7 | Error Sanitization | Sanitize error payloads before returning to clients | `vordur.security.error_sanitizer` |
 | L8 | OAuth Scope Resolution | Scope narrowing/escalation policy between auth/session states | Host application responsibility |
-| L9 | Tool Firewall | Authorize tools by policy + explicit authorization events | `guardllm.security.policy_engine` |
-| L10 | Validation | Validate tool arguments before dispatch | `guardllm.security.validation` |
-| L11 | Request Binding | Bind tool execution to message hash + args hash + TTL | `guardllm.security.request_binding` |
-| L12 | Action Gate | Optional interactive confirmation gate for sensitive actions, with G6 commitment verification | `guardllm.security.action_gate` |
-| - | Audit Logging | Structured security event logging for analysis and incident response (cross-cutting observer) | `guardllm.security.audit` |
+| L9 | Tool Firewall | Authorize tools by policy + explicit authorization events | `vordur.security.policy_engine` |
+| L10 | Validation | Validate tool arguments before dispatch | `vordur.security.validation` |
+| L11 | Request Binding | Bind tool execution to message hash + args hash + TTL | `vordur.security.request_binding` |
+| L12 | Action Gate | Optional interactive confirmation gate for sensitive actions, with G6 commitment verification | `vordur.security.action_gate` |
+| - | Audit Logging | Structured security event logging for analysis and incident response (cross-cutting observer) | `vordur.security.audit` |
 
 Note: Layer numbers are stable control identifiers, not a total execution order. L8 is documented for completeness but remains outside the library boundary.
 
 ## Guard API Coverage (Current)
 
-This section is the source of truth for what is wired through `guardllm.Guard` today.
+This section is the source of truth for what is wired through `vordur.Guard` today.
 
 | Layer | Status | Guard API Surface |
 |---|---|---|
 | L0 Input Sanitization | Implemented | `process_inbound(...)` |
 | L1 Content Isolation | Implemented | `process_inbound(...)` |
-| L2 Source Gate | Implemented | `guardllm.security.source_gate.check_extraction_allowed(...)` |
+| L2 Source Gate | Implemented | `vordur.security.source_gate.check_extraction_allowed(...)` |
 | L3 Outbound DLP | Implemented | `check_outbound(...)` |
 | L4 Provenance Tracking | Implemented | `process_inbound(...)`, `check_outbound(...)` |
 | L5 Canary Detection | Implemented | `Guard(canary_session_id=...)`, `guard.canary_token`, and inbound/outbound checks |
@@ -50,7 +50,7 @@ This section is the source of truth for what is wired through `guardllm.Guard` t
 
 ## Unified Pipeline
 
-The central orchestrator is `guardllm.security.pipeline.SecurityPipeline`, exposed through the high-level `Guard` API.
+The central orchestrator is `vordur.security.pipeline.SecurityPipeline`, exposed through the high-level `Guard` API.
 
 Inbound path:
 1. TR39 confusable normalization (homoglyph characters mapped to ASCII within mixed-script runs; legitimate single-script international text is preserved)
@@ -93,7 +93,7 @@ Threshold tuning:
 
 ## Unknown-Provenance Source Handling
 
-guardllm supports explicit security contexts for:
+Vörður supports explicit security contexts for:
 - MCP server responses (`context_mcp_server`)
 - MCP client requests (`context_mcp_client`)
 - Documents (`context_document`)
@@ -134,7 +134,7 @@ The two signals are independent: either can tighten tool policy on its own. When
 
 **Trigger scope (high-confidence exfiltration).** DLP hard blocks and remembered-canary matches escalate. Provenance and rate-limit blocks do not. A remembered canary is a session-scoped value registered as private material, so it receives primary attribution even when generic entropy would also match it. Provenance blocks remain excluded to avoid escalating on lexical-overlap false positives; the tradeoff is narrower coverage when a real cross-boundary copy is caught only by provenance.
 
-> **Host contract - canary provisioning and `reset()`.** When `canary_session_id` is supplied, trusted host code reads `guard.canary_token` and places that value in private model context; GuardLLM remembers the expected value outside the model. Calling `reset()` clears both risk signals but retains the same logical session and canary. Calling `reset(canary_session_id="new-id")` atomically clears risk and rotates an already-enabled canary for a new logical session. Never reset reactively in response to processed content or on a fixed schedule, because that would clear accumulated session risk.
+> **Host contract - canary provisioning and `reset()`.** When `canary_session_id` is supplied, trusted host code reads `guard.canary_token` and places that value in private model context; Vörður remembers the expected value outside the model. Calling `reset()` clears both risk signals but retains the same logical session and canary. Calling `reset(canary_session_id="new-id")` atomically clears risk and rotates an already-enabled canary for a new logical session. Never reset reactively in response to processed content or on a fixed schedule, because that would clear accumulated session risk.
 
 Verification: unit tests in `tests/security/test_egress_escalation.py` cover DLP and canary triggers, canary precedence, non-triggering provenance/rate/echo paths, policy options, monotonicity, reset and rotation, independence from contamination, and strictest-wins ordering.
 
@@ -156,11 +156,11 @@ The one internally-synchronized exception is the rate limiter's confirmation fin
 
 ## Operational Boundaries
 
-guardllm is an application-layer hardening library. It does not replace:
+Vörður is an application-layer hardening library. It does not replace:
 - network segmentation
 - host/container isolation
 - secret management systems
 - transport-layer authN/authZ
 - OAuth/OIDC token issuance, validation, and lifecycle management
 
-Use guardllm as one layer in a full security architecture.
+Use Vörður as one layer in a full security architecture.

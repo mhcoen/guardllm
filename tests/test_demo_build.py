@@ -25,9 +25,9 @@ def test_generated_demos_are_current_and_self_contained():
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
-    fixture = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())
+    fixture = json.loads((DEMO / "vordur_demo_fixtures.json").read_text())
     assert fixture["schema_version"] == 4
-    assert fixture["library_version"] == version("guardllm")
+    assert fixture["library_version"] == version("vordur")
     assert fixture["scenarios"]["rag"]["derived_metrics"]["display_percentage"] == 31
     assert fixture["scenarios"]["escalation"]["fresh_search"]["allowed"] is True
     assert fixture["scenarios"]["escalation"]["escalated_search"]["allowed"] is False
@@ -38,7 +38,7 @@ def test_generated_demos_are_current_and_self_contained():
         assert "fetch(" not in page
         assert "setTimeout(" not in page
         assert "prefers-reduced-motion" in page
-        if path.name in {"guardllm_demos.html", "guardllm_surface_map.html"}:
+        if path.name in {"vordur_demos.html", "vordur_surface_map.html"}:
             assert page.count("Boundary 1") == 1
             assert page.count("Boundary 2") == 1
             assert page.count("Boundary 3") == 1
@@ -49,8 +49,8 @@ def test_generated_demos_are_current_and_self_contained():
             assert '<div class="path-strip"' in page
             assert "You are here" in page
             assert "Boundary 1" not in page
-        if path.name != "guardllm_surface_map.html":
-            assert 'id="guardllm-behavior"' in page
+        if path.name != "vordur_surface_map.html":
+            assert 'id="vordur-behavior"' in page
             assert 'class="evidence-strip"' in page
             assert "Exact fixture test:" in page
             sections = re.findall(r"<section class=\"step\"[^>]*>", page)
@@ -58,7 +58,7 @@ def test_generated_demos_are_current_and_self_contained():
             assert all(" hidden" not in section for section in sections)
             assert all("aria-current" not in section for section in sections)
 
-    spine = (DEMO / "guardllm_demos.html").read_text()
+    spine = (DEMO / "vordur_demos.html").read_text()
     for heading in (
         "The job",
         "The attack surface",
@@ -80,10 +80,10 @@ def test_generated_demos_are_current_and_self_contained():
     assert spine.index('<div class="system-map"') < spine.index('<nav class="act-rail"')
     assert spine.index('<nav class="act-rail"') < spine.index('<div class="steps ')
 
-    binding = (DEMO / "guardllm_request_binding_demo.html").read_text()
-    policy = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
-    dlp = (DEMO / "guardllm_canary_demos.html").read_text()
-    rag = (DEMO / "guardllm_rag_demos.html").read_text()
+    binding = (DEMO / "vordur_request_binding_demo.html").read_text()
+    policy = (DEMO / "vordur_policy_matrix_demo.html").read_text()
+    dlp = (DEMO / "vordur_canary_demos.html").read_text()
+    rag = (DEMO / "vordur_rag_demos.html").read_text()
     assert 'class="controls"' not in binding
     assert 'class="controls"' not in policy
     assert "Binding expired (TTL exceeded)" in binding
@@ -95,15 +95,15 @@ def test_generated_demos_are_current_and_self_contained():
 
 
 def test_superseded_policy_variants_are_absent():
-    assert not (DEMO / "guardllm_policy_matrix_demo_v2.html").exists()
-    assert not (DEMO / "guardllm_policy_matrix_demo_v3.html").exists()
+    assert not (DEMO / "vordur_policy_matrix_demo_v2.html").exists()
+    assert not (DEMO / "vordur_policy_matrix_demo_v3.html").exists()
 
 
 def test_interaction_script_keyboard_focus_and_announcements():
     if shutil.which("node") is None:
         pytest.skip("Node.js is not available for the interaction behavior check")
 
-    page = (DEMO / "guardllm_demos.html").read_text()
+    page = (DEMO / "vordur_demos.html").read_text()
     behavior = "const steps=" + page.split("const steps=", 1)[1].split("</script>", 1)[0]
     harness = r"""
 const assert = require('node:assert/strict');
@@ -122,7 +122,7 @@ const controls = {hidden: true};
 const elements = {
   back: {disabled: false}, next: {disabled: false}, restart: {},
   status: {textContent: ''}, raw: {textContent: ''},
-  'guardllm-behavior': {textContent: '{}'},
+  'vordur-behavior': {textContent: '{}'},
 };
 let keyHandler = null;
 global.document = {
@@ -159,7 +159,7 @@ assert.equal(fakeSteps[0].focusCount, 1);
 
 def _load_generator():
     """Import the generator so the destination table can be asserted directly."""
-    name = "guardllm_build_demos"
+    name = "vordur_build_demos"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "build_demos.py")
@@ -169,7 +169,7 @@ def _load_generator():
     return module
 
 
-MAP_PAGES = ("guardllm_surface_map.html", "guardllm_demos.html")
+MAP_PAGES = ("vordur_surface_map.html", "vordur_demos.html")
 
 
 def _map_nav(page: str) -> str:
@@ -193,7 +193,7 @@ def test_map_regions_link_to_real_destinations():
         assert (DEMO / href).exists(), f"{key} points at a missing page: {href}"
         assert label, f"{key} has no destination label"
 
-    nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    nav = _map_nav((DEMO / "vordur_surface_map.html").read_text())
     hrefs = [h for h in re.findall(r'<a [^>]*href="([^"]+)"', nav) if not h.startswith("#")]
     assert len(hrefs) == 14
     assert set(hrefs) == {href for href, _ in destinations.values()}
@@ -205,7 +205,7 @@ def test_every_map_link_names_its_destination():
     """A link that does not say where it goes recreates the guessing problem."""
     generator = _load_generator()
     labels = dict(generator.MAP_DESTINATIONS.values())
-    nav = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    nav = _map_nav((DEMO / "vordur_surface_map.html").read_text())
     anchors = re.findall(r"<a class=\"[^\"]*(?:map-region|rail-pill)[^\"]*\".*?</a>", nav, re.S)
     assert len(anchors) == 14
     for anchor in anchors:
@@ -241,20 +241,20 @@ def test_map_skip_link_has_a_real_target():
 
 def test_current_page_regions_are_marked_not_linked():
     """The map renders on two pages, so it must never link to the page it is on."""
-    page = (DEMO / "guardllm_demos.html").read_text()
+    page = (DEMO / "vordur_demos.html").read_text()
     nav = _map_nav(page)
-    assert 'href="guardllm_demos.html"' not in nav
+    assert 'href="vordur_demos.html"' not in nav
     assert nav.count('aria-current="page"') == 2
     assert "You are viewing this" in nav
 
     # The surface map is not itself a demo destination, so nothing is current.
-    surface = _map_nav((DEMO / "guardllm_surface_map.html").read_text())
+    surface = _map_nav((DEMO / "vordur_surface_map.html").read_text())
     assert 'aria-current="page"' not in surface
-    assert 'href="guardllm_surface_map.html"' not in surface
+    assert 'href="vordur_surface_map.html"' not in surface
 
 
 def test_map_focus_and_outcome_colors_are_preserved():
-    page = (DEMO / "guardllm_surface_map.html").read_text()
+    page = (DEMO / "vordur_surface_map.html").read_text()
     # One consistent focus ring, never themed per region.
     assert ":focus-visible{outline:2px solid var(--focus)" in page
     assert page.count("--focus:") == 1
@@ -268,12 +268,12 @@ def test_map_focus_and_outcome_colors_are_preserved():
 
 
 def test_surface_map_promotes_the_primary_narrative():
-    page = (DEMO / "guardllm_surface_map.html").read_text()
-    assert '<a class="cta" href="guardllm_demos.html">' in page
+    page = (DEMO / "vordur_surface_map.html").read_text()
+    assert '<a class="cta" href="vordur_demos.html">' in page
     assert "Start here" in page
     # Promoted out of the equal-weight card grid rather than duplicated into it.
     cards = page.split('<div class="cards">', 1)[1]
-    assert 'href="guardllm_demos.html"' not in cards
+    assert 'href="vordur_demos.html"' not in cards
     assert page.index('class="cta"') < page.index('<div class="cards">')
 
 
@@ -285,13 +285,13 @@ def test_rails_state_their_own_lifecycle():
         page = (DEMO / name).read_text()
         rails = page.split('<div class="rails">', 1)[1].split("</nav>", 1)[0]
         assert "Provided by the host on each flow" in rails
-        assert "Retained by GuardLLM across calls" in rails
+        assert "Retained by Vörður across calls" in rails
 
         flow = rails.split('<div class="rail">')[1]
         # The five fields share one destination, so the rail is labelled once at
         # its heading. The terms themselves stay prose: no link, no pill.
         assert flow.count("<a ") == 1
-        assert 'href="guardllm_security_context_demo.html"' in flow
+        assert 'href="vordur_security_context_demo.html"' in flow
         assert "rail-pill" not in flow, "unlinked terms must not wear the pill affordance"
         assert '<span class="rail-terms">' in flow
         terms = flow.split('<span class="rail-terms">', 1)[1]
@@ -299,7 +299,7 @@ def test_rails_state_their_own_lifecycle():
 
         session = rails.split('<div class="rail">')[2]
         assert len(re.findall(r'class="rail-pill[^"]*"', session)) == 6
-        if name == "guardllm_surface_map.html":
+        if name == "vordur_surface_map.html":
             assert session.count('<a class="rail-pill"') == 6
         else:
             # escalation opens the page this map is drawn on, so it is marked
@@ -312,26 +312,26 @@ def test_rails_state_their_own_lifecycle():
 # unless they genuinely share one. The stepper is reserved for the narrative,
 # where causality actually unfolds over time.
 LAYOUTS = {
-    "guardllm_demos.html": ("layout-stepper", 0),
-    "guardllm_pipeline_demo.html": ("layout-pipeline", 0),
-    "guardllm_rag_demos.html": ("layout-comparison has-lead", 0),
-    "guardllm_policy_matrix_demo.html": ("layout-stack", 0),
-    "guardllm_mcp_demo.html": ("layout-stack", 0),
-    "guardllm_canary_demos.html": ("layout-taxonomy", 0),
-    "guardllm_tool_feedback_demo.html": ("layout-contrast", 2),
-    "guardllm_security_context_demo.html": ("layout-contrast", 2),
-    "guardllm_request_binding_demo.html": ("layout-branch", 2),
-    "guardllm_rate_limit_demo.html": ("layout-timeline", 2),
+    "vordur_demos.html": ("layout-stepper", 0),
+    "vordur_pipeline_demo.html": ("layout-pipeline", 0),
+    "vordur_rag_demos.html": ("layout-comparison has-lead", 0),
+    "vordur_policy_matrix_demo.html": ("layout-stack", 0),
+    "vordur_mcp_demo.html": ("layout-stack", 0),
+    "vordur_canary_demos.html": ("layout-taxonomy", 0),
+    "vordur_tool_feedback_demo.html": ("layout-contrast", 2),
+    "vordur_security_context_demo.html": ("layout-contrast", 2),
+    "vordur_request_binding_demo.html": ("layout-branch", 2),
+    "vordur_rate_limit_demo.html": ("layout-timeline", 2),
 }
 
 
 def test_pages_declare_their_layout_and_groups():
     assert LAYOUTS.keys() == {
-        path.name for path in DEMO.glob("*.html") if path.name != "guardllm_surface_map.html"
+        path.name for path in DEMO.glob("*.html") if path.name != "vordur_surface_map.html"
     }
     # Only the narrative keeps the stepper.
     steppers = [name for name, (css, _) in LAYOUTS.items() if css == "layout-stepper"]
-    assert steppers == ["guardllm_demos.html"]
+    assert steppers == ["vordur_demos.html"]
     for name, (css_class, group_count) in LAYOUTS.items():
         page = (DEMO / name).read_text()
         assert f'<div class="steps {css_class}"' in page, name
@@ -346,7 +346,7 @@ def test_pages_declare_their_layout_and_groups():
 def test_layout_must_match_the_execution_metadata():
     """A page cannot claim a shape its own fixture does not support."""
     generator = _load_generator()
-    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+    scenarios = json.loads((DEMO / "vordur_demo_fixtures.json").read_text())["scenarios"]
 
     # The shapes actually shipped.
     generator.validate_page_layout("branch", scenarios["request_binding"], ("a", "b"))
@@ -376,7 +376,7 @@ def test_layout_must_match_the_execution_metadata():
 
 def test_new_layouts_reject_shapes_their_fixtures_do_not_support():
     generator = _load_generator()
-    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+    scenarios = json.loads((DEMO / "vordur_demo_fixtures.json").read_text())["scenarios"]
     check = generator.validate_page_layout
 
     # Shapes actually shipped.
@@ -440,17 +440,17 @@ def test_page_chrome_stays_out_of_the_way():
 
         # The narrative is the entry point; reference cards sit a step quieter.
         supporting = 'class="wrap supporting"' in page
-        assert supporting == (name != "guardllm_demos.html"), name
+        assert supporting == (name != "vordur_demos.html"), name
 
 
 def test_relocated_scope_notes_survive_in_the_drawer():
     """Shortening a lead must move its caveats, not delete them."""
     expected = {
-        "guardllm_canary_demos.html": "independent comparisons, not one five-step session",
-        "guardllm_rag_demos.html": "One pipeline registers the retrieved span once",
-        "guardllm_rate_limit_demo.html": "leave a burst of exactly three silent",
-        "guardllm_pipeline_demo.html": "require explicit instrumentation",
-        "guardllm_policy_matrix_demo.html": "have not already denied the call",
+        "vordur_canary_demos.html": "independent comparisons, not one five-step session",
+        "vordur_rag_demos.html": "One pipeline registers the retrieved span once",
+        "vordur_rate_limit_demo.html": "leave a burst of exactly three silent",
+        "vordur_pipeline_demo.html": "require explicit instrumentation",
+        "vordur_policy_matrix_demo.html": "have not already denied the call",
     }
     for name, sentence in expected.items():
         page = (DEMO / name).read_text()
@@ -465,7 +465,7 @@ def test_outcome_badges_match_the_fixture_outcomes():
     ALLOWED over a denial. For the pages whose rows correspond one-to-one with
     fixture results, the expected counts come from the results themselves.
     """
-    scenarios = json.loads((DEMO / "guardllm_demo_fixtures.json").read_text())["scenarios"]
+    scenarios = json.loads((DEMO / "vordur_demo_fixtures.json").read_text())["scenarios"]
 
     dlp = scenarios["dlp_canary"]
     dlp_results = [
@@ -475,7 +475,7 @@ def test_outcome_badges_match_the_fixture_outcomes():
         dlp["split_entropy"]["result"],
         dlp["hex_entropy"]["result"],
     ]
-    page = (DEMO / "guardllm_canary_demos.html").read_text()
+    page = (DEMO / "vordur_canary_demos.html").read_text()
     assert page.count("BLOCKED") == sum(1 for r in dlp_results if not r["allowed"])
     assert page.count("ALLOWED") == sum(1 for r in dlp_results if r["allowed"])
 
@@ -490,7 +490,7 @@ def test_outcome_badges_match_the_fixture_outcomes():
             "destructive_verified",
         )
     ]
-    page = (DEMO / "guardllm_policy_matrix_demo.html").read_text()
+    page = (DEMO / "vordur_policy_matrix_demo.html").read_text()
     # The gate path badges each denial at the gate that closed, and each pass at
     # the end, so the counts still come from the five verdicts.
     assert page.count("BLOCKED") == sum(1 for r in policy_results if not r["allowed"])
@@ -499,7 +499,7 @@ def test_outcome_badges_match_the_fixture_outcomes():
     assert page.count('<th scope="row">') == len(policy_results)
 
     rate = scenarios["rate_limit"]
-    page = (DEMO / "guardllm_rate_limit_demo.html").read_text()
+    page = (DEMO / "vordur_rate_limit_demo.html").read_text()
     expected_anomalies = sum(1 for e in rate["burst_sequence"] if e["result"]["anomalies"])
     assert page.count("ANOMALY") == expected_anomalies
     assert page.count("BLOCKED") == (0 if rate["hard_cap"]["allowed"] else 1)
@@ -532,7 +532,7 @@ def test_demo_content_containers_wrap_long_tokens():
     .result carried a wrap rule; .step-body and .message, which hold the same
     kind of generated value, did not.
     """
-    page = (DEMO / "guardllm_canary_demos.html").read_text()
+    page = (DEMO / "vordur_canary_demos.html").read_text()
     for selector in (".step-body{", ".message{", ".result{"):
         rule = re.search(re.escape(selector) + r"[^}]*}", page)
         assert rule, selector
@@ -552,11 +552,11 @@ def test_every_demo_page_links_back_to_the_project():
     assert len(pages) == 11
     for path in pages:
         page = path.read_text()
-        assert 'href="https://github.com/mhcoen/guardllm"' in page, path.name
+        assert 'href="https://github.com/mhcoen/vordur"' in page, path.name
         nav = re.search(r"<nav[^>]*>.*?</nav>", page, re.S)
         assert nav, path.name
         # It comes first in the trail, before the other demo links.
-        assert "github.com/mhcoen/guardllm" in nav.group(0), path.name
+        assert "github.com/mhcoen/vordur" in nav.group(0), path.name
 
     # The link is absolute on purpose: these pages must keep working opened
     # directly from disk, where a relative path to the project has no target.

@@ -16,7 +16,7 @@ one per session instead, and serialize the calls that belong to it.
 import threading
 
 from fastapi import Depends, FastAPI, Request
-from guardllm import Guard
+from vordur import Guard
 
 app = FastAPI()
 

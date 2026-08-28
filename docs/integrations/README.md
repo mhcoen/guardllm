@@ -1,6 +1,6 @@
 # Framework Integrations
 
-Patterns for wiring GuardLLM into a specific framework. Each page shows where
+Patterns for wiring Vörður into a specific framework. Each page shows where
 the ingress, egress, and tool-authorization calls belong in that framework's
 request lifecycle.
 

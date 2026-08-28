@@ -1,4 +1,4 @@
-"""Compare GuardLLM against baseline mitigation strategies.
+"""Compare Vörður against baseline mitigation strategies.
 
 Usage:
   python benchmarks/compare_mitigations.py
@@ -44,8 +44,8 @@ from run_benchmarks import (  # noqa: F401
     summarize,
 )
 
-from guardllm import Guard
-from guardllm.security.source_gate import check_extraction_allowed
+from vordur import Guard
+from vordur.security.source_gate import check_extraction_allowed
 
 OPENAI_POLICY_CACHE = CACHE_ROOT / "openai_policy_adapter_cache.jsonl"
 OPENAI_POLICY_PROMPT_VERSION = "v1"
@@ -400,7 +400,7 @@ def run_case_source_gate_only(case: dict[str, Any]) -> CaseResult:
 
 
 def run_strategy(cases: list[dict[str, Any]], strategy: str) -> list[CaseResult]:
-    if strategy == "guardllm":
+    if strategy == "vordur":
         return [run_case(c) for c in cases]
     if strategy == "no_defense":
         return [run_case_no_defense(c) for c in cases]
@@ -1049,7 +1049,7 @@ m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
             strategies["guardllm_surface"]["passed"] += 1
             kind_entry.setdefault("guardllm_surface", _init_counters())["passed"] += 1
         kind_entry.setdefault("guardllm_surface", _init_counters())["total"] += 1
-        # TP/FP/FN/TN for guardllm
+        # TP/FP/FN/TN for vordur
         if is_attack and guardllm_passed:
             strategies["guardllm_surface"]["tp"] += 1
             kind_entry["guardllm_surface"]["tp"] += 1
@@ -1511,19 +1511,19 @@ def run_injection_strategies(
                     }
                 )
             if not mismatch:
-                predictions["guardllm"] = rows
+                predictions["vordur"] = rows
                 reused_guardllm = True
                 reuse_latency = guardllm_reuse.get("latency_ms")
                 if isinstance(reuse_latency, dict) and {"avg", "p95", "max"}.issubset(
                     reuse_latency.keys()
                 ):
-                    latency_ms["guardllm"] = {
+                    latency_ms["vordur"] = {
                         "avg": float(reuse_latency["avg"]),
                         "p95": float(reuse_latency["p95"]),
                         "max": float(reuse_latency["max"]),
                     }
     if not reused_guardllm:
-        score("guardllm", _predict_guardllm_text)
+        score("vordur", _predict_guardllm_text)
     score("no_defense", _predict_no_defense_text)
 
     regex_patterns = [
@@ -1970,10 +1970,10 @@ def run_injection_strategies(
         except Exception as exc:  # pragma: no cover - external CLI/API failures
             bedrock_error = str(exc)
 
-    # Stacked strategies: provider signal layered with GuardLLM (logical OR).
+    # Stacked strategies: provider signal layered with Vörður (logical OR).
     if "azure_prompt_shields" in predictions:
         rows = []
-        for g, a in zip(predictions["guardllm"], predictions["azure_prompt_shields"], strict=False):
+        for g, a in zip(predictions["vordur"], predictions["azure_prompt_shields"], strict=False):
             rows.append(
                 {
                     **g,
@@ -1981,16 +1981,16 @@ def run_injection_strategies(
                 }
             )
         predictions["azure_plus_guardllm"] = rows
-        if "guardllm" in latency_ms and "azure_prompt_shields" in latency_ms:
+        if "vordur" in latency_ms and "azure_prompt_shields" in latency_ms:
             latency_ms["azure_plus_guardllm"] = {
                 "avg": round(
-                    latency_ms["guardllm"]["avg"] + latency_ms["azure_prompt_shields"]["avg"], 2
+                    latency_ms["vordur"]["avg"] + latency_ms["azure_prompt_shields"]["avg"], 2
                 ),
                 "p95": round(
-                    latency_ms["guardllm"]["p95"] + latency_ms["azure_prompt_shields"]["p95"], 2
+                    latency_ms["vordur"]["p95"] + latency_ms["azure_prompt_shields"]["p95"], 2
                 ),
                 "max": round(
-                    latency_ms["guardllm"]["max"] + latency_ms["azure_prompt_shields"]["max"], 2
+                    latency_ms["vordur"]["max"] + latency_ms["azure_prompt_shields"]["max"], 2
                 ),
             }
 
@@ -2255,7 +2255,7 @@ def write_markdown(
     lines.append("")
     strategy_names = [
         x
-        for x in ("guardllm", "isolation_only", "source_gate_only", "no_defense")
+        for x in ("vordur", "isolation_only", "source_gate_only", "no_defense")
         if x in strategies
     ]
     header = "| suite | " + " | ".join(strategy_names) + " | delta_vs_no_defense |"
@@ -2267,7 +2267,7 @@ def write_markdown(
         for name in strategy_names:
             s = row[name]
             parts.append(f"{s['passed']}/{s['total']} ({s['pass_rate']}%)")
-        delta = round(row["guardllm"]["pass_rate"] - row["no_defense"]["pass_rate"], 2)
+        delta = round(row["vordur"]["pass_rate"] - row["no_defense"]["pass_rate"], 2)
         lines.append(f"| {row['suite']} | " + " | ".join(parts) + f" | {delta}% |")
     lines.append("")
     lines.append(
@@ -2313,7 +2313,7 @@ def write_markdown(
             f"- Included suites in text scope: `{', '.join(sorted(TEXT_SCOPE_INCLUDED_SUITES))}`"
         )
     lines.append(f"- Record count: `{injection_only.get('record_count', 0)}`")
-    lines.append(f"- GuardLLM text reused: `{injection_only.get('guardllm_reused', False)}`")
+    lines.append(f"- Vörður text reused: `{injection_only.get('guardllm_reused', False)}`")
     text_strategies = injection_only.get("strategies", {})
     azure_signal = injection_only.get("azure_signal_definition")
     if "azure_prompt_shields" in text_strategies and isinstance(azure_signal, dict):
@@ -2369,10 +2369,10 @@ def write_markdown(
         for name, stats in injection_only["latency_ms"].items():
             lines.append(f"| {name} | {stats['avg']} | {stats['p95']} | {stats['max']} |")
 
-    missed = injection_only.get("top_missed_patterns", {}).get("guardllm", [])
+    missed = injection_only.get("top_missed_patterns", {}).get("vordur", [])
     if missed:
         lines.append("")
-        lines.append("Top GuardLLM false-negative patterns:")
+        lines.append("Top Vörður false-negative patterns:")
         for item in missed[:20]:
             lines.append(f"- `{item.get('pattern')}`: `{item.get('false_negative_count', 0)}`")
 
@@ -2434,7 +2434,7 @@ def write_markdown(
             f"| {stats.get('precision', 0.0):.4f} | {stats.get('recall', 0.0):.4f} | {stats.get('f1', 0.0):.4f} "
             f"| {stats.get('tp', 0)} | {stats.get('fp', 0)} | {stats.get('fn', 0)} | {stats.get('tn', 0)} |"
         )
-    # GuardLLM vs surface_stack delta (the paper's Table 1 comparison)
+    # Vörður vs surface_stack delta (the paper's Table 1 comparison)
     gl_surface = surface_strategies.get("guardllm_surface", {})
     ss_stats = surface_strategies.get("surface_stack", {})
     if gl_surface and ss_stats:
@@ -2444,7 +2444,7 @@ def write_markdown(
         ss_rate = ss_stats.get("pass_rate", 0.0)
         lines.append("")
         lines.append(
-            f"GuardLLM vs surface_stack (Table 1 baseline): "
+            f"Vörður vs surface_stack (Table 1 baseline): "
             f"F1 {gl_f1:.4f} vs {ss_f1:.4f} "
             f"(delta {round(gl_f1 - ss_f1, 4):+.4f}), "
             f"pass rate {gl_rate}% vs {ss_rate}% "
@@ -2683,7 +2683,7 @@ def merge_prior_text_rows(
     # And the same records, not merely the same number of them. Matching on
     # count alone copied a previous run's provider summaries, latencies and
     # per-record predictions into a run over entirely different content: one
-    # comparison table then mixed current GuardLLM results with vendor results
+    # comparison table then mixed current Vörður results with vendor results
     # measured on other data. A missing hash on either side is treated as a
     # mismatch, because an artifact that cannot say what it evaluated is
     # exactly what must not be reused.
@@ -2743,9 +2743,9 @@ def main() -> int:
         help="Scope for text benchmark records: 'injection' excludes non prompt-injection suites.",
     )
     parser.add_argument(
-        "--reuse-guardllm-text",
+        "--reuse-vordur-text",
         action="store_true",
-        help="Reuse prior GuardLLM text predictions from comparison.json instead of rerunning GuardLLM text scoring.",
+        help="Reuse prior Vörður text predictions from comparison.json instead of rerunning Vörður text scoring.",
     )
     parser.add_argument(
         "--skip-holdout-text",
@@ -2803,16 +2803,16 @@ def main() -> int:
         help="Emit per-strategy progress updates every N seconds (0 disables progress logs).",
     )
     parser.add_argument(
-        "--min-guardllm-recall",
+        "--min-vordur-recall",
         type=float,
         default=0.0,
-        help="Fail if GuardLLM text recall (%%) is below this threshold.",
+        help="Fail if Vörður text recall (%%) is below this threshold.",
     )
     parser.add_argument(
-        "--min-guardllm-f1",
+        "--min-vordur-f1",
         type=float,
         default=0.0,
-        help="Fail if GuardLLM text F1 (%%) is below this threshold.",
+        help="Fail if Vörður text F1 (%%) is below this threshold.",
     )
     parser.add_argument(
         "--run-id", default=None, help="Output run id. Default: generated timestamp+gitsha."
@@ -2834,7 +2834,7 @@ def main() -> int:
         return 1
 
     strategies = {}
-    for name in ("guardllm", "isolation_only", "source_gate_only", "no_defense"):
+    for name in ("vordur", "isolation_only", "source_gate_only", "no_defense"):
         results = run_strategy(cases, name)
         strategies[name] = {
             "summary": summarize(results),
@@ -2873,11 +2873,11 @@ def main() -> int:
             try:
                 previous_text = previous_payload.get("injection_only", {})
                 previous_predictions = previous_text.get("predictions", {})
-                guard_rows = previous_predictions.get("guardllm")
+                guard_rows = previous_predictions.get("vordur")
                 if isinstance(guard_rows, list):
                     guardllm_reuse = {
                         "rows": guard_rows,
-                        "latency_ms": previous_text.get("latency_ms", {}).get("guardllm"),
+                        "latency_ms": previous_text.get("latency_ms", {}).get("vordur"),
                     }
             except Exception:
                 guardllm_reuse = None
@@ -2983,17 +2983,17 @@ def main() -> int:
     print("surface (excluding source_gate):")
     for name, stats in surface_only.get("strategies_no_source_gate", {}).items():
         print(f"- {name}: {stats['passed']}/{stats['total']} ({stats['pass_rate']}%)")
-    guard_text = injection_only.get("strategies", {}).get("guardllm", {})
+    guard_text = injection_only.get("strategies", {}).get("vordur", {})
     guard_recall = float(guard_text.get("recall", 0.0))
     guard_f1 = float(guard_text.get("f1", 0.0))
     if guard_recall < float(args.min_guardllm_recall):
         print(
-            f"ERROR: guardllm recall {guard_recall}% is below threshold "
+            f"ERROR: vordur recall {guard_recall}% is below threshold "
             f"{args.min_guardllm_recall}%."
         )
         return 2
     if guard_f1 < float(args.min_guardllm_f1):
-        print(f"ERROR: guardllm f1 {guard_f1} is below threshold {args.min_guardllm_f1}.")
+        print(f"ERROR: vordur f1 {guard_f1} is below threshold {args.min_guardllm_f1}.")
         return 2
     return 0
 

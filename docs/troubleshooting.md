@@ -48,8 +48,8 @@ Fixes:
 
 ## FAQ
 
-### Do I need to use MCP to use guardllm?
-No. guardllm hardens LLM applications generally; MCP is one common integration surface.
+### Do I need to use MCP to use Vörður?
+No. Vörður hardens LLM applications generally; MCP is one common integration surface.
 
 ### Can I bypass L12 manual confirmation?
 Yes, by setting `require_confirmation=False` (or using `check_tool_call(...)` directly), but this reduces safety for high-impact actions.

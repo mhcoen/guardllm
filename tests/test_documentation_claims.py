@@ -23,7 +23,7 @@ DOCS = ROOT / "docs"
 def _python_blocks(path: Path) -> list[str]:
     """Fenced python blocks that are examples, not sample output."""
     blocks = re.findall(r"```python\n(.*?)```", path.read_text(), re.S)
-    return [b for b in blocks if "guardllm" in b]
+    return [b for b in blocks if "vordur" in b]
 
 
 def test_quick_start_examples_execute_as_published():
@@ -54,7 +54,7 @@ def test_outbound_does_not_fail_closed_on_unknown_provenance():
     ordinary outbound text is clean. Registering input through process_inbound
     is what gives egress something to match.
     """
-    from guardllm import Guard
+    from vordur import Guard
 
     guard = Guard()
     result = guard.check_outbound(
@@ -71,20 +71,20 @@ def test_outbound_does_not_fail_closed_on_unknown_provenance():
 
 def test_advertised_public_exports_match_the_package():
     """The API spec called the package exhaustive while listing one export."""
-    import guardllm
+    import vordur
 
-    exported = set(guardllm.__all__)
+    exported = set(vordur.__all__)
     assert "Guard" in exported
     # Twelve more are public and importable; the spec must not claim otherwise.
     assert len(exported) == 13
     for name in exported:
-        assert hasattr(guardllm, name), name
+        assert hasattr(vordur, name), name
 
     # Check the export list itself, not the whole document. A 570 line spec
     # mentions these names in passing all over the place, so searching the file
     # made this assertion pass while the list still claimed a single export.
     spec = (DOCS / "api_spec.md").read_text()
-    listed_block = spec.split("`src/guardllm/__init__.py` exports", 1)[1].split("\n\n##", 1)[0]
+    listed_block = spec.split("`src/vordur/__init__.py` exports", 1)[1].split("\n\n##", 1)[0]
     listed = set(re.findall(r"^- `(\w+)`", listed_block, re.M))
     assert listed == exported, f"export list drifted: {sorted(exported ^ listed)}"
 
@@ -125,7 +125,7 @@ def test_installed_version_matches_the_changelog_top_entry():
     changelog = (ROOT / "CHANGELOG.md").read_text()
     released = re.findall(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
     assert released, "changelog has no released version headings"
-    assert released[0] == version("guardllm")
+    assert released[0] == version("vordur")
 
 
 def test_oauth_example_authorizes_the_arguments_it_dispatches():
@@ -135,7 +135,7 @@ def test_oauth_example_authorizes_the_arguments_it_dispatches():
     authorization scope is a different question: which exact arguments were
     approved. Putting the OAuth scope set there fails on every call.
     """
-    from guardllm import Guard, PolicyConfig
+    from vordur import Guard, PolicyConfig
 
     tool = "gmail_send_email"
     args = {"to": "a@example.com", "subject": "S", "body": "B"}
@@ -186,7 +186,7 @@ def test_require_confirmation_without_a_handler_always_denies():
     import dataclasses
     import time
 
-    from guardllm import Guard, PolicyConfig
+    from vordur import Guard, PolicyConfig
 
     class Approve:
         async def confirm(self, tool, args, context):
@@ -246,7 +246,7 @@ def test_templates_do_not_share_one_guard_across_sessions(path):
 
 def test_guard_state_is_per_instance_not_shared():
     """The reason the templates had to change, asserted against the library."""
-    from guardllm import Guard
+    from vordur import Guard
 
     alice, bob = Guard(), Guard()
     ctx = Guard.context_web(source_id="example.com")
@@ -484,13 +484,13 @@ def test_published_figures_match_the_bundle_not_just_the_source():
     surface = bundle["surface_controls"]
     count = surface["case_count"]
     stack = surface["strategies"]["surface_stack"]["pass_rate"]
-    guardllm = surface["strategies"]["guardllm_surface"]["pass_rate"]
+    vordur = surface["strategies"]["guardllm_surface"]["pass_rate"]
 
     readme = (ROOT / "README.md").read_text()
     assert f"{stack}%" in readme
     assert f"{count:,} surface cases" in readme
     assert f"{count}/{count}" in readme
-    assert f"{guardllm:.0f}%" in readme
+    assert f"{vordur:.0f}%" in readme
     # The pages must link the bundle, so the link test covers it too.
     assert "benchmarks/published/surface_controls.md" in readme
     assert "published/surface_controls.md" in (ROOT / "benchmarks" / "results.md").read_text()
@@ -509,12 +509,12 @@ def test_headline_benchmark_figures_match_the_tracked_artifact():
     surface = data["surface_only"]
     count = surface["count"]
     stack = surface["strategies"]["surface_stack"]["pass_rate"]
-    guardllm = surface["strategies"]["guardllm_surface"]["pass_rate"]
+    vordur = surface["strategies"]["guardllm_surface"]["pass_rate"]
 
     readme = (ROOT / "README.md").read_text()
     assert f"{stack}%" in readme, f"README does not quote surface_stack {stack}%"
     assert f"{count:,} surface cases" in readme or f"{count}/{count}" in readme
-    assert f"({guardllm:.0f}%)" in readme or f"`{guardllm:.0f}%`" in readme
+    assert f"({vordur:.0f}%)" in readme or f"`{vordur:.0f}%`" in readme
 
     # Figures that predate the tracked artifact must not reappear unqualified.
     assert "around 74%" not in readme
@@ -543,7 +543,7 @@ def test_homepage_architecture_model_matches_the_implementation():
     """
     import inspect
 
-    from guardllm import Guard
+    from vordur import Guard
 
     # The claim these sentences used to rest on, checked against the signatures.
     assert "ctx" not in inspect.signature(Guard.bind_request).parameters
@@ -718,7 +718,7 @@ def test_generators_do_not_write_the_same_file():
     import subprocess
 
     def _load(name: str):
-        key = f"guardllm_gen_{name}"
+        key = f"vordur_gen_{name}"
         if key in sys.modules:
             return sys.modules[key]
         spec = importlib.util.spec_from_file_location(key, ROOT / "scripts" / f"{name}.py")
@@ -765,14 +765,14 @@ def test_readme_surfaces_the_demos_above_the_fold():
     and the benchmark tables. A reader landing on the repository saw none of it.
     """
     readme = (ROOT / "README.md").read_text()
-    demo_link = readme.index("guardllm_surface_map.html")
+    demo_link = readme.index("vordur_surface_map.html")
     first_heading = readme.index("\n## ")
     assert demo_link < first_heading, "the demo link must precede the first section"
 
     # GitHub renders the repository landing page, where a relative .html link
     # shows source rather than the demo. Above the fold it must be absolute.
     promo = readme[:first_heading]
-    assert "https://mhcoen.github.io/guardllm/demo/" in promo
+    assert "https://mhcoen.github.io/vordur/demo/" in promo
 
 
 def test_readme_links_every_tutorial_by_what_it_teaches():
@@ -922,7 +922,7 @@ def test_a_checkpoint_without_a_fingerprint_says_so():
 def test_cached_provider_rows_need_the_same_records_not_just_the_same_count():
     """Matching on count alone copied a previous run's provider summaries,
     latencies and per-record predictions into a run over entirely different
-    content, so one table mixed current GuardLLM results with vendor results
+    content, so one table mixed current Vörður results with vendor results
     measured on other data."""
     _bench_path()
     from compare_mitigations import merge_prior_text_rows

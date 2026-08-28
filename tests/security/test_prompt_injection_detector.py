@@ -1,5 +1,5 @@
-from guardllm.security.prompt_injection_detector import detect_prompt_injection
-from guardllm.security.types import ContentType
+from vordur.security.prompt_injection_detector import detect_prompt_injection
+from vordur.security.types import ContentType
 
 
 def test_detects_instruction_override_plaintext():

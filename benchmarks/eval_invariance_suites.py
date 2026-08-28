@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Evaluate GuardLLM against the three invariance test suites.
+"""Evaluate Vörður against the three invariance test suites.
 
-Runs all 1000 cases per suite through GuardLLM and reports the three-count
+Runs all 1000 cases per suite through Vörður and reports the three-count
 (expected BLOCK, expected ALLOW, REPORT_LIMITATION) plus per-transform
 breakdown. Uses default policy thresholds.
 
@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from guardllm import Guard
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.types import (
     SecurityContext,
     SensitivityLevel,
     TrustLevel,
@@ -25,7 +25,7 @@ from guardllm.security.types import (
 
 
 def run_case(case: dict) -> dict:
-    """Run a single case through GuardLLM and return observed result."""
+    """Run a single case through Vörður and return observed result."""
     guard = Guard()
 
     # Ingest sensitive content (trusted, sensitive)

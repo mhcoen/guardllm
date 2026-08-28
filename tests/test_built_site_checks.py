@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _checker():
-    name = "guardllm_check_built_site"
+    name = "vordur_check_built_site"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "check_built_site.py")
@@ -168,17 +168,17 @@ def test_ci_measures_mobile_layout_in_a_browser():
 def test_link_check_strips_the_baseurl(tmp_path, monkeypatch):
     """Absolute URLs on a project site carry a prefix that is not in _site."""
     checker = _checker()
-    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/vordur")
     site = _site(
         tmp_path,
         {
-            "index.html": '<a href="/guardllm/docs/index.html">docs</a>',
+            "index.html": '<a href="/vordur/docs/index.html">docs</a>',
             "docs/index.html": "<h1>d</h1>",
         },
     )
     assert checker.check_internal_links(site) == []
     # A genuinely missing target must still be reported.
-    bad = _site(tmp_path / "b", {"index.html": '<a href="/guardllm/nope.html">x</a>'})
+    bad = _site(tmp_path / "b", {"index.html": '<a href="/vordur/nope.html">x</a>'})
     assert checker.check_internal_links(bad)
 
 
@@ -198,7 +198,7 @@ def test_stylesheet_check_flags_a_page_linking_nothing(tmp_path):
 def test_stylesheet_check_flags_a_link_that_404s(tmp_path, monkeypatch):
     """This is the production bug: the link existed and the target did not."""
     checker = _checker()
-    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/vordur")
     site = _site(
         tmp_path,
         {"docs/index.html": '<link rel="stylesheet" href="/assets/css/style.css">'},
@@ -209,8 +209,8 @@ def test_stylesheet_check_flags_a_link_that_404s(tmp_path, monkeypatch):
 def test_theme_asset_skip_survives_a_baseurl(tmp_path, monkeypatch):
     """The favicon skip matched an exact path and missed the prefixed form."""
     checker = _checker()
-    monkeypatch.setattr(checker, "_baseurl", lambda: "/guardllm")
-    site = _site(tmp_path, {"a.html": '<a href="/guardllm/favicon.ico">icon</a>'})
+    monkeypatch.setattr(checker, "_baseurl", lambda: "/vordur")
+    site = _site(tmp_path, {"a.html": '<a href="/vordur/favicon.ico">icon</a>'})
     assert checker.check_internal_links(site) == []
 
 
@@ -228,7 +228,7 @@ def test_layout_check_measures_both_widths_and_in_page_overflow():
     assert "content overflows" in script
 
     # The generated pages must let grid items shrink, or no wrap rule applies.
-    page = (ROOT / "demo" / "guardllm_canary_demos.html").read_text()
+    page = (ROOT / "demo" / "vordur_canary_demos.html").read_text()
     assert ".steps>*{min-width:0}" in page
     step_rule = re.search(r"\.step\{[^}]*\}", page).group(0)
     assert "min-width:0" in step_rule

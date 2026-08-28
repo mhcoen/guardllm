@@ -12,8 +12,8 @@ import time
 
 import pytest
 
-from guardllm.security.pipeline import SecurityPipeline
-from guardllm.security.types import (
+from vordur.security.pipeline import SecurityPipeline
+from vordur.security.types import (
     AuthorizationEvent,
     PolicyConfig,
     SecurityContext,
@@ -75,7 +75,7 @@ class TestEscalationTrigger:
         """A provenance block (DLP passed, only provenance tripped) must not
         set the escalation flag. Lexical overlap can have meaningful false
         positives, unlike high-confidence secret or remembered-canary hits."""
-        from guardllm.security.provenance import ProvenancedSpan
+        from vordur.security.provenance import ProvenancedSpan
 
         pipe = SecurityPipeline()
         untrusted = "x" * 120  # exceeds the provenance LCS threshold (>= 50)
@@ -115,7 +115,7 @@ class TestEscalationTrigger:
 
     def test_dlp_block_escalates_even_when_a_later_stage_would_also_block(self):
         """A DLP finding takes precedence over later provenance and rate checks."""
-        from guardllm.security.provenance import ProvenancedSpan
+        from vordur.security.provenance import ProvenancedSpan
 
         pipe = SecurityPipeline()
         pipe._provenance.add_span(
@@ -164,11 +164,11 @@ class TestCanaryPrecedence:
         assert second_result.canary_detected is True
 
     def test_canary_precedence_across_deterministic_sample(self, monkeypatch):
-        from guardllm.security.canary import generate_canary
+        from vordur.security.canary import generate_canary
 
         secret = b"deterministic-precedence-sample"
         monkeypatch.setattr(
-            "guardllm.security.pipeline.generate_canary",
+            "vordur.security.pipeline.generate_canary",
             lambda session_id: generate_canary(session_id, secret=secret),
         )
         for index in range(256):
@@ -186,7 +186,7 @@ class TestCanaryPrecedence:
         assert result.secrets_found == []
 
     def test_canary_precedes_provenance(self):
-        from guardllm.security.provenance import ProvenancedSpan
+        from vordur.security.provenance import ProvenancedSpan
 
         pipe = SecurityPipeline(canary_session_id="precedence-provenance")
         content = f"private context {pipe.canary_token} " * 8
@@ -229,7 +229,7 @@ class TestCanaryPrecedence:
 
     def test_entropy_is_fallback_when_transformation_defeats_canary(self, monkeypatch):
         fixed = "CANARY-a1b2c3d4e5f6a7b8"
-        monkeypatch.setattr("guardllm.security.pipeline.generate_canary", lambda _sid: fixed)
+        monkeypatch.setattr("vordur.security.pipeline.generate_canary", lambda _sid: fixed)
         pipe = SecurityPipeline(canary_session_id="fallback")
         result = pipe.check_outbound(fixed[::-1], _ctx())
         assert result.allowed is False

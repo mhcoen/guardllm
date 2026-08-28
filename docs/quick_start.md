@@ -4,15 +4,15 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-This guide is for integrating `guardllm` quickly into any LLM-based app, not only MCP systems.
+This guide is for integrating `vordur` quickly into any LLM-based app, not only MCP systems.
 
 ## 1) Install and Sanity Check
 
 ```bash
-pip install git+https://github.com/mhcoen/guardllm.git
+pip install git+https://github.com/mhcoen/vordur.git
 ```
 
-Install from source, not PyPI: the published `guardllm` package is 1.1.0 and predates the
+Install from source, not PyPI: the published `vordur` package is 1.1.0 and predates the
 session-risk feedback loop and the 1.2.0 hardening. To modify the library or run the
 tutorials, clone it and use `pip install -e '.[dev]'` instead.
 
@@ -27,7 +27,7 @@ python benchmarks/run_benchmarks.py
 Use a context that matches source provenance (web, document, MCP, etc.), then run `process_inbound`.
 
 ```python
-from guardllm import Guard
+from vordur import Guard
 
 guard = Guard()
 ctx = Guard.context_web(source_id="githubusercontent.com")
@@ -55,7 +55,7 @@ What this does:
 Use validation, authorization, and binding before any sensitive tool execution.
 
 ```python
-from guardllm import Guard, PolicyConfig
+from vordur import Guard, PolicyConfig
 
 guard = Guard()
 tool = "gmail_send_email"

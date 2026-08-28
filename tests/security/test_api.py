@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from guardllm import Guard
-from guardllm.security.audit import AuditLogger
-from guardllm.security.error_sanitizer import PermissionDeniedError
-from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+from vordur import Guard
+from vordur.security.audit import AuditLogger
+from vordur.security.error_sanitizer import PermissionDeniedError
+from vordur.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
 def test_authorize_uses_user_message_hash():
@@ -731,8 +731,8 @@ class TestPreparedCallJoinsItsFields:
     the same gap: a secret cut across two arguments passed both halves."""
 
     def _guard_and_ctx(self):
-        from guardllm import Guard
-        from guardllm.security.types import Destination, PIIClass, PrivacyConfig, SecurityContext
+        from vordur import Guard
+        from vordur.security.types import Destination, PIIClass, PrivacyConfig, SecurityContext
 
         guard = Guard(
             privacy=PrivacyConfig(
@@ -758,7 +758,7 @@ class TestPreparedCallJoinsItsFields:
         assert prepared.allowed
 
     def test_values_only_and_in_traversal_order(self):
-        from guardllm.api import joined_call_payload
+        from vordur.api import joined_call_payload
 
         assert joined_call_payload({"a": "one", "b": ["two", {"c": "three"}]}) == "onetwothree"
         assert joined_call_payload({"k": 5, "n": None, "s": "x"}) == "x"

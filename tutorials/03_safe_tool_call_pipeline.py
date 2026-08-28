@@ -7,8 +7,8 @@ import time
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm import Guard
-from guardllm.security.types import ConfirmationHandler, PolicyConfig
+from vordur import Guard
+from vordur.security.types import ConfirmationHandler, PolicyConfig
 
 
 class AllowAll(ConfirmationHandler):

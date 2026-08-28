@@ -4,10 +4,10 @@ import time
 
 import pytest
 
-from guardllm.security.canary import generate_canary
-from guardllm.security.pipeline import SecurityPipeline
-from guardllm.security.request_binding import create_binding
-from guardllm.security.types import (
+from vordur.security.canary import generate_canary
+from vordur.security.pipeline import SecurityPipeline
+from vordur.security.request_binding import create_binding
+from vordur.security.types import (
     AuthorizationEvent,
     ContentType,
     PolicyConfig,
@@ -383,7 +383,7 @@ class TestOutboundOrdering:
         (50), content with 55-char LCS passes DLP but fails provenance.
         Uses explicit policy to set up the gap.
         """
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         wide_policy = PolicyConfig(dlp_verbatim_lcs_min=100, provenance_verbatim_lcs_min=50)
         ctx = SecurityContext(
@@ -742,7 +742,7 @@ class TestDefaultParityRegression:
 
     def test_source_gate_unknown_blocks(self):
         """Unknown source type defaults to BLOCK (same as before)."""
-        from guardllm.security.source_gate import ExtractionPolicy
+        from vordur.security.source_gate import ExtractionPolicy
 
         pipe = SecurityPipeline()
         ctx = SecurityContext(

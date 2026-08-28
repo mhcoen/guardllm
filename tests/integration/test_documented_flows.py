@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import time
 
-from guardllm import Guard
-from guardllm.security.error_sanitizer import InvalidParamsError
-from guardllm.security.types import ConfirmationHandler, PolicyConfig
+from vordur import Guard
+from vordur.security.error_sanitizer import InvalidParamsError
+from vordur.security.types import ConfirmationHandler, PolicyConfig
 
 
 class _DispatchStub:

@@ -1,24 +1,24 @@
-# GuardLLM generated demos
+# Vörður generated demos
 
 These self-contained pages combine results generated from the shipped library with reviewed
 explanatory text. The fixture tests execute each displayed scenario exactly. Conceptual prose
 and threat mappings remain reviewable documentation claims rather than library outputs. Open
-`guardllm_surface_map.html` or any card directly with `file://`; no server or external asset is
+`vordur_surface_map.html` or any card directly with `file://`; no server or external asset is
 required.
 
-- `guardllm_demos.html`: primary cross-stage narrative
-- `guardllm_surface_map.html`: shared architecture map and portfolio index
-- `guardllm_security_context_demo.html`: what the host declares on each flow
-- `guardllm_pipeline_demo.html`: instrumented ingress call order
-- `guardllm_mcp_demo.html`: a third-party MCP tool surface, where a record asks in prose and only a user directive authorizes
-- `guardllm_rag_demos.html`: provenance and lexical-overlap boundary
-- `guardllm_tool_feedback_demo.html`: host feedback-loop obligation
-- `guardllm_canary_demos.html`: DLP, entropy, decoding, and remembered canary
-- `guardllm_policy_matrix_demo.html`: scoped policy lanes
-- `guardllm_rate_limit_demo.html`: anomaly versus hard cap
-- `guardllm_request_binding_demo.html`: argument-integrity binding
+- `vordur_demos.html`: primary cross-stage narrative
+- `vordur_surface_map.html`: shared architecture map and portfolio index
+- `vordur_security_context_demo.html`: what the host declares on each flow
+- `vordur_pipeline_demo.html`: instrumented ingress call order
+- `vordur_mcp_demo.html`: a third-party MCP tool surface, where a record asks in prose and only a user directive authorizes
+- `vordur_rag_demos.html`: provenance and lexical-overlap boundary
+- `vordur_tool_feedback_demo.html`: host feedback-loop obligation
+- `vordur_canary_demos.html`: DLP, entropy, decoding, and remembered canary
+- `vordur_policy_matrix_demo.html`: scoped policy lanes
+- `vordur_rate_limit_demo.html`: anomaly versus hard cap
+- `vordur_request_binding_demo.html`: argument-integrity binding
 
-`guardllm_demo_fixtures.json` is the canonical generated data. Each page embeds its fixture
+`vordur_demo_fixtures.json` is the canonical generated data. Each page embeds its fixture
 at build time, so no runtime fetch is used.
 
 Every scenario declares the objects it ran against under `pipelines`, and every step names the

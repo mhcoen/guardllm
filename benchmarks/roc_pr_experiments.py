@@ -47,8 +47,8 @@ from output_layout import (
 )
 from run_benchmarks import load_cases
 
-from guardllm import Guard
-from guardllm.security.prompt_injection_detector import detect_prompt_injection
+from vordur import Guard
+from vordur.security.prompt_injection_detector import detect_prompt_injection
 
 SCORE_CACHE = CACHE_ROOT / "roc_score_cache.jsonl"
 CACHE_FLUSH_EVERY = 1
@@ -578,7 +578,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
     next_report = started + progress_seconds if progress_seconds > 0 else None
 
     for i, rec in enumerate(records, start=1):
-        key = _cache_key_method(method="guardllm", config_hash=config_hash, rec=rec)
+        key = _cache_key_method(method="vordur", config_hash=config_hash, rec=rec)
         cached = cache.get(key)
         if cached is not None:
             latency = float(cached.get("latency_ms", 0.0))
@@ -612,7 +612,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
             }
             cache_row = {
                 "key": key,
-                "method": "guardllm",
+                "method": "vordur",
                 "config_hash": config_hash,
                 "record_id": rec.id,
                 "score": round(score, 6),
@@ -644,7 +644,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
             rate = i / elapsed if elapsed > 0 else 0.0
             eta = (len(records) - i) / rate if rate > 0 else 0.0
             print(
-                f"[progress] guardllm scores: {i}/{len(records)} ({(i / len(records)) * 100:.1f}%) "
+                f"[progress] vordur scores: {i}/{len(records)} ({(i / len(records)) * 100:.1f}%) "
                 f"elapsed={elapsed:.0f}s eta={eta:.0f}s cache_hits={cache_hits}",
                 flush=True,
             )
@@ -652,7 +652,7 @@ def _score_guardllm(records: list[TextRecord], progress_seconds: float) -> Metho
 
     cache_writes += _flush_pending_cache(SCORE_CACHE, pending)
     return MethodScores(
-        name="guardllm",
+        name="vordur",
         tunable=True,
         score_name="prompt_injection_score",
         score_scale="0..1",
@@ -1429,10 +1429,10 @@ def main() -> int:
     )
     parser.add_argument("--precision-budget", type=float, action="append", default=[])
     parser.add_argument(
-        "--guardllm-curve-step",
+        "--vordur-curve-step",
         type=float,
         default=0.001,
-        help="GuardLLM curve threshold step for dense ROC/PR sampling (default 0.001).",
+        help="Vörður curve threshold step for dense ROC/PR sampling (default 0.001).",
     )
 
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY"))
@@ -1482,7 +1482,7 @@ def main() -> int:
     methods: list[MethodScores] = []
     method_errors: dict[str, str] = {}
 
-    print("[status] scoring guardllm (cached/resumable)...", flush=True)
+    print("[status] scoring vordur (cached/resumable)...", flush=True)
     guard_scores = _score_guardllm(records, progress_seconds=progress_seconds)
     methods.append(guard_scores)
     print("[status] scoring regex baseline (cached/resumable)...", flush=True)
@@ -1553,7 +1553,7 @@ def main() -> int:
 
             curve_labels, curve_scores = _labels_and_scores(dev_rows)
             curve_thresholds: list[float] | None = None
-            if method.name == "guardllm":
+            if method.name == "vordur":
                 curve_thresholds = _threshold_grid(float(args.guardllm_curve_step))
             curves = _curve_from_scores(curve_labels, curve_scores, thresholds=curve_thresholds)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate GuardLLM against the CBX-1200 dataset.
+"""Evaluate Vörður against the CBX-1200 dataset.
 
 Runs each case TWICE through two distinct pipeline configurations:
 
@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from guardllm import Guard
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.types import (
     SecurityContext,
     SensitivityLevel,
     TrustLevel,

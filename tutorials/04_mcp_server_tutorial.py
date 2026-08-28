@@ -1,4 +1,4 @@
-"""Tutorial 04: MCP server hardening with guardllm.
+"""Tutorial 04: MCP server hardening with vordur.
 
 Focus: protecting a server from untrusted MCP client requests.
 """
@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm import Guard
-from guardllm.security.error_sanitizer import InvalidParamsError
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.error_sanitizer import InvalidParamsError
+from vordur.security.types import PolicyConfig
 
 
 class FakeServerDispatcher:
@@ -23,7 +23,7 @@ class FakeServerDispatcher:
 
 
 def handle_mcp_request(guard: Guard, dispatcher: FakeServerDispatcher, request: dict) -> dict:
-    """Reference server-side request flow with guardllm."""
+    """Reference server-side request flow with vordur."""
 
     tool = request["tool"]
     args = request["args"]

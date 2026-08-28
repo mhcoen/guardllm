@@ -28,7 +28,7 @@ index 7a3e80a..1db015d 100644
 @@ -23,10 +23,19 @@ from typing import Any
  from urllib import error, request
  
- from guardllm import Guard
+ from vordur import Guard
 +from output_layout import (
 +    CACHE_ROOT,
 +    RUNS_ROOT,
@@ -39,7 +39,7 @@ index 7a3e80a..1db015d 100644
 +    read_latest_pointer,
 +    write_latest_pointer,
 +)
- from guardllm.security.source_gate import check_extraction_allowed
+ from vordur.security.source_gate import check_extraction_allowed
  from run_benchmarks import (  # noqa: F401
      BENCH_ROOT,
 -    RESULTS_DIR,
@@ -280,8 +280,8 @@ index 5754664..d9e6a85 100644
 +++ b/benchmarks/roc_pr_experiments.py
 @@ -29,6 +29,15 @@ from urllib import error, request
  from _bootstrap import ROOT  # noqa: F401
- from guardllm import Guard
- from guardllm.security.prompt_injection_detector import detect_prompt_injection
+ from vordur import Guard
+ from vordur.security.prompt_injection_detector import detect_prompt_injection
 +from output_layout import (
 +    CACHE_ROOT,
 +    DATASETS_ROOT,
@@ -565,7 +565,7 @@ index 5754664..d9e6a85 100644
      parser.add_argument("--fp-budget-per-1k", type=_budget_from_arg, action="append", default=[1.0, 5.0])
      parser.add_argument("--precision-budget", type=float, action="append", default=[])
 +    parser.add_argument(
-+        "--guardllm-curve-step",
++        "--vordur-curve-step",
 +        type=float,
 +        default=0.001,
 +        help="GuardLLM curve threshold step for dense ROC/PR sampling (default 0.001).",
@@ -597,12 +597,12 @@ index 5754664..d9e6a85 100644
              dev_labels, dev_scores = _labels_and_scores(dev_rows)
              test_labels, test_scores = _labels_and_scores(test_rows)
  
--            curve_rows = method.per_record if method.name == "guardllm" else dev_rows
+-            curve_rows = method.per_record if method.name == "vordur" else dev_rows
 -            curve_labels, curve_scores = _labels_and_scores(curve_rows)
 -            curves = _curve_from_scores(curve_labels, curve_scores)
 +            curve_labels, curve_scores = _labels_and_scores(dev_rows)
 +            curve_thresholds: list[float] | None = None
-+            if method.name == "guardllm":
++            if method.name == "vordur":
 +                curve_thresholds = _threshold_grid(float(args.guardllm_curve_step))
 +            curves = _curve_from_scores(curve_labels, curve_scores, thresholds=curve_thresholds)
  
@@ -638,7 +638,7 @@ index 5754664..d9e6a85 100644
                      "tunable": True,
                      "score_name": method.score_name,
                      "score_scale": method.score_scale,
--                    "curve_source": "full" if method.name == "guardllm" else "dev",
+-                    "curve_source": "full" if method.name == "vordur" else "dev",
 +                    "curve_source": "dev",
                      "curves": {
                          "roc_auc": curves.roc_auc,
@@ -732,7 +732,7 @@ index 05fabd9..2aa66f7 100644
  import json
  import sys
  import time
-@@ -34,11 +35,11 @@ from guardllm.security.types import (
+@@ -34,11 +35,11 @@ from vordur.security.types import (
      SensitivityLevel,
      TrustLevel,
  )
@@ -864,7 +864,7 @@ index 05fabd9..2aa66f7 100644
 +        cases=cases,
 +    )
  
-     print("guardllm benchmark results")
+     print("vordur benchmark results")
      print("total:", summary["total"], "passed:", summary["passed"], "failed:", summary["failed"], f"pass_rate={summary['pass_rate']}%")
 @@ -610,11 +678,12 @@ def main() -> int:
              for msg in mismatches:

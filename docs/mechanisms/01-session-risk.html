@@ -215,7 +215,7 @@
 
 
   <header>
-    <p class="eyebrow">GuardLLM &middot; mechanism strip 01</p>
+    <p class="eyebrow">Vörður &middot; mechanism strip 01</p>
     <h1>What the Guard Remembers</h1>
     <p class="standfirst">
       Every check in this sequence is one a normal stack already runs. The call still gets
@@ -234,7 +234,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 226" role="img" aria-label="A user asks the agent to summarize a page. The proposed fetch passes through four checks a team already has, JSON Schema, Casbin RBAC, a rate limiter and OPA policy, before reaching the web tool. None of the four is GuardLLM.">
+          <svg viewBox="0 0 640 226" role="img" aria-label="A user asks the agent to summarize a page. The proposed fetch passes through four checks a team already has, JSON Schema, Casbin RBAC, a rate limiter and OPA policy, before reaching the web tool. None of the four is Vörður.">
             <defs>
               <marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -284,8 +284,8 @@
           </svg>
         </div>
         <figcaption>
-          Four third-party checks, none of them GuardLLM: JSON Schema, Casbin RBAC, a rate
-          limiter, OPA policy. GuardLLM sits with them, not in place of them. Panel 04 sends one
+          Four third-party checks, none of them Vörður: JSON Schema, Casbin RBAC, a rate
+          limiter, OPA policy. Vörður sits with them, not in place of them. Panel 04 sends one
           request through this same stack; panel 06 returns to it.
         </figcaption>
       </figure>
@@ -316,7 +316,7 @@
             <text x="384" y="72" class="lbl-s" text-anchor="middle">ingest</text>
 
             <rect x="452" y="54" width="172" height="60" rx="3" class="box-f"></rect>
-            <text x="538" y="80" class="lbl" text-anchor="middle">GuardLLM</text>
+            <text x="538" y="80" class="lbl" text-anchor="middle">Vörður</text>
             <text x="538" y="98" class="lbl-s" text-anchor="middle">process_inbound</text>
           </svg>
         </div>
@@ -338,7 +338,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 150" role="img" aria-label="GuardLLM records in session state that untrusted content has entered. The content continues to the model, sanitized and isolated as configured.">
+          <svg viewBox="0 0 640 150" role="img" aria-label="Vörður records in session state that untrusted content has entered. The content continues to the model, sanitized and isolated as configured.">
             <defs>
               <marker id="a3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -348,7 +348,7 @@
               </marker>
             </defs>
             <rect x="16" y="46" width="168" height="58" rx="3" class="box-f"></rect>
-            <text x="100" y="72" class="lbl" text-anchor="middle">GuardLLM</text>
+            <text x="100" y="72" class="lbl" text-anchor="middle">Vörður</text>
             <text x="100" y="90" class="lbl-s" text-anchor="middle">process_inbound</text>
 
             <line x1="196" y1="75" x2="290" y2="75" class="taint-stroke" marker-end="url(#a3t)"></line>
@@ -532,7 +532,7 @@
       <code>process_inbound</code>, <code>check_tool_call</code>,
       <code>contaminated_tool_policy</code>. No benchmark numbers appear here on purpose,
       because numbers go stale and mechanisms do not. Panel 05 was measured both ways, at the
-      default policy and hardened. Verified against GuardLLM 2.0.0, commit
+      default policy and hardened. Verified against Vörður 2.0.0, commit
       <code>b3710a9</code>. API names, policy fields and orderings can change too, not only
       numbers.
     </p>

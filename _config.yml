@@ -11,13 +11,13 @@
 # examples/ is deliberately NOT excluded: README.md and docs/quick_start.md link
 # into it, and excluding it returned 404 for both.
 
-# Served at https://mhcoen.github.io/guardllm/, so every absolute URL the
+# Served at https://mhcoen.github.io/vordur/, so every absolute URL the
 # theme emits needs this prefix. Without it the stylesheet link resolved to
 # /assets/css/style.css and 404'd, which is why the site CSS never applied.
 url: https://mhcoen.github.io
-baseurl: /guardllm
+baseurl: /vordur
 
-title: GuardLLM
+title: Vörður
 description: Lifecycle security for LLM applications
 theme: jekyll-theme-primer
 

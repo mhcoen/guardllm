@@ -12,7 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo"
-FIXTURE_PATH = DEMO / "guardllm_demo_fixtures.json"
+FIXTURE_PATH = DEMO / "vordur_demo_fixtures.json"
 
 EXECUTION_KINDS = {"independent", "branch", "sequential", "nested"}
 REQUIRED_STEP_FIELDS = {
@@ -32,7 +32,7 @@ REQUIRED_STEP_FIELDS = {
 
 def _load_generator():
     """Import the generator module so its validator can be tested directly."""
-    name = "guardllm_build_demos"
+    name = "vordur_build_demos"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "build_demos.py")
@@ -60,7 +60,7 @@ def executed_scenarios() -> dict:
     assert result.returncode == 0, result.stdout + result.stderr
     fixture = json.loads(FIXTURE_PATH.read_text())
     assert fixture["schema_version"] == 4
-    assert fixture["library_version"] == version("guardllm")
+    assert fixture["library_version"] == version("vordur")
     required = {
         "configuration",
         "inputs",
@@ -429,7 +429,7 @@ def test_dlp_examples_are_not_presented_as_one_session(executed_scenarios):
     assert not any(step["execution"] == "sequential" for step in scenario["steps"])
     assert not any(step["compares_with"] for step in scenario["steps"])
     assert len(scenario["pipelines"]) == 5
-    page = (DEMO / "guardllm_canary_demos.html").read_text()
+    page = (DEMO / "vordur_canary_demos.html").read_text()
     assert "independent comparisons, not one five-step session" in page
 
 
@@ -565,7 +565,7 @@ def test_rate_limit_fixture(executed_scenarios):
 
 def test_rate_limit_page_states_the_counting_contract(executed_scenarios):
     """The page explains which contract it demonstrates, not just the outcome."""
-    page = (DEMO / "guardllm_rate_limit_demo.html").read_text()
+    page = (DEMO / "vordur_rate_limit_demo.html").read_text()
     assert "includes the proposal being checked" in page
     assert "leave a burst of exactly three silent" in page
 
@@ -645,21 +645,21 @@ def test_every_page_embeds_its_canonical_scenario(executed_scenarios):
     embedding that silently re-encodes the data.
     """
     pattern = re.compile(
-        r'<script id="guardllm-behavior" type="application/json">(.*?)</script>', re.S
+        r'<script id="vordur-behavior" type="application/json">(.*?)</script>', re.S
     )
     page_scenarios = {
-        "guardllm_demos.html": "escalation",
-        "guardllm_pipeline_demo.html": "ingress",
-        "guardllm_rag_demos.html": "rag",
-        "guardllm_tool_feedback_demo.html": "tool_feedback",
-        "guardllm_canary_demos.html": "dlp_canary",
-        "guardllm_policy_matrix_demo.html": "policy",
-        "guardllm_rate_limit_demo.html": "rate_limit",
-        "guardllm_request_binding_demo.html": "request_binding",
-        "guardllm_security_context_demo.html": "security_context",
-        "guardllm_mcp_demo.html": "mcp_tool_surface",
+        "vordur_demos.html": "escalation",
+        "vordur_pipeline_demo.html": "ingress",
+        "vordur_rag_demos.html": "rag",
+        "vordur_tool_feedback_demo.html": "tool_feedback",
+        "vordur_canary_demos.html": "dlp_canary",
+        "vordur_policy_matrix_demo.html": "policy",
+        "vordur_rate_limit_demo.html": "rate_limit",
+        "vordur_request_binding_demo.html": "request_binding",
+        "vordur_security_context_demo.html": "security_context",
+        "vordur_mcp_demo.html": "mcp_tool_surface",
     }
-    assert page_scenarios.keys() | {"guardllm_surface_map.html"} == {
+    assert page_scenarios.keys() | {"vordur_surface_map.html"} == {
         path.name for path in DEMO.glob("*.html")
     }
     for filename, scenario_name in page_scenarios.items():
@@ -708,13 +708,13 @@ class TestGeneratorRefusesAForeignLibrary:
     def test_library_from_another_tree_fails_generation(self):
         guard = _load_generator()._ensure_library_matches_tree
         with pytest.raises(SystemExit, match="refusing to generate"):
-            guard("/somewhere/else/src/guardllm/__init__.py")
+            guard("/somewhere/else/src/vordur/__init__.py")
 
     def test_a_sibling_path_is_not_mistaken_for_this_tree(self):
         """Prefix similarity is not containment: ROOT-adjacent paths still fail."""
         guard = _load_generator()._ensure_library_matches_tree
         with pytest.raises(SystemExit, match="refusing to generate"):
-            guard(f"{ROOT}-other/src/guardllm/__init__.py")
+            guard(f"{ROOT}-other/src/vordur/__init__.py")
 
     def test_a_checkout_nested_inside_this_tree_still_fails(self):
         """Containment under ROOT is not the property; the exact package is.
@@ -725,16 +725,16 @@ class TestGeneratorRefusesAForeignLibrary:
         """
         guard = _load_generator()._ensure_library_matches_tree
         for path in (
-            f"{ROOT}/nested-checkout/src/guardllm/__init__.py",
-            f"{ROOT}/build/lib/guardllm/__init__.py",
-            f"{ROOT}/src/guardllm_shim/__init__.py",
+            f"{ROOT}/nested-checkout/src/vordur/__init__.py",
+            f"{ROOT}/build/lib/vordur/__init__.py",
+            f"{ROOT}/src/vordur_shim/__init__.py",
         ):
             with pytest.raises(SystemExit, match="refusing to generate"):
                 guard(path)
 
     def test_this_tree_passes(self):
         generator = _load_generator()
-        generator._ensure_library_matches_tree(str(ROOT / "src" / "guardllm" / "__init__.py"))
+        generator._ensure_library_matches_tree(str(ROOT / "src" / "vordur" / "__init__.py"))
         # And the real import, which is what every generation depends on.
         generator._ensure_library_matches_tree()
 

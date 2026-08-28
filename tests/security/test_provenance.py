@@ -2,9 +2,9 @@
 
 import pytest
 
-from guardllm.security.normalization import compute_lcs_length, compute_ngram_overlap
-from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
-from guardllm.security.types import TrustLevel
+from vordur.security.normalization import compute_lcs_length, compute_ngram_overlap
+from vordur.security.provenance import ProvenancedSpan, ProvenanceTracker
+from vordur.security.types import TrustLevel
 
 # ---------------------------------------------------------------------------
 # ProvenancedSpan dataclass
@@ -331,8 +331,8 @@ class TestProvenanceCoversTheWholeSpan:
 
     @pytest.mark.parametrize("offset", [0, 49_000, 60_000, 200_000])
     def test_a_match_anywhere_in_a_long_span_is_found_and_attributed(self, offset):
-        from guardllm import Guard
-        from guardllm.security.types import SecurityContext, TrustLevel
+        from vordur import Guard
+        from vordur.security.types import SecurityContext, TrustLevel
 
         guard = Guard()
         guard.process_inbound(

@@ -2,11 +2,11 @@
 
 import pytest
 
-from guardllm.security.source_gate import (
+from vordur.security.source_gate import (
     ExtractionPolicy,
     check_extraction_allowed,
 )
-from guardllm.security.types import TrustLevel
+from vordur.security.types import TrustLevel
 
 
 class TestSourceGatePolicy:

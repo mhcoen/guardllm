@@ -4,7 +4,7 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-Copy-paste templates for quickly integrating guardllm into LLM applications.
+Copy-paste templates for quickly integrating Vörður into LLM applications.
 
 ## Template: MCP Server Request Guard
 
@@ -13,9 +13,9 @@ Use this in your server tool-dispatch path.
 ```python
 import threading
 
-from guardllm import Guard
-from guardllm.security.error_sanitizer import InvalidParamsError
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.error_sanitizer import InvalidParamsError
+from vordur.security.types import PolicyConfig
 
 
 # One Guard per session, never one per process. A Guard owns contamination,
@@ -95,8 +95,8 @@ Use this before calling remote MCP tools.
 import dataclasses
 import time
 
-from guardllm import Guard
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.types import PolicyConfig
 
 
 class CliConfirmation:
@@ -164,8 +164,8 @@ async def guarded_call(guard: Guard, transport, tool: str, args: dict, user_mess
 Use this before passing external content to your LLM.
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import ContentType, SecurityContext, TrustLevel
+from vordur import Guard
+from vordur.security.types import ContentType, SecurityContext, TrustLevel
 
 
 def ingest_email(guard: Guard, raw_email_html: str) -> str:

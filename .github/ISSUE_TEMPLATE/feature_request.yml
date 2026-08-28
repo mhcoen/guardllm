@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a new capability or hardening for GuardLLM
+description: Propose a new capability or hardening for Vörður
 labels: ["enhancement"]
 body:
   - type: textarea

@@ -6,8 +6,8 @@ import asyncio
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm.security.action_gate import ActionGate, ActionProposal
-from guardllm.security.types import ConfirmationHandler, SecurityContext
+from vordur.security.action_gate import ActionGate, ActionProposal
+from vordur.security.types import ConfirmationHandler, SecurityContext
 
 
 class DemoHandler(ConfirmationHandler):

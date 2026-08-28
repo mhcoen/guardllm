@@ -1,15 +1,15 @@
 name: Bug report
-description: Report a defect in GuardLLM's behavior
+description: Report a defect in Vörður's behavior
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug. **Do not use this template for security vulnerabilities** — see [SECURITY.md](https://github.com/mhcoen/guardllm/blob/main/SECURITY.md).
+        Thanks for taking the time to file a bug. **Do not use this template for security vulnerabilities** — see [SECURITY.md](https://github.com/mhcoen/vordur/blob/main/SECURITY.md).
   - type: input
     id: version
     attributes:
-      label: GuardLLM version
+      label: Vörður version
       placeholder: "1.0.3"
     validations:
       required: true

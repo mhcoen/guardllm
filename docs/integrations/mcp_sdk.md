@@ -4,7 +4,7 @@
 [Docs index](../README.md) / [Integrations](README.md)
 <!-- nav:end -->
 
-Use guardllm as a middleware-style layer around MCP request/response handling.
+Use Vörður as a middleware-style layer around MCP request/response handling.
 
 ## Server side
 

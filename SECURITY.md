@@ -1,10 +1,10 @@
 # Security Policy
 
-GuardLLM is a security library. We take vulnerability reports seriously and aim to respond quickly.
+Vörður is a security library. We take vulnerability reports seriously and aim to respond quickly.
 
 ## Supported Versions
 
-Only the most recent minor release line of GuardLLM receives security fixes.
+Only the most recent minor release line of Vörður receives security fixes.
 
 | Version | Supported |
 |--------:|:---------:|
@@ -20,7 +20,7 @@ Please **do not** open a public GitHub issue for security problems.
 Send a private report to **mhcoen@gmail.com** with:
 
 - A description of the vulnerability and the affected component (sanitizer, policy engine, request binding, outbound DLP, etc.)
-- A minimal reproduction (input that triggers the issue, version of GuardLLM, Python version)
+- A minimal reproduction (input that triggers the issue, version of Vörður, Python version)
 - Your assessment of impact (information disclosure, authorization bypass, prompt-injection bypass, panic/DoS, etc.)
 - Whether you intend to disclose publicly, and on what timeline
 
@@ -34,7 +34,7 @@ We follow a 90-day coordinated disclosure window by default. We are happy to neg
 
 ## In Scope
 
-The following are in scope for vulnerability reports against GuardLLM itself:
+The following are in scope for vulnerability reports against Vörður itself:
 
 - **Sanitizer bypass**: input that escapes `<untrusted_content>` isolation, smuggles instructions past HTML/CSS/whitespace normalization, or evades the prompt-injection detector with no obfuscation cost
 - **Authorization bypass**: tool calls that pass `Guard.authorize` / `Guard.check_tool_call` despite policy denying them
@@ -47,9 +47,9 @@ The following are in scope for vulnerability reports against GuardLLM itself:
 
 ## Out of Scope
 
-GuardLLM is one layer of defense; it does not replace other controls. The following are not GuardLLM vulnerabilities:
+Vörður is one layer of defense; it does not replace other controls. The following are not Vörður vulnerabilities:
 
-- LLM behavior outside of GuardLLM's pipeline (e.g. the model ignoring `<untrusted_content>` framing when the application strips it before sending to the model)
+- LLM behavior outside of Vörður's pipeline (e.g. the model ignoring `<untrusted_content>` framing when the application strips it before sending to the model)
 - Application-layer policy choices: e.g. an empty allowlist is intentionally deny-by-default, and a misconfigured allowlist that admits a destructive tool is the operator's responsibility
 - Attacks requiring a privileged local attacker (e.g. someone who can write the application's policy config)
 - Performance reports that are not crash-class (general latency regressions belong in regular issues)
@@ -57,11 +57,11 @@ GuardLLM is one layer of defense; it does not replace other controls. The follow
 
 ## Test Datasets
 
-The benchmark datasets under `benchmarks/` are part of GuardLLM's evaluation methodology. Changes to those datasets are governed by `benchmarks/methodology.md` and reviewed separately from security fixes. A flaw in a *dataset case* is not a GuardLLM vulnerability; a flaw in *how the pipeline handles a class of input* is.
+The benchmark datasets under `benchmarks/` are part of Vörður's evaluation methodology. Changes to those datasets are governed by `benchmarks/methodology.md` and reviewed separately from security fixes. A flaw in a *dataset case* is not a Vörður vulnerability; a flaw in *how the pipeline handles a class of input* is.
 
 ## Hardening Posture
 
-GuardLLM ships with safe-by-default settings:
+Vörður ships with safe-by-default settings:
 
 - Empty allowlist denies (does not allow-all)
 - Destructive tools are disabled by default, and enabling one in client mode still

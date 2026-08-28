@@ -109,10 +109,10 @@
 
 
   <header>
-    <p class="eyebrow">GuardLLM &middot; mechanism strip 05</p>
+    <p class="eyebrow">Vörður &middot; mechanism strip 05</p>
     <h1>The Path Around the Guard</h1>
     <p class="standfirst">
-      Installed is not the same as in the way. GuardLLM protects the paths that run through
+      Installed is not the same as in the way. Vörður protects the paths that run through
       it, and a path that skips it is not merely unprotected: it quietly makes every other
       path decide on incomplete information.
     </p>
@@ -128,7 +128,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 178" role="img" aria-label="Four application paths, ingest, tool calls, restoration and egress, all routed through GuardLLM, which writes and reads one session state.">
+          <svg viewBox="0 0 640 178" role="img" aria-label="Four application paths, ingest, tool calls, restoration and egress, all routed through Vörður, which writes and reads one session state.">
             <defs>
               <marker id="m1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -151,7 +151,7 @@
             <path d="M178 148 H236" class="arrow" marker-end="url(#m1)"></path>
 
             <rect x="248" y="32" width="150" height="130" rx="3" class="memo-box"></rect>
-            <text x="323" y="94" class="memo-lbl" text-anchor="middle" style="font-size:13px">GuardLLM</text>
+            <text x="323" y="94" class="memo-lbl" text-anchor="middle" style="font-size:13px">Vörður</text>
             <text x="323" y="114" class="lbl-s" text-anchor="middle">every path</text>
 
             <path d="M410 97 H468" class="memo-stroke" marker-end="url(#m1)"></path>
@@ -176,7 +176,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 178" role="img" aria-label="One of the four paths, the page fetch, now goes directly to the model without passing through GuardLLM.">
+          <svg viewBox="0 0 640 178" role="img" aria-label="One of the four paths, the page fetch, now goes directly to the model without passing through Vörður.">
             <defs>
               <marker id="m2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -203,7 +203,7 @@
             <path d="M178 148 H236" class="arrow" marker-end="url(#m2)"></path>
 
             <rect x="248" y="66" width="150" height="96" rx="3" class="memo-box"></rect>
-            <text x="323" y="110" class="memo-lbl" text-anchor="middle" style="font-size:13px">GuardLLM</text>
+            <text x="323" y="110" class="memo-lbl" text-anchor="middle" style="font-size:13px">Vörður</text>
             <text x="323" y="130" class="lbl-s" text-anchor="middle">three paths</text>
 
             <rect x="480" y="70" width="144" height="54" rx="3" class="box-f"></rect>
@@ -303,7 +303,7 @@
       </div>
       <figure>
         <div class="fig-scroll">
-          <svg viewBox="0 0 640 172" role="img" aria-label="Running GuardLLM as an OpenAI-compatible proxy means the application changes only its base_url, so traffic cannot reach the provider without passing through the checks.">
+          <svg viewBox="0 0 640 172" role="img" aria-label="Running Vörður as an OpenAI-compatible proxy means the application changes only its base_url, so traffic cannot reach the provider without passing through the checks.">
             <defs>
               <marker id="m5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <polygon points="0,0 8,4 0,8" fill="currentColor"></polygon>
@@ -315,7 +315,7 @@
 
             <rect x="16" y="56" width="150" height="60" rx="3" class="box-f"></rect>
             <text x="91" y="82" class="lbl" text-anchor="middle">application</text>
-            <text x="91" y="100" class="lbl-s" text-anchor="middle">no GuardLLM calls</text>
+            <text x="91" y="100" class="lbl-s" text-anchor="middle">no Vörður calls</text>
 
             <line x1="178" y1="86" x2="238" y2="86" class="memo-stroke" marker-end="url(#m5m)"></line>
             <text x="208" y="76" class="memo-lbl" text-anchor="middle">base_url</text>
@@ -333,7 +333,7 @@
           </svg>
         </div>
         <figcaption>
-          An application changes only its <code>base_url</code> and makes no GuardLLM calls at
+          An application changes only its <code>base_url</code> and makes no Vörður calls at
           all. That removes the three assumptions above as things anyone can forget, because
           the traffic has nowhere else to go.
         </figcaption>
@@ -376,7 +376,7 @@
   <section class="coda">
     <h2>Why this one is not a bug report</h2>
     <p>
-      Nothing in panels 02 through 04 is a defect in GuardLLM. Every call that ran, ran
+      Nothing in panels 02 through 04 is a defect in Vörður. Every call that ran, ran
       correctly. The library cannot police a path it was never handed, and no amount of
       internal hardening changes that: it is a property of where the code sits, not of how
       well it works.
@@ -392,7 +392,7 @@
       Mechanism only. <code>process_inbound</code>, <code>check_tool_call</code>,
       <code>A-AS1</code>, <code>A-AS2</code> and <code>T-IN13</code> are real, and panel 04
       was measured rather than imagined: the same call, denied in one session and allowed in
-      the other. Verified against GuardLLM 2.0.0, commit <code>b3710a9</code>. API names,
+      the other. Verified against Vörður 2.0.0, commit <code>b3710a9</code>. API names,
       policy fields and orderings can change too, not only numbers.
     </p>
   </section>

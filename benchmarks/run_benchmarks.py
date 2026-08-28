@@ -1,4 +1,4 @@
-"""Run guardllm security benchmark cases.
+"""Run vordur security benchmark cases.
 
 Usage:
   python benchmarks/run_benchmarks.py
@@ -25,18 +25,18 @@ from output_layout import (
     write_latest_pointer,
 )
 
-from guardllm import Guard
-from guardllm.security.canary import generate_canary
-from guardllm.security.error_sanitizer import (
+from vordur import Guard
+from vordur.security.canary import generate_canary
+from vordur.security.error_sanitizer import (
     InvalidHandleError,
     InvalidParamsError,
     PermissionDeniedError,
     RateLimitError,
     UnauthorizedError,
 )
-from guardllm.security.rate_limiter import RateLimiter
-from guardllm.security.source_gate import check_extraction_allowed
-from guardllm.security.types import (
+from vordur.security.rate_limiter import RateLimiter
+from vordur.security.source_gate import check_extraction_allowed
+from vordur.security.types import (
     ConfirmationHandler,
     ContentType,
     PolicyConfig,
@@ -918,7 +918,7 @@ def main() -> int:
         cases=cases,
     )
 
-    print("guardllm benchmark results")
+    print("vordur benchmark results")
     print(
         "total:",
         summary["total"],

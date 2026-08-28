@@ -14,11 +14,11 @@ import string
 
 import pytest
 
-from guardllm import Guard
-from guardllm.security import token_codec as codec
-from guardllm.security.outbound_dlp import _fold_ascii as _fold
-from guardllm.security.outbound_dlp import _scan_secrets
-from guardllm.security.pii_detect import (
+from vordur import Guard
+from vordur.security import token_codec as codec
+from vordur.security.outbound_dlp import _fold_ascii as _fold
+from vordur.security.outbound_dlp import _scan_secrets
+from vordur.security.pii_detect import (
     SeededValues,
     detect,
     iban_valid,
@@ -26,8 +26,8 @@ from guardllm.security.pii_detect import (
     routing_valid,
     ssn_valid,
 )
-from guardllm.security.privacy_vault import PrivacyVault, marker_for
-from guardllm.security.types import (
+from vordur.security.privacy_vault import PrivacyVault, marker_for
+from vordur.security.types import (
     DEFAULT_TOKENIZE_CLASSES,
     REDACT,
     ClassPolicy,
@@ -520,8 +520,8 @@ class TestReviewRegressions:
         """The boundary denier and the egress blocker must not disagree about
         what a credential is. Reusing only the regex table let high-entropy
         secrets cross inbound while L3 blocked them outbound."""
-        from guardllm.security.outbound_dlp import _scan_secrets
-        from guardllm.security.pii_detect import credential_spans
+        from vordur.security.outbound_dlp import _scan_secrets
+        from vordur.security.pii_detect import credential_spans
 
         for probe in [
             "x9Qv2Lm8Np4Rs7Tw3Yz6Bc1Df5Gh9Jk2",
@@ -570,14 +570,14 @@ class TestReviewRegressions:
         assert len(v) == before, "failed call left entries behind"
 
     def test_compressed_ipv6_is_detected(self):
-        from guardllm.security.types import ClassPolicy
+        from vordur.security.types import ClassPolicy
 
         v = PrivacyVault(_config(class_policy={PIIClass.IPV6: ClassPolicy.TOKENIZE}))
         assert "2001:db8::1" not in v.deidentify("host 2001:db8::1").content
 
     def test_class_policy_override_is_actually_scanned(self):
         """Detecting only `classes` makes an override a silent no-op."""
-        from guardllm.security.types import ClassPolicy
+        from vordur.security.types import ClassPolicy
 
         v = PrivacyVault(_config(class_policy={PIIClass.IPV4: ClassPolicy.TOKENIZE}))
         assert "203.0.113.42" not in v.deidentify("host 203.0.113.42").content
@@ -704,7 +704,7 @@ class TestDetectorInterface:
         """Registration order must not pick the class, since the class chosen
         governs restoration: a field permitting PERSON but not ADDRESS would
         admit the value purely because detectors were registered differently."""
-        from guardllm.security.pii_detect import detect as _detect
+        from vordur.security.pii_detect import detect as _detect
 
         class _D:
             def __init__(self, idn, cls):
@@ -815,7 +815,7 @@ class TestRoundThreeRegressions:
         """Returning an empty success reported clean coverage for a detector
         that produced nothing usable, which is the silent non-coverage the
         protocol exists to prevent."""
-        from guardllm.security.pii_detect import _run_detector
+        from vordur.security.pii_detect import _run_detector
 
         class AllInvalid:
             id = "ni"
@@ -829,7 +829,7 @@ class TestRoundThreeRegressions:
 
     @pytest.mark.parametrize("kind", ["not_iterable", "generator_raises", "property_raises"])
     def test_detector_failures_never_escape_the_library(self, kind):
-        from guardllm.security.pii_detect import _run_detector
+        from vordur.security.pii_detect import _run_detector
 
         class D:
             id = "d"
@@ -952,8 +952,8 @@ class TestRoundThreeRegressions:
         assert "redacted:credential" in out.content
 
     def test_credential_parity_with_l3_across_obfuscation(self):
-        from guardllm.security.outbound_dlp import _scan_secrets
-        from guardllm.security.pii_detect import credential_spans
+        from vordur.security.outbound_dlp import _scan_secrets
+        from vordur.security.pii_detect import credential_spans
 
         for probe in [
             "sk-abcdefghij klmnopqrstuvwx",
@@ -1531,7 +1531,7 @@ class TestModuleIntegrity:
         import collections
         import pathlib
 
-        path = pathlib.Path("src/guardllm/security") / f"{module}.py"
+        path = pathlib.Path("src/vordur/security") / f"{module}.py"
         tree = ast.parse(path.read_text())
         counts: collections.Counter = collections.Counter()
         for node in tree.body:
@@ -1550,13 +1550,13 @@ class TestModuleIntegrity:
         """Asserts the mechanism, not a symptom. Every negative that motivated
         the strict closer also fails for other reasons, so only this catches a
         silent revert."""
-        from guardllm.security.pii_detect import _LC, _LC_ACRONYM
+        from vordur.security.pii_detect import _LC, _LC_ACRONYM
 
         assert "|\\bis\\b)?" not in _LC, "strict closer must require a separator"
         assert "|\\bis\\b)?" in _LC_ACRONYM, "acronym closer must not require one"
 
     def test_runtime_iin_table_is_the_documented_one(self):
-        from guardllm.security.pii_detect import _IIN_RANGES
+        from vordur.security.pii_detect import _IIN_RANGES
 
         widths = {w for _, _, w, _ in _IIN_RANGES}
         assert 8 in widths, "8-digit Discover ranges missing from the live table"
@@ -1595,7 +1595,7 @@ class TestRoundSevenRegressions:
         ],
     )
     def test_discover_acquired_ranges_are_recognized(self, pan_prefix):
-        from guardllm.security.pii_detect import card_valid, luhn_valid
+        from vordur.security.pii_detect import card_valid, luhn_valid
 
         base = pan_prefix + "0" * (16 - len(pan_prefix) - 1)
         pan = next(base + str(d) for d in range(10) if luhn_valid(base + str(d)))
@@ -1659,7 +1659,7 @@ _LABEL_PROBE: dict[str, tuple[str, PIIClass]] = {
 
 
 def _closer_cases():
-    from guardllm.security.pii_detect import LABEL_CLOSERS
+    from vordur.security.pii_detect import LABEL_CLOSERS
 
     for label, closer in LABEL_CLOSERS.items():
         if label in _LABEL_PROBE:
@@ -1683,7 +1683,7 @@ def test_label_closer_matrix(label, closer, value, cls):
 
 def test_every_declared_label_has_a_probe():
     """A label added to LABEL_CLOSERS without a probe would be untested."""
-    from guardllm.security.pii_detect import LABEL_CLOSERS
+    from vordur.security.pii_detect import LABEL_CLOSERS
 
     missing = set(LABEL_CLOSERS) - set(_LABEL_PROBE)
     assert not missing, f"no behavioural probe for {sorted(missing)}"
@@ -1703,7 +1703,7 @@ class TestRoundEightRegressions:
         """The shortest-prefix extent stopped inside the secret, so up to 19
         characters of a live key stayed model-visible with allowed=True. A
         DENY class cannot partially cross."""
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from vordur.security.outbound_dlp import _scan_secrets
 
         guard = Guard(privacy=PrivacyConfig())
         for pos in range(4, len(secret), 3):
@@ -1768,7 +1768,7 @@ class TestRoundEightRegressions:
         15-digit run, roughly one in ten, and the letter-adjacency guard needed
         to contain that then rejected genuine PANs glued to a payment code.
         UATP is covered where the label supplies the intent."""
-        from guardllm.security.pii_detect import card_valid
+        from vordur.security.pii_detect import card_valid
 
         assert not card_valid("100100000000007"), "must not be unlabelled-detected"
         found = detect("UATP account 100100000000007", classes=DEFAULT_TOKENIZE_CLASSES)
@@ -2095,7 +2095,7 @@ class TestRoundTenRegressions:
     def test_no_grammar_leaks_a_tail_at_any_split(self, name):
         """Finding 1. Every split position of every grammar, including the
         punctuation-bearing ones the alphanumeric walk could not follow."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = _GRAMMAR_FIXTURES[name]
         for pos in range(1, len(secret)):
@@ -2126,7 +2126,7 @@ class TestRoundTenRegressions:
         real English words, and `sk_` inside `netmask_cache` acquired twenty
         alphanumerics once whitespace was removed, redacting 67,445 characters
         of ipaddress.py."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         spans, _ = scan_secret_spans(text)
         assert spans == []
@@ -2256,7 +2256,7 @@ class TestRoundTenRegressions:
         not broken by the break, so nothing below continues it, and without
         that gate the walk crossed break after break through ordinary prose and
         took the rest of the document."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         text = (
             "line one\n"
@@ -2319,7 +2319,7 @@ class TestRoundTenRegressions:
         """The mid-token allowance must be randomness, not a digit. Accepting a
         digit let ordinary sentences through: the merge joins the words and the
         sentence itself supplies the number."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         spans, _ = scan_secret_spans(text)
         assert spans == []
@@ -2331,7 +2331,7 @@ class TestRoundTenRegressions:
         of the value: the match no longer began at a boundary, was skipped, and
         32 characters leaked. A digit is the second, independent reason to
         believe a match, and machine-issued secrets carry one."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
         for pos in range(1, len(secret)):
@@ -2432,7 +2432,7 @@ class TestRoundElevenRegressions:
         JWT payload and two English words either side of a full stop are the
         same shape. The space after the stop is what keeps the raw scan safe.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from vordur.security.outbound_dlp import _scan_secrets
 
         assert _scan_secrets(text) == []
         guard = Guard()  # no privacy config: the vault is not involved at all
@@ -2443,7 +2443,7 @@ class TestRoundElevenRegressions:
 
     def test_a_real_jwt_is_still_caught_split_or_whole(self):
         """And finding 2's fix must not cost the detection it was added for."""
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from vordur.security.outbound_dlp import _scan_secrets
 
         jwt = (
             "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9."
@@ -2458,7 +2458,7 @@ class TestRoundElevenRegressions:
         """Finding 3. The minimum was satisfied three lines up and one further
         token did not reach the end, so 19 characters crossed the boundary. The
         oracle missed it because it splits into two pieces, never three."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
         for parts in (5, 4, 3):
@@ -2476,7 +2476,7 @@ class TestRoundElevenRegressions:
         """Finding 4. may_wrap consulted every raw span on the line, so an AWS
         key in front of a wrapped Slack token silenced the wrap logic for its
         neighbour and the whole Slack tail stayed visible."""
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         slack = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
         text = f"AKIAIOSFODNN7EXAMPLE {slack[:31]}\n{slack[31:]}"
@@ -2599,7 +2599,7 @@ class TestPunctuationSplits:
 
     @pytest.mark.parametrize("name", sorted(_SPLIT_FIXTURES))
     def test_no_separator_splits_a_credential_undetected(self, name):
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = _SPLIT_FIXTURES[name]
         for sep in _PUNCT_SEPARATORS:
@@ -2646,7 +2646,7 @@ class TestPunctuationSplits:
         Each grammar is pinned to a real credential of its kind, contiguous and
         split, so a wrong field shows up here rather than in a leak.
         """
-        from guardllm.security.outbound_dlp import _GRAMMARS, _findings
+        from vordur.security.outbound_dlp import _GRAMMARS, _findings
 
         samples = {
             "AWS access key": _SPLIT_FIXTURES["aws"],
@@ -2684,7 +2684,7 @@ class TestPunctuationSplits:
         supply the letters and not the separator, so they are not candidates,
         and a separator genuinely driven in still is one.
         """
-        from guardllm.security.outbound_dlp import _findings
+        from vordur.security.outbound_dlp import _findings
 
         for benign in (
             "the through_put_measurement_helper_function_name_value returns",
@@ -2706,7 +2706,7 @@ class TestPunctuationSplits:
         no secret, and what matters is that a real key block is still caught,
         which it is, by the entropy scan on the key material beneath it.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets
+        from vordur.security.outbound_dlp import _scan_secrets
 
         header = "-----BEGIN RSA PRIVATE KEY-----"
         assert not _scan_secrets(header[:12] + "-" + header[12:])
@@ -2724,7 +2724,7 @@ class TestPunctuationSplits:
         deliberately repetitive so the entropy scan cannot rescue the fragment,
         which is what hid this behind the other fixtures.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "sk-aab2aab2aab2aab2aab2aab2"
         for pos in (2, 3):
@@ -2756,7 +2756,7 @@ class TestPunctuationSplits:
         strings were clearing. This cost 492,745 characters of the standard
         library against 3,051 before, and 33 seconds against one.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         assert scan_secret_spans(text)[0] == []
 
@@ -2771,7 +2771,7 @@ class TestPunctuationSplits:
         characters and the same trick worked on the project key and the Google
         token with a plain space.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = _SPLIT_FIXTURES[name]
         for prefix in ("X", "key", "9"):
@@ -2796,7 +2796,7 @@ class TestPunctuationSplits:
         too low, and a value split with a wide run of separators leaked 25
         characters until it was raised.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "sk-7LeXSyYV4g6snRoUYA4fXr6nzrQwErTyUiOpAsDfGh"
         for gap in ("  |  ", " " * 8, "\n\n\n", " " * 15, " " * 30):
@@ -2825,7 +2825,7 @@ class TestPunctuationSplits:
         only by luck, and the version of this test that did so passed with the
         rule disabled.
         """
-        from guardllm.security.outbound_dlp import _entropy_spans, scan_secret_spans
+        from vordur.security.outbound_dlp import _entropy_spans, scan_secret_spans
 
         secret = (
             "Bearer dDD-dvVEda1UdDuxg1R0.MeqMT-9JWU4QWfjhJK6IdPgUx5Fc7RHM"
@@ -2871,7 +2871,7 @@ class TestRecognitionAndAttribution:
         reassembles the key from every one of them. The span stops; the report
         must not, or the ceiling becomes a bypass rather than a bound.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         cut = 20
         # The gaps that still put the value past a span, and the assertion
@@ -2904,7 +2904,7 @@ class TestRecognitionAndAttribution:
         in the text, and nothing was reported. That was 481 of 6,290 split
         positions, every one of them silent.
         """
-        from guardllm.security.outbound_dlp import _exact_findings, _normalized_labels
+        from vordur.security.outbound_dlp import _exact_findings, _normalized_labels
 
         secret = "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M"
         text = secret[:16] + "," * 65 + secret[16:]
@@ -2923,7 +2923,7 @@ class TestRecognitionAndAttribution:
         made ten of 153 standard library files carry an unlocatable credential,
         which on the host path is a refusal of the whole document.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         for tail in (
             " with API v2 and set retries to 3.",
@@ -2977,7 +2977,7 @@ class TestRecognitionAndAttribution:
         refusal of the whole document on the host path, and it happened to ten
         of 153 standard library files.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         tail = (
             "CO_FUTURE_UNICODE_LITERALS = 0x200000   # unicode string literals\n"
@@ -3005,7 +3005,7 @@ class TestRecognitionAndAttribution:
         whose first thirty characters are not random enough and whose next
         thirty are; a generated one has it only by luck.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         # A literal, because the shape that needs this is a body whose first
         # twenty characters do not clear the bar and whose next twenty do. The
@@ -3041,7 +3041,7 @@ class TestRecognitionAndAttribution:
         The fix is not a better bar. A run of separators wider than the ceiling
         is itself the evidence, because widening it is the evasion.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         for secret in (
             "xoxb-1234567890-gMIc8mAsNqjSc3v-ux9i53yyD3HyP3M",
@@ -3095,7 +3095,7 @@ class TestRecognitionAndAttribution:
         reported. A run costs one adjoining fragment on each side, then only
         fragments too long to be words.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         token = "PQ1_g_MH9_eJVdQ_tluQt_EOISGLFIIAM_hGgmyFVj6_J-8u52ZkBtJqrys4WKrg"
         for cut in (41, 20, 55, 62):
@@ -3125,7 +3125,7 @@ class TestRecognitionAndAttribution:
         the closing tag it existed to stop at, and the record came out as
         ``<record><`` followed by the rest.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         text = (
             "<record><token>ghp_HgiKXSjjarvO0oeFGPRMbw60yPcKiRvgq1GZbyb5</token>"
@@ -3147,7 +3147,7 @@ class TestRecognitionAndAttribution:
         returned nothing and the vault passed the value through unchanged even
         with deny_action="fail": 1,748 of 2,400 cases, worst 82 characters.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+        from vordur.security.outbound_dlp import _scan_secrets, scan_secret_spans
 
         # The OpenAI value is the discriminating one and the assertion below
         # pins that it stays so. The GitHub value is kept because its body is
@@ -3182,7 +3182,7 @@ class TestRecognitionAndAttribution:
         vault untouched. The fold is one character for one character so every
         span still indexes the original text.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+        from vordur.security.outbound_dlp import _scan_secrets, scan_secret_spans
 
         def wide(value: str) -> str:
             return "".join(chr(ord(c) - 0x21 + 0xFF01) if "!" <= c <= "~" else c for c in value)
@@ -3216,7 +3216,7 @@ class TestRecognitionAndAttribution:
         as a gap. 485 of 500 such values were found by one and missed by the
         other, and parity looked clean only because both missed other things.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+        from vordur.security.outbound_dlp import _scan_secrets, scan_secret_spans
 
         for mark in ("\u0301", "\u0308", "\u0327"):
             text = "AKIA" + mark + "IOSFODNN7EXAMPLE"
@@ -3260,7 +3260,7 @@ class TestRecognitionAndAttribution:
         adjoining fragments cost 0.81 seconds against 0.21 for 400."""
         import time
 
-        from guardllm.security.outbound_dlp import _entropy_spans
+        from vordur.security.outbound_dlp import _entropy_spans
 
         def elapsed(count: int) -> float:
             text = " ".join("aB3dE6gH9jK2mN5pQ8rS" for _ in range(count))
@@ -3285,7 +3285,7 @@ class TestRecognitionAndAttribution:
         so `aKIA` satisfies nothing and that path could not see it either.
         Case comes from the character actually written.
         """
-        from guardllm.security.outbound_dlp import _scan_secrets, scan_secret_spans
+        from vordur.security.outbound_dlp import _scan_secrets, scan_secret_spans
 
         for homoglyph in ("\u0391", "\u0410"):  # GREEK and CYRILLIC capital A
             text = homoglyph + "KIAIOSFODNN7EXAMPLE"
@@ -3305,7 +3305,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         rng = random.Random(7)
         value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
@@ -3342,7 +3342,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         rng = random.Random(7)
         value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
@@ -3375,7 +3375,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import _monotonic, scan_secret_spans
+        from vordur.security.outbound_dlp import _monotonic, scan_secret_spans
 
         for chart in (
             "abcdefghijklmnopqrstuvwxyz",
@@ -3416,7 +3416,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import (
+        from vordur.security.outbound_dlp import (
             _GRAMMARS,
             _invisible,
             scan_secret_spans,
@@ -3486,7 +3486,7 @@ class TestRecognitionAndAttribution:
         it earns the same digit requirement. The raw form is primary; the
         stripped form is a secondary reading and pays for it.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         for mark in ("­", "‍", "​", "﻿"):
             for sentence in (
@@ -3518,7 +3518,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         rng = random.Random(3)
         value = "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(44))
@@ -3544,7 +3544,7 @@ class TestRecognitionAndAttribution:
         import random
         import string
 
-        from guardllm.security.outbound_dlp import _monotonic
+        from vordur.security.outbound_dlp import _monotonic
 
         rng = random.Random(21)
         # Lowercase and digits only, and distinct. Distinct so the value clears
@@ -3619,7 +3619,7 @@ class TestRecognitionAndAttribution:
             "\u237aB\u217dD\u025cF\u210aH\u02db"
             "J\u03baL\u217fN\u2207P\u051bR\u01bdT\u1d1cV\u1d21X\u0263Z",
         ):
-            from guardllm.security.outbound_dlp import scan_secret_spans
+            from vordur.security.outbound_dlp import scan_secret_spans
 
             spans, _labels = scan_secret_spans(chart)
             assert spans == [], f"{chart[:12]!r} was spanned, so it would be redacted"
@@ -3642,7 +3642,7 @@ class TestRecognitionAndAttribution:
         """
         import dataclasses
 
-        from guardllm.security.types import SensitivityLevel
+        from vordur.security.types import SensitivityLevel
 
         secret = "234567ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         doc = f"TOTP_SHARED_SECRET = {secret}"
@@ -3687,7 +3687,7 @@ class TestRecognitionAndAttribution:
         not be the one that knows about charts. Both entry points report it,
         and the vault refuses the document rather than passing it.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "234567ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         doc = f'TOTP_SHARED_SECRET = "{secret}"'
@@ -3769,7 +3769,7 @@ class TestRecognitionAndAttribution:
         traced allocation against ten for the array."""
         from array import array
 
-        from guardllm.security.outbound_dlp import _packed
+        from vordur.security.outbound_dlp import _packed
 
         _joined, cmap = _packed("token abc123 value")
         assert isinstance(cmap, array), type(cmap)
@@ -3816,7 +3816,7 @@ class TestRecognitionAndAttribution:
         floor entropy is not evidence in either direction, and what decides
         instead is an anchor ordinary text does not write.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = "AKIAIOSFODNN7EXAMPLE"
         # The prefix matters and a fixture without it makes the rule look
@@ -3841,7 +3841,7 @@ class TestRecognitionAndAttribution:
         quotes, and markup belongs in the same set for the same reason. The
         value itself must still be replaced in full.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         cut = 20
         text = (
@@ -3869,7 +3869,7 @@ class TestRecognitionAndAttribution:
         Slack's ten character minimum the comment around it became a 38
         character finding in _pydatetime.py.
         """
-        from guardllm.security.outbound_dlp import _exact_findings
+        from vordur.security.outbound_dlp import _exact_findings
 
         assert _exact_findings("# 1. x.o = x.s + x.d\n#    This follows from") == []
         # Two characters still is a split anchor.
@@ -3884,7 +3884,7 @@ class TestRecognitionAndAttribution:
         exactly that test. Refusing on the character alone loses the second;
         accepting on it alone corrupts the first. The body decides.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         for ident in (
             "const slack_xoxb_token_prefix_documentation = 1",
@@ -4077,7 +4077,7 @@ class TestRegistryAdditions:
         rest stays in the text: the same failure the module comment records
         for a Slack token whose body class omitted ``-``.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         secret = _SPLIT_FIXTURES["github_fine"]
         assert "_" in secret[11:], "fixture no longer exercises the inner underscore"
@@ -4137,7 +4137,7 @@ class TestNpmCredentials:
         """
         import random
 
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         rng = random.Random(2)
         for size in (32, 36, 40, 48):
@@ -4155,7 +4155,7 @@ class TestNpmCredentials:
         A span that ate the key would leave a config line npm cannot read,
         which is the same failure as a span crossing a JSON boundary.
         """
-        from guardllm.security.outbound_dlp import scan_secret_spans
+        from vordur.security.outbound_dlp import scan_secret_spans
 
         text = self._NPMRC + "abcdef0123456789abcdef0123456789"
         spans, _labels = scan_secret_spans(text)
@@ -4345,8 +4345,8 @@ class TestUncoveredClassesAreReported:
     """
 
     def test_the_default_configuration_says_what_it_cannot_find(self):
-        from guardllm import Guard
-        from guardllm.security.types import PrivacyConfig
+        from vordur import Guard
+        from vordur.security.types import PrivacyConfig
 
         result = Guard(privacy=PrivacyConfig()).deidentify(
             "Marguerite Vasquez, m.vasquez@clinic.example, 44 Sycamore Lane"
@@ -4359,8 +4359,8 @@ class TestUncoveredClassesAreReported:
         assert any("address, person" in w for w in result.warnings), result.warnings
 
     def test_a_registered_detector_removes_the_warning(self):
-        from guardllm import Guard
-        from guardllm.security.types import PIIClass, PrivacyConfig
+        from vordur import Guard
+        from vordur.security.types import PIIClass, PrivacyConfig
 
         class NameDetector:
             id = "test-ner"
@@ -4375,8 +4375,8 @@ class TestUncoveredClassesAreReported:
         assert not [w for w in result.warnings if "No detector" in w]
 
     def test_seeding_a_value_covers_its_class(self):
-        from guardllm.security.privacy_vault import PrivacyVault
-        from guardllm.security.types import PIIClass, PrivacyConfig
+        from vordur.security.privacy_vault import PrivacyVault
+        from vordur.security.types import PIIClass, PrivacyConfig
 
         vault = PrivacyVault(PrivacyConfig())
         assert PIIClass.PERSON in vault._uncovered_classes()
@@ -4384,8 +4384,8 @@ class TestUncoveredClassesAreReported:
         assert PIIClass.PERSON not in vault._uncovered_classes()
 
     def test_narrowing_the_configured_classes_removes_the_warning(self):
-        from guardllm import Guard
-        from guardllm.security.types import PIIClass, PrivacyConfig
+        from vordur import Guard
+        from vordur.security.types import PIIClass, PrivacyConfig
 
         config = PrivacyConfig(classes=frozenset({PIIClass.EMAIL, PIIClass.PHONE}))
         result = Guard(privacy=config).deidentify("m.vasquez@clinic.example")
@@ -4393,7 +4393,7 @@ class TestUncoveredClassesAreReported:
 
     def test_credential_is_not_reported_uncovered(self):
         """It is covered by ``credential_spans``, not the structural table."""
-        from guardllm.security.privacy_vault import PrivacyVault
-        from guardllm.security.types import PIIClass, PrivacyConfig
+        from vordur.security.privacy_vault import PrivacyVault
+        from vordur.security.types import PIIClass, PrivacyConfig
 
         assert PIIClass.CREDENTIAL not in PrivacyVault(PrivacyConfig())._uncovered_classes()

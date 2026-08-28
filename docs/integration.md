@@ -4,7 +4,7 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-This guide shows practical patterns for integrating guardllm into MCP server/client systems and unknown-provenance ingestion pipelines.
+This guide shows practical patterns for integrating Vörður into MCP server/client systems and unknown-provenance ingestion pipelines.
 
 ## Pattern 1: MCP Server Ingress Hardening
 
@@ -62,7 +62,7 @@ If you attach retrieved content to prompts:
 
 ## Pattern 5: Audit and Observability
 
-Use `guardllm.security.audit.AuditLogger` as a structured sink for:
+Use `vordur.security.audit.AuditLogger` as a structured sink for:
 - blocked tool calls
 - outbound DLP blocks
 - repeated rate-limit violations

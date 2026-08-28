@@ -5,9 +5,9 @@ expand to cover sensitive content, blocking verbatim/near-verbatim
 exfiltration of trusted-sensitive material.
 """
 
-from guardllm import Guard
-from guardllm.security.pipeline import SecurityPipeline
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.pipeline import SecurityPipeline
+from vordur.security.types import (
     PolicyConfig,
     SecurityContext,
     SensitivityLevel,

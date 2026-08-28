@@ -27,8 +27,8 @@ from pathlib import Path
 
 import pytest
 
-from guardllm import Guard
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.types import (
     DEFAULT_TOKENIZE_CLASSES,
     AuthorizationEvent,
     Destination,
@@ -228,7 +228,7 @@ class TestStrip02Canary:
 
     def test_the_coda_secret_is_still_per_process_without_the_variable(self):
         """The consequence the coda states: two workers mint different markers."""
-        code = "from guardllm import Guard; print(Guard(canary_session_id='sess-42').canary_token)"
+        code = "from vordur import Guard; print(Guard(canary_session_id='sess-42').canary_token)"
         env_free = [
             subprocess.run(
                 [sys.executable, "-c", code],
@@ -245,7 +245,7 @@ class TestStrip02Canary:
 
 class TestStrip03RequestBinding:
     def test_the_coda_is_right_that_a_binding_is_never_consumed(self):
-        from guardllm.security.request_binding import create_binding, verify_binding
+        from vordur.security.request_binding import create_binding, verify_binding
 
         tool, args, message = "gmail_send_email", {"to": "bob@example.com"}, "a" * 64
         binding = create_binding(tool, args, message_hash=message, ttl=120.0)
@@ -275,8 +275,8 @@ class TestStrip04PrivacyVault:
         assert "is empty" in strip_text("04-privacy-vault.html")
 
     def test_panel_02_margin_between_the_token_run_and_the_entropy_floor(self):
-        from guardllm.security.outbound_dlp import _ENTROPY_MIN_LENGTH
-        from guardllm.security.privacy_vault import PrivacyVault
+        from vordur.security.outbound_dlp import _ENTROPY_MIN_LENGTH
+        from vordur.security.privacy_vault import PrivacyVault
 
         vault = PrivacyVault(PrivacyConfig())
         token = vault.token_for(PIIClass.EMAIL, "a@b.example")
@@ -384,7 +384,7 @@ class TestStrip06TwoQuestions:
         }, outcomes
 
     def test_panel_06_both_misses_still_miss(self):
-        from guardllm.api import joined_call_payload
+        from vordur.api import joined_call_payload
 
         guard, cfg = Guard(), PolicyConfig(enable_destructive=True)
         ctx = tool_ctx(cfg)

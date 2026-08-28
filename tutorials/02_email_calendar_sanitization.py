@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm import Guard
-from guardllm.security.types import ContentType, SecurityContext, TrustLevel
+from vordur import Guard
+from vordur.security.types import ContentType, SecurityContext, TrustLevel
 
 
 def main() -> None:

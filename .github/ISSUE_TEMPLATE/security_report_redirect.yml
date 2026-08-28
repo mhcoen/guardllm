@@ -10,6 +10,6 @@ body:
 
         Please **do not file vulnerability reports as public issues**.
 
-        See [SECURITY.md](https://github.com/mhcoen/guardllm/blob/main/SECURITY.md) for the private reporting process and supported disclosure timeline.
+        See [SECURITY.md](https://github.com/mhcoen/vordur/blob/main/SECURITY.md) for the private reporting process and supported disclosure timeline.
 
         If you intended to file a regular bug, close this and use the "Bug report" template instead.

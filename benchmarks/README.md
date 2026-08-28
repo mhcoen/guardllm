@@ -1,6 +1,6 @@
 # Benchmarks
 
-This directory provides an offline benchmark harness for evaluating guardllm against known threat patterns inspired by:
+This directory provides an offline benchmark harness for evaluating Vörður against known threat patterns inspired by:
 - PINT-style prompt-injection cases
 - BIPIA-style indirect prompt-injection cases
 - AgentDojo-style agent/tool security cases
@@ -15,7 +15,7 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 
 ## What this is
 
-- A reproducible local regression suite for guardllm controls.
+- A reproducible local regression suite for Vörður controls.
 - A starter threat library in JSONL format under `benchmarks/cases/`.
 - Versioned upstream-derived fixture snapshots under `benchmarks/upstream/`.
 - Import tooling for official benchmark exports.
@@ -33,8 +33,8 @@ This directory provides an offline benchmark harness for evaluating guardllm aga
 
 The benchmark harness uses two scripts with distinct roles:
 
-- **`run_benchmarks.py`**: Runs GuardLLM-only evaluation (per-case pass/fail against expected outcomes).
-- **`compare_mitigations.py`**: Produces the baseline vs GuardLLM comparison table matching **paper Table 1** (CSE-8000). This is the script a reviewer needs for paper reproduction.
+- **`run_benchmarks.py`**: Runs Vörður-only evaluation (per-case pass/fail against expected outcomes).
+- **`compare_mitigations.py`**: Produces the baseline vs Vörður comparison table matching **paper Table 1** (CSE-8000). This is the script a reviewer needs for paper reproduction.
 
 To reproduce the paper's Table 1 (CSE comparison across 8 security kinds):
 
@@ -125,7 +125,7 @@ Runtime behavior for `roc_pr_experiments.py`:
 - `benchmarks/runs/LATEST.txt` is updated to the latest run id.
 
 Current comparison strategies:
-- `guardllm`: full GuardLLM controls
+- `vordur`: full Vörður controls
 - `surface_stack`: point-tool stack baseline (Casbin + JSON Schema + Redis + OPA). This is the paper Table 1 baseline.
 - `isolation_only`: inbound isolation-only baseline
 - `source_gate_only`: source-gate-only baseline
@@ -443,7 +443,7 @@ These conventions ensure that reported 1.000 values are never an undefined-metri
 - These are local benchmark profiles and not a full mirror of upstream benchmark repos.
 - Upstream snapshots are expected to come from official exports/checkpoints pinned by commit/tag in provenance metadata.
 - Upstream fixture provenance metadata is tracked in `benchmarks/upstream/manifest.json`.
-- `compare_mitigations.py` compares `guardllm` against baseline strategies (point-tool stack `surface_stack` for Table 1, `no_defense` as lower-bound control) and includes pinned export reference stats.
+- `compare_mitigations.py` compares `vordur` against baseline strategies (point-tool stack `surface_stack` for Table 1, `no_defense` as lower-bound control) and includes pinned export reference stats.
 - Azure category moderation is intentionally excluded from the injection benchmark; Prompt Shields integration is tracked separately.
 - Bedrock Guardrails can be compared on the injection-detection subset by providing a guardrail ID/version and AWS profile/region.
 - The comparison report's "Official Reference" section summarizes pinned export dataset stats; it is not a direct upstream leaderboard scrape.

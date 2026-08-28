@@ -4,16 +4,16 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-guardllm is policy-driven via `PolicyConfig` and `SecurityContext`.
+Vörður is policy-driven via `PolicyConfig` and `SecurityContext`.
 
 ## Policy from a file
 
 A deployment behind a process boundary has nowhere to put a Python dataclass,
 so `PolicyConfig` can be read from YAML. Needs PyYAML, which is not in the core
-install: `pip install 'guardllm[yaml]'`.
+install: `pip install 'vordur[yaml]'`.
 
 ```python
-from guardllm.config import load_policy
+from vordur.config import load_policy
 
 policy = load_policy("policy.yaml")
 ctx = Guard.context_mcp_server(server_id="mail", policy=policy)
@@ -57,7 +57,7 @@ version settings are only ever added; none is removed, renamed, or given a new
 meaning. An absent version means 1, so no file needs the boilerplate. A version
 this build does not know is refused, and the message distinguishes the two
 directions because the remedies are opposite: a newer file needs a newer
-GuardLLM, while a retired version needs the file migrating. Without that, an old
+Vörður, while a retired version needs the file migrating. Without that, an old
 build reading a new file would reject its settings as unknown keys and report a
 typo, when the truth is that the operator's policy is not being enforced.
 

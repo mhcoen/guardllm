@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from guardllm.gateway.forensics import Chain
-from guardllm.security.types import PolicyConfig
-from guardllm.support import (
+from vordur.gateway.forensics import Chain
+from vordur.security.types import PolicyConfig
+from vordur.support import (
     BUNDLE_VERSION,
     UnsafeBundleError,
     build_bundle,
@@ -105,7 +105,7 @@ class TestWhatTheBundleAnswers:
 
     def test_it_renders_as_json(self):
         parsed = json.loads(render_bundle(build_bundle(policy=PolicyConfig())))
-        assert parsed["guardllm"]["version"]
+        assert parsed["vordur"]["version"]
         assert parsed["environment"]["python"]
 
     def test_a_policy_file_is_read_from_its_path(self, tmp_path):
@@ -118,11 +118,11 @@ class TestWhatTheBundleAnswers:
 
 class TestWhatTheBundleRefusesToCarry:
     def test_environment_variables_appear_by_name_and_never_by_value(self, monkeypatch):
-        """Whether GUARDLLM_UPSTREAM was set is a real question. What it was
+        """Whether VORDUR_UPSTREAM was set is a real question. What it was
         set to can carry a key inside a URL, and no diagnostic needs it."""
-        monkeypatch.setenv("GUARDLLM_UPSTREAM", f"https://example.test/v1?token={KEY}")
+        monkeypatch.setenv("VORDUR_UPSTREAM", f"https://example.test/v1?token={KEY}")
         env = build_bundle()["environment"]
-        assert "GUARDLLM_UPSTREAM" in env["guardllm_env_vars_set"]
+        assert "VORDUR_UPSTREAM" in env["vordur_env_vars_set"]
         assert KEY not in json.dumps(env)
 
     def test_a_credential_in_a_config_value_is_redacted_out(self):
@@ -186,7 +186,7 @@ class TestWhatTheBundleRefusesToCarry:
 
 class TestTheCommand:
     def test_it_writes_a_file_and_reports_where(self, tmp_path, capsys):
-        from guardllm.support import main
+        from vordur.support import main
 
         target = tmp_path / "b.json"
         assert main(["-o", str(target)]) == 0
@@ -194,14 +194,14 @@ class TestTheCommand:
         assert str(target) in capsys.readouterr().out
 
     def test_it_writes_to_stdout_on_dash(self, capsys):
-        from guardllm.support import main
+        from vordur.support import main
 
         assert main(["-o", "-"]) == 0
-        assert json.loads(capsys.readouterr().out)["guardllm"]["deployment"] == "library"
+        assert json.loads(capsys.readouterr().out)["vordur"]["deployment"] == "library"
 
     def test_a_refusal_exits_nonzero_and_says_why(self, tmp_path, capsys):
         """An operator who is refused must be told what to do about it."""
-        from guardllm.support import main
+        from vordur.support import main
 
         policy = tmp_path / "policy.yaml"
         policy.write_text(f"policy:\n  client_id: {ALPHABET}\n")
@@ -212,7 +212,7 @@ class TestTheCommand:
 
     def test_a_broken_policy_file_is_reported_not_raised(self, tmp_path, capsys):
         """A diagnostic tool that needs debugging is not one."""
-        from guardllm.support import main
+        from vordur.support import main
 
         policy = tmp_path / "policy.yaml"
         policy.write_text("policy:\n  enable_destrucive: true\n")

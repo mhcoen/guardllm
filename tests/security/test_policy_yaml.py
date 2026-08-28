@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from guardllm.config import load_policy, parse_policy
-from guardllm.security.types import ExtractionPolicy, PolicyConfig, TrustLevel
+from vordur.config import load_policy, parse_policy
+from vordur.security.types import ExtractionPolicy, PolicyConfig, TrustLevel
 
 
 class TestPolicyFileExpresses:
@@ -170,10 +170,10 @@ class TestPolicyFileVersion:
         assert parse_policy("version: 1\npolicy: {server_default_deny: true}").server_default_deny
 
     def test_a_newer_file_is_refused_and_says_to_upgrade(self):
-        """The remedy is a newer GuardLLM, not an edited file."""
+        """The remedy is a newer Vörður, not an edited file."""
         with pytest.raises(ValueError, match="newer than this build"):
             parse_policy("version: 2\npolicy: {}")
-        with pytest.raises(ValueError, match="Upgrade guardllm"):
+        with pytest.raises(ValueError, match="Upgrade vordur"):
             parse_policy("version: 99\npolicy: {}")
 
     def test_a_retired_version_is_refused_differently(self):
@@ -190,7 +190,7 @@ class TestPolicyFileVersion:
 
     def test_version_is_a_permitted_top_level_key(self):
         """It must not trip the unknown-key refusal that guards typos."""
-        from guardllm.config import POLICY_FILE_VERSION
+        from vordur.config import POLICY_FILE_VERSION
 
         assert POLICY_FILE_VERSION == 1
         parse_policy(f"version: {POLICY_FILE_VERSION}\npolicy:")

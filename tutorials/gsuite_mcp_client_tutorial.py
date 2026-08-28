@@ -17,10 +17,10 @@ import time
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm import Guard
-from guardllm.security.audit import AuditLogger
-from guardllm.security.source_gate import check_extraction_allowed
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.audit import AuditLogger
+from vordur.security.source_gate import check_extraction_allowed
+from vordur.security.types import (
     ConfirmationHandler,
     ContentType,
     PolicyConfig,

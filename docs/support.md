@@ -7,14 +7,14 @@
 A single command that writes one file you can attach to a support ticket:
 
 ```bash
-python -m guardllm.support -o guardllm-support.json
+python -m vordur.support -o vordur-support.json
 ```
 
 Or, against a running gateway, one request:
 
 ```bash
-curl http://localhost:8080/support > guardllm-support.json
-curl http://localhost:8080/support/<session-id> > guardllm-support.json
+curl http://localhost:8080/support > vordur-support.json
+curl http://localhost:8080/support/<session-id> > vordur-support.json
 ```
 
 The second form includes that session's decision chain, which is the part that
@@ -22,7 +22,7 @@ explains a refusal several turns after the ingest that caused it.
 
 ## Why it exists
 
-GuardLLM is deployed on your infrastructure, which means nobody outside it can
+Vörður is deployed on your infrastructure, which means nobody outside it can
 look at a failing system. When a call is refused and should not have been, the
 whole evidence base is what you can be talked through producing. Without a
 bundle that is a long exchange of "run this, paste the output". With one it is
@@ -33,10 +33,10 @@ an attachment.
 | | |
 | --- | --- |
 | **Resolved policy** | Every setting as it is actually in force, plus `changed_from_default` naming the ones that are not stock, and `source` saying whether they came from a file, an explicit object, or the defaults |
-| **Versions** | GuardLLM, Python, the platform, and the three core dependencies |
+| **Versions** | Vörður, Python, the platform, and the three core dependencies |
 | **Optional extras** | Whether `yaml`, `wasmtime` and `cryptography` can actually be imported. A Rego policy that never ran and a YAML file that was never read both look like a policy that did not fire |
 | **Decision chain** | The session's stages, tools and verdicts with the contamination and escalation flags as they stood at each step |
-| **Environment** | Platform, Python build, whether this is a container, and which `GUARDLLM_*` variables are set |
+| **Environment** | Platform, Python build, whether this is a container, and which `VORDUR_*` variables are set |
 
 The commonest ticket resolves to a setting somebody believes is in force and is
 not, which is why the resolved policy comes first and why the bundle never
@@ -52,7 +52,7 @@ subject is exactly that. Three rules hold, and all three are tested:
   holds no text. The reason strings come from the library and are written to
   exclude the values they describe.
 - **Environment variables by name, never by value.** Whether
-  `GUARDLLM_UPSTREAM` was set answers a real question. What it was set to can
+  `VORDUR_UPSTREAM` was set answers a real question. What it was set to can
   carry a key inside a query string.
 - **The bundle is scanned before it is written**, by the same two passes that
   guard egress.
@@ -74,7 +74,7 @@ setting that carries it, not to work around the refusal.
 ## Format
 
 ```python
-from guardllm.support import build_bundle, render_bundle, write_bundle
+from vordur.support import build_bundle, render_bundle, write_bundle
 ```
 
 `build_bundle` returns a dictionary, `render_bundle` serializes and scans it,

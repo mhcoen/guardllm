@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from guardllm.security.types import (
+from vordur.security.types import (
     AuthorizationEvent,
     Binding,
     ContentType,
@@ -493,7 +493,7 @@ class TestPolicyLimitValidation:
     def test_a_nan_threshold_cannot_arrive_through_a_policy_file(self):
         """YAML `.nan` parses to float('nan'); the loader must refuse it."""
         pytest.importorskip("yaml")
-        from guardllm.config import parse_policy
+        from vordur.config import parse_policy
 
         with pytest.raises(ValueError, match="must be finite"):
             parse_policy("policy:\n  provenance_ngram_overlap_min: .nan\n")
@@ -506,7 +506,7 @@ class TestExpiryFailsClosed:
         import math
         import time
 
-        from guardllm.security.types import expiry_reason
+        from vordur.security.types import expiry_reason
 
         now = time.time()
         assert expiry_reason(now - 5, 120) is None
@@ -521,7 +521,7 @@ class TestExpiryFailsClosed:
         """An adapter may mint the event on another host."""
         import time
 
-        from guardllm.security.types import expiry_reason
+        from vordur.security.types import expiry_reason
 
         assert expiry_reason(time.time() + 10, 120) is None
 
@@ -529,7 +529,7 @@ class TestExpiryFailsClosed:
         import math
         import time
 
-        from guardllm.security.request_binding import create_binding, verify_binding
+        from vordur.security.request_binding import create_binding, verify_binding
 
         binding = create_binding("wire_funds", {"amount": 100}, message_hash="m", ttl=math.nan)
         binding.created_at = time.time() - 1_000_000_000
@@ -539,8 +539,8 @@ class TestExpiryFailsClosed:
     def test_the_authorization_gate_refuses_a_non_finite_timestamp(self):
         import math
 
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig, SecurityContext
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig, SecurityContext
 
         context = SecurityContext(
             mode="client",
@@ -569,14 +569,14 @@ class TestDeclaredDestructiveTools:
 
     @staticmethod
     def _ctx(**policy):
-        from guardllm.security.types import PolicyConfig, SecurityContext
+        from vordur.security.types import PolicyConfig, SecurityContext
 
         return SecurityContext(
             mode="client", source_type="mcp_server", source_id="s", policy=PolicyConfig(**policy)
         )
 
     def test_a_declared_tool_is_gated_like_a_built_in_one(self):
-        from guardllm import Guard
+        from vordur import Guard
 
         args = {"amount": 50000}
         undeclared = Guard().check_tool_call("wire_funds", args, self._ctx())
@@ -598,7 +598,7 @@ class TestDeclaredDestructiveTools:
 
     def test_declaring_replaces_the_built_in_set_rather_than_extending_it(self):
         """So a deployment can also declare fewer tools, not only more."""
-        from guardllm import Guard
+        from vordur import Guard
 
         result = Guard().check_tool_call(
             "gmail_send_email", {"to": "a@b.example"}, self._ctx(destructive_tools={"wire_funds"})
@@ -608,7 +608,7 @@ class TestDeclaredDestructiveTools:
     def test_a_bare_string_is_refused_rather_than_iterated(self):
         """``destructive_tools="wire_funds"`` would declare eleven one-character
         tools and leave the real one unguarded."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         with pytest.raises(ValueError, match="collection of tool-name strings"):
             PolicyConfig(destructive_tools="wire_funds")
@@ -621,8 +621,8 @@ class TestDeclaredDestructiveTools:
         the tool would have changed the verdict; it does not, in either
         direction.
         """
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig, SecurityContext, TrustLevel
 
         reasons = set()
         for declared in (None, frozenset({"wire_funds"})):
@@ -646,8 +646,8 @@ class TestDeclaredDestructiveTools:
         assert reasons == {"Tool call denied: session contaminated=deny"}
 
     def test_an_ungated_allow_names_the_signal_that_did_not_stop_it(self):
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig, SecurityContext, TrustLevel
 
         guard = Guard()
         ctx = SecurityContext(
@@ -663,7 +663,7 @@ class TestDeclaredDestructiveTools:
         assert "[session risk present: session contaminated=allow]" in result.reason
 
     def test_a_clean_session_gains_no_annotation(self):
-        from guardllm import Guard
+        from vordur import Guard
 
         result = Guard().check_tool_call("wire_funds", {"amount": 1}, self._ctx())
         assert result.reason == "Non-destructive tool, implicit allow"

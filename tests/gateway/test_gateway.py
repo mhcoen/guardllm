@@ -17,17 +17,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from guardllm import Guard
-from guardllm.gateway.proxy import (
+from vordur import Guard
+from vordur.gateway.proxy import (
     GatewayConfig,
     GatewayRefused,
     guard_chat_completion,
     inspect_request,
     inspect_response,
 )
-from guardllm.gateway.server import make_server
-from guardllm.gateway.session import SessionStore
-from guardllm.security.types import PolicyConfig
+from vordur.gateway.server import make_server
+from vordur.gateway.session import SessionStore
+from vordur.security.types import PolicyConfig
 
 
 def _store():
@@ -336,7 +336,7 @@ class TestHttpShell:
         )
         resp = urllib.request.urlopen(req, timeout=5)
         assert resp.status == 200
-        assert resp.headers.get("X-GuardLLM-Session")
+        assert resp.headers.get("X-Vordur-Session")
 
     def test_the_upstream_key_is_the_clients_and_never_the_gateways(self, running_gateway):
         """The single largest adoption objection, designed away.
@@ -458,7 +458,7 @@ class TestForensicsChain:
         assert secret_ish not in blob
 
     def test_the_chain_is_bounded(self):
-        from guardllm.gateway.forensics import Chain
+        from vordur.gateway.forensics import Chain
 
         chain = Chain(max_steps=5)
         for _ in range(20):
@@ -483,7 +483,7 @@ class TestViewerHttp:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-Vordur-Session"]
 
         listing = json.loads(urllib.request.urlopen(gw_url + "/sessions", timeout=5).read())
         assert any(row["session_id"] == session_id for row in listing["sessions"])
@@ -503,7 +503,7 @@ class TestViewerHttp:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-Vordur-Session"]
 
         page = urllib.request.urlopen(gw_url + "/forensics/" + session_id, timeout=5)
         html = page.read().decode()
@@ -545,14 +545,14 @@ class TestViewerHttp:
                 data=json.dumps({"messages": [{"role": "user", "content": "hi"}]}).encode(),
                 headers={
                     "Content-Type": "application/json",
-                    "X-GuardLLM-Session": "inspect-me",
+                    "X-Vordur-Session": "inspect-me",
                 },
                 method="POST",
             )
             with pytest.raises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(req, timeout=5)
             assert caught.value.code == 502
-            assert caught.value.headers.get("X-GuardLLM-Session") == "inspect-me"
+            assert caught.value.headers.get("X-Vordur-Session") == "inspect-me"
             assert json.loads(caught.value.read())["error"]["session_id"] == "inspect-me"
         finally:
             gateway.shutdown()
@@ -595,7 +595,7 @@ class TestViewerContrast:
         """
         import re
 
-        from guardllm.gateway.viewer import _STYLE
+        from vordur.gateway.viewer import _STYLE
 
         dark_start = _STYLE.index("prefers-color-scheme: dark")
         blocks = (
@@ -620,7 +620,7 @@ class TestViewerContrast:
         """A colour written inline cannot adapt to the reader's theme."""
         import re
 
-        from guardllm.gateway.viewer import _STYLE
+        from vordur.gateway.viewer import _STYLE
 
         body = _STYLE[_STYLE.index("body {") :]
         assert not re.search(r":\s*#[0-9a-f]{3,6}", body), "a literal colour escaped the tokens"
@@ -639,7 +639,7 @@ class TestSupportBundleOverHTTP:
         resp = urllib.request.urlopen(gw_url + "/support", timeout=5)
         assert resp.headers["Content-Type"] == "application/json"
         bundle = json.loads(resp.read())
-        assert bundle["guardllm"]["deployment"] == "gateway"
+        assert bundle["vordur"]["deployment"] == "gateway"
         assert bundle["environment"]["python"]
         assert bundle["decision_chain"] is None
 
@@ -654,7 +654,7 @@ class TestSupportBundleOverHTTP:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-Vordur-Session"]
 
         bundle = json.loads(
             urllib.request.urlopen(gw_url + "/support/" + session_id, timeout=5).read()
@@ -679,14 +679,14 @@ class TestSupportBundleOverHTTP:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        session_id = urllib.request.urlopen(req, timeout=5).headers["X-GuardLLM-Session"]
+        session_id = urllib.request.urlopen(req, timeout=5).headers["X-Vordur-Session"]
         text = urllib.request.urlopen(gw_url + "/support/" + session_id, timeout=5).read().decode()
         assert marker not in text
 
     def test_a_refusal_is_a_409_rather_than_a_500(self):
         """Nothing failed. The bundle was declined because it could not be
         cleaned, so it is a conflict rather than a server error."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         upstream = ThreadingHTTPServer(("127.0.0.1", 0), _FakeUpstream)
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
@@ -805,7 +805,7 @@ class TestArgumentEgress:
         )
 
     def test_a_refusal_is_recorded_as_the_tool_call_step(self):
-        from guardllm.gateway.forensics import Chain
+        from vordur.gateway.forensics import Chain
 
         chain = Chain()
         guard = _ingested(f"internal notes, api key {_SECRET}")
@@ -967,8 +967,8 @@ class TestUpstreamCall:
         origin. urllib follows redirects by default; the gateway must not."""
         from http.server import BaseHTTPRequestHandler
 
-        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
-        from guardllm.gateway.server import _upstream_caller
+        from vordur.gateway.proxy import GatewayConfig, GatewayRefused
+        from vordur.gateway.server import _upstream_caller
 
         seen = {}
 
@@ -1013,9 +1013,9 @@ class TestUpstreamCall:
         deterministically and with no large allocation."""
         from http.server import BaseHTTPRequestHandler
 
-        from guardllm.gateway import server as server_mod
-        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
-        from guardllm.gateway.server import _upstream_caller
+        from vordur.gateway import server as server_mod
+        from vordur.gateway.proxy import GatewayConfig, GatewayRefused
+        from vordur.gateway.server import _upstream_caller
 
         monkeypatch.setattr(server_mod, "_MAX_UPSTREAM_BYTES", 4)
 
@@ -1053,8 +1053,8 @@ class TestUpstreamDeadline:
         import time as _time
         from http.server import HTTPServer
 
-        from guardllm.gateway import server as server_mod
-        from guardllm.gateway.proxy import GatewayConfig, GatewayRefused
+        from vordur.gateway import server as server_mod
+        from vordur.gateway.proxy import GatewayConfig, GatewayRefused
 
         monkeypatch.setattr(server_mod, "_UPSTREAM_DEADLINE_SECONDS", 2.0)
 
@@ -1106,7 +1106,7 @@ class TestSessionIdBounds:
     of them held 12.7MB against a 10,000-session ceiling."""
 
     def test_an_oversized_id_is_refused_and_not_retained(self):
-        from guardllm.gateway.session import InvalidSessionId
+        from vordur.gateway.session import InvalidSessionId
 
         store = _store()
         with pytest.raises(InvalidSessionId):
@@ -1114,7 +1114,7 @@ class TestSessionIdBounds:
         assert len(store) == 0, "a refused id must not be stored"
 
     def test_reserved_and_unprintable_characters_are_refused(self):
-        from guardllm.gateway.session import InvalidSessionId
+        from vordur.gateway.session import InvalidSessionId
 
         store = _store()
         for bad in ("alpha?part", "with#frag", "per%cent", "a b", "tab\tid", "sl/ash"):
@@ -1142,7 +1142,7 @@ class TestSessionIdBounds:
         request = urllib.request.Request(
             f"{gw_url}/v1/chat/completions",
             data=json.dumps({"messages": [{"role": "user", "content": "hi"}]}).encode(),
-            headers={"Content-Type": "application/json", "X-GuardLLM-Session": "a" * 60_000},
+            headers={"Content-Type": "application/json", "X-Vordur-Session": "a" * 60_000},
             method="POST",
         )
         with pytest.raises(urllib.error.HTTPError) as caught:
@@ -1166,7 +1166,7 @@ class TestForensicsLinkEncoding:
         import re
         from urllib.parse import unquote
 
-        from guardllm.gateway.viewer import render_index
+        from vordur.gateway.viewer import render_index
 
         rows = [
             {
@@ -1189,7 +1189,7 @@ class TestForensicsLinkEncoding:
             assert unquote(match.group(1)) == sid
 
     def test_no_reserved_character_survives_raw_in_the_href(self):
-        from guardllm.gateway.viewer import render_index
+        from vordur.gateway.viewer import render_index
 
         page = render_index(
             [
@@ -1231,7 +1231,7 @@ class TestEvictionKeepsSessionRisk:
         )
 
     def _strict_ctx(self):
-        from guardllm.security.types import PolicyConfig, SecurityContext
+        from vordur.security.types import PolicyConfig, SecurityContext
 
         return SecurityContext(
             mode="client",
@@ -1356,7 +1356,7 @@ class TestSecretSplitAcrossArgumentFields:
     def test_keys_are_excluded_from_the_joined_form(self):
         """Interleaving field names between values would reinsert the very break
         the joined scan exists to remove."""
-        from guardllm.api import joined_call_payload
+        from vordur.api import joined_call_payload
 
         assert joined_call_payload({"left": "AKIA", "right": "IOSFODNN7EXAMPLE"}) == (
             "AKIAIOSFODNN7EXAMPLE"

@@ -4,8 +4,8 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-An OpenAI-compatible proxy that runs the GuardLLM checks itself. An application
-changes one line and makes no GuardLLM calls at all:
+An OpenAI-compatible proxy that runs the Vörður checks itself. An application
+changes one line and makes no Vörður calls at all:
 
 ```python
 client = OpenAI(base_url="http://localhost:8080/v1")  # was api.openai.com
@@ -17,15 +17,15 @@ inbound, and the model's tool calls and final text outbound.
 ## Running it
 
 ```bash
-docker build -t guardllm/gateway .
-docker run -p 8080:8080 -e GUARDLLM_UPSTREAM=https://api.openai.com/v1 guardllm/gateway
+docker build -t vordur/gateway .
+docker run -p 8080:8080 -e VORDUR_UPSTREAM=https://api.openai.com/v1 vordur/gateway
 ```
 
 Or without the container:
 
 ```bash
-pip install 'guardllm[yaml]'
-python -m guardllm.gateway --upstream https://api.openai.com/v1
+pip install 'vordur[yaml]'
+python -m vordur.gateway --upstream https://api.openai.com/v1
 ```
 
 The client's `Authorization` header is forwarded to the model API verbatim.
@@ -55,7 +55,7 @@ noted as tainted if it was contaminated or escalated, so the same id coming
 back is rebuilt with those flags rather than clean. Without that, any client
 could relax another's session by filling the LRU with ids of its own. What
 eviction still costs is the buffers: copying from content ingested before the
-eviction is no longer detected, because two booleans cannot reconstruct them. A `X-GuardLLM-Session` request
+eviction is no longer detected, because two booleans cannot reconstruct them. A `X-Vordur-Session` request
 header names the session; the gateway returns it on the response so the client
 can send it back. A request with no session header gets a fresh, isolated
 session rather than sharing one.
@@ -76,12 +76,12 @@ configuration, which was not true of any setting that exists.
 
 | Environment variable | Flag | Default |
 | --- | --- | --- |
-| `GUARDLLM_UPSTREAM` | `--upstream` | `https://api.openai.com/v1` |
-| `GUARDLLM_HOST` | `--host` | `0.0.0.0` |
-| `GUARDLLM_PORT` | `--port` | `8080` |
-| `GUARDLLM_POLICY` | `--policy` | none |
+| `VORDUR_UPSTREAM` | `--upstream` | `https://api.openai.com/v1` |
+| `VORDUR_HOST` | `--host` | `0.0.0.0` |
+| `VORDUR_PORT` | `--port` | `8080` |
+| `VORDUR_POLICY` | `--policy` | none |
 
-`GUARDLLM_POLICY` points at a YAML policy file; see
+`VORDUR_POLICY` points at a YAML policy file; see
 [configuration.md](configuration.md) for its shape.
 
 ## Seeing the decision chain
@@ -98,7 +98,7 @@ session's decisions in order, with the state each left behind:
 Step 3 is only explicable by step 1, and they arrived in different requests.
 That is the thing a per-request log cannot show and the reason this view
 exists: a content filter produces a list of independent verdicts, while the
-fact that carries forward is what GuardLLM adds.
+fact that carries forward is what Vörður adds.
 
 The same data is available as JSON at `GET /sessions` and
 `GET /sessions/<session-id>` for scripting.
@@ -115,7 +115,7 @@ history across restarts are the console, not this.
 whole of what a support ticket needs from a deployment nobody outside your
 network can reach: the resolved policy with the settings that differ from the
 default named, versions, and whether the optional extras can actually be
-imported. It carries no message content, reports `GUARDLLM_*` variables by name
+imported. It carries no message content, reports `VORDUR_*` variables by name
 and never by value, and is scanned for credentials before it is returned. A
 credential it recognizes but cannot replace exactly makes the endpoint answer
 `409` rather than return a file that looks cleaned and is not. See

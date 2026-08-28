@@ -9,7 +9,7 @@ Covers basic wrapping/unwrapping plus the H1/H2 regressions:
 
 import re
 
-from guardllm.security.isolation import unwrap_untrusted, wrap_untrusted
+from vordur.security.isolation import unwrap_untrusted, wrap_untrusted
 
 _SENTINEL_RE = re.compile(r"<\s*/?\s*untrusted_content\b[^>]*>", re.IGNORECASE)
 

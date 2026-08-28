@@ -4,12 +4,12 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-guardllm exposes a stable facade: `guardllm.Guard`.
+Vörður exposes a stable facade: `vordur.Guard`.
 
 ## Core Class
 
 ```python
-from guardllm import Guard
+from vordur import Guard
 ```
 
 Constructor:
@@ -78,11 +78,11 @@ Both restore paths are deny-by-default: a field or destination with no rule rest
 
 `Guard` is the stable facade, and these are the other supported entry points.
 
-- **Policy files.** `guardllm.config.load_policy(path)` and `parse_policy(text)` build a `PolicyConfig` from YAML, for a deployment with nowhere to put a Python object. Needs the `yaml` extra. Refuses unknown keys and wrong types rather than falling back to a default. Optional `version:` key, `POLICY_FILE_VERSION == 1`. See [configuration.md](configuration.md).
-- **Rego policies.** `guardllm.policy.RegoPolicy(path)`, `build_input(...)`, `decide(...)`, and `POLICY_INPUT_VERSION`. Evaluated in process through wasmtime, with no network. A GuardLLM deny is final and the policy is never consulted; Rego only ever narrows. Needs the `rego` extra. See [rego.md](rego.md).
-- **Diagnostics.** `guardllm.support.build_bundle(...)`, `render_bundle(...)`, `write_bundle(path, ...)`, and `python -m guardllm.support`. Raises `UnsafeBundleError` rather than writing a bundle holding credential material it cannot remove exactly. See [support.md](support.md).
-- **Gateway.** `python -m guardllm.gateway` presents an OpenAI-compatible endpoint that runs the checks itself, so an application changes only its `base_url`. See [gateway.md](gateway.md).
-- **Vault persistence.** `guardllm.security.vault_store.VaultStore` is a three-method protocol (`load`, `save`, `purge`); `EncryptedFileVaultStore(path, key=...)` and `.from_env(path)` are the local implementation, AES-256-GCM under a key you supply, and `MemoryVaultStore` is the in-process one. `generate_key()` returns a key for a secret manager and nothing here writes one. Needs the `vault` extra. There is no unencrypted fallback: without it the store refuses to write. See [privacy.md](privacy.md).
+- **Policy files.** `vordur.config.load_policy(path)` and `parse_policy(text)` build a `PolicyConfig` from YAML, for a deployment with nowhere to put a Python object. Needs the `yaml` extra. Refuses unknown keys and wrong types rather than falling back to a default. Optional `version:` key, `POLICY_FILE_VERSION == 1`. See [configuration.md](configuration.md).
+- **Rego policies.** `vordur.policy.RegoPolicy(path)`, `build_input(...)`, `decide(...)`, and `POLICY_INPUT_VERSION`. Evaluated in process through wasmtime, with no network. A Vörður deny is final and the policy is never consulted; Rego only ever narrows. Needs the `rego` extra. See [rego.md](rego.md).
+- **Diagnostics.** `vordur.support.build_bundle(...)`, `render_bundle(...)`, `write_bundle(path, ...)`, and `python -m vordur.support`. Raises `UnsafeBundleError` rather than writing a bundle holding credential material it cannot remove exactly. See [support.md](support.md).
+- **Gateway.** `python -m vordur.gateway` presents an OpenAI-compatible endpoint that runs the checks itself, so an application changes only its `base_url`. See [gateway.md](gateway.md).
+- **Vault persistence.** `vordur.security.vault_store.VaultStore` is a three-method protocol (`load`, `save`, `purge`); `EncryptedFileVaultStore(path, key=...)` and `.from_env(path)` are the local implementation, AES-256-GCM under a key you supply, and `MemoryVaultStore` is the in-process one. `generate_key()` returns a key for a secret manager and nothing here writes one. Needs the `vault` extra. There is no unencrypted fallback: without it the store refuses to write. See [privacy.md](privacy.md).
 - **Audit sinks.** `AuditLogger(log_path=..., stream=...)`. `stream=sys.stdout` is the intended argument in a container, and is flushed per event.
 
 ## Return Objects
@@ -98,8 +98,8 @@ Both restore paths are deny-by-default: a field or destination with no rule rest
 ## Minimal End-to-End Example
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.types import PolicyConfig
 
 guard = Guard(canary_session_id="session-1")
 assert guard.canary_token is not None

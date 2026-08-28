@@ -10,10 +10,10 @@ Covers:
 
 from __future__ import annotations
 
-from guardllm import Guard
-from guardllm.security.audit import AuditLogger
-from guardllm.security.source_gate import check_extraction_allowed
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.audit import AuditLogger
+from vordur.security.source_gate import check_extraction_allowed
+from vordur.security.types import (
     ExtractionPolicy,
     PolicyConfig,
     SecurityContext,

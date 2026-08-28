@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from guardllm.security.privacy_vault import PrivacyVault
-from guardllm.security.types import (
+from vordur.security.privacy_vault import PrivacyVault
+from vordur.security.types import (
     REDACT,
     Destination,
     PIIClass,
     PrivacyConfig,
 )
-from guardllm.security.vault_store import (
+from vordur.security.vault_store import (
     VAULT_SNAPSHOT_VERSION,
     EncryptedFileVaultStore,
     MemoryVaultStore,
@@ -315,7 +315,7 @@ class TestMalformedSnapshots:
 
 class TestGuardFacade:
     def test_a_guard_resumes_its_vault(self):
-        from guardllm import Guard
+        from vordur import Guard
 
         store = MemoryVaultStore()
         first = Guard(privacy=_config(), vault_store=store)
@@ -333,7 +333,7 @@ class TestGuardFacade:
         invalidates every token in the transcript, and a store that survived it
         would hand the next session the previous one's identities.
         """
-        from guardllm import Guard
+        from vordur import Guard
 
         store = MemoryVaultStore()
         guard = Guard(privacy=_config(), vault_store=store)
@@ -345,14 +345,14 @@ class TestGuardFacade:
         assert store.load() is None
 
     def test_a_guard_without_privacy_refuses_to_persist(self):
-        from guardllm import Guard
+        from vordur import Guard
 
         with pytest.raises(ValueError, match="without privacy"):
             Guard().persist_vault()
 
     def test_a_guard_with_privacy_but_no_store_refuses_to_persist(self):
         """Configured-but-never-writing is the failure that looks fine."""
-        from guardllm import Guard
+        from vordur import Guard
 
         with pytest.raises(VaultStoreError, match="no store"):
             Guard(privacy=_config()).persist_vault()
@@ -437,7 +437,7 @@ def test_without_the_extra_the_store_refuses_rather_than_writing_plaintext(monke
 
     monkeypatch.setattr(builtins, "__import__", refuse_cryptography)
     store = EncryptedFileVaultStore(tmp_path / "v.bin", key=generate_key())
-    with pytest.raises(VaultStoreError, match=r"guardllm\[vault\]"):
+    with pytest.raises(VaultStoreError, match=r"vordur\[vault\]"):
         store.save(VaultSnapshot(source_key=b"\x07" * 32))
     assert not store.path.exists()
 
@@ -477,12 +477,12 @@ class TestKeys:
             EncryptedFileVaultStore(tmp_path / "v.bin", key="not base64 at all!!")
 
     def test_from_env_refuses_an_unset_variable(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("GUARDLLM_VAULT_KEY", raising=False)
+        monkeypatch.delenv("VORDUR_VAULT_KEY", raising=False)
         with pytest.raises(VaultStoreError, match="is not set"):
             EncryptedFileVaultStore.from_env(tmp_path / "v.bin")
 
     def test_from_env_reads_base64(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("GUARDLLM_VAULT_KEY", generate_key())
+        monkeypatch.setenv("VORDUR_VAULT_KEY", generate_key())
         store = EncryptedFileVaultStore.from_env(tmp_path / "v.bin")
         store.save(VaultSnapshot(source_key=b"\x07" * 32))
         assert store.load().source_key == b"\x07" * 32
@@ -564,7 +564,7 @@ class TestEncryptedFile:
     def test_a_foreign_file_is_named_as_such(self, tmp_path):
         store = self._store(tmp_path)
         store.path.write_bytes(b"PK\x03\x04" + b"\x00" * 64)
-        with pytest.raises(VaultStoreError, match="not a GuardLLM vault file"):
+        with pytest.raises(VaultStoreError, match="not a Vörður vault file"):
             store.load()
 
     def test_purge_removes_the_file_and_tolerates_its_absence(self, tmp_path):
@@ -617,7 +617,7 @@ class TestConstructionErrors:
         privacy" at the first persist_vault, which a host may not call until
         shutdown.
         """
-        from guardllm import Guard
+        from vordur import Guard
 
         with pytest.raises(ValueError, match="there is no vault to persist"):
             Guard(vault_store=MemoryVaultStore())

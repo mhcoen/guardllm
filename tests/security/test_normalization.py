@@ -12,7 +12,7 @@ Covers:
 
 import pytest
 
-from guardllm.security.normalization import (
+from vordur.security.normalization import (
     _CONFUSABLE_TABLE,
     _build_confusable_table,
     compute_lcs_length,
@@ -506,7 +506,7 @@ class TestBoundedLcsExactness:
     def test_large_input_is_bounded_and_exact(self):
         import time
 
-        from guardllm.security.normalization import MAX_OVERLAP_CHARS
+        from vordur.security.normalization import MAX_OVERLAP_CHARS
 
         a = ("the quick brown fox " * 20000)[: MAX_OVERLAP_CHARS + 5000]
         t0 = time.perf_counter()

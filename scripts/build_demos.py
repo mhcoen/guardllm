@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic GuardLLM demo fixtures and self-contained pages."""
+"""Generate deterministic Vörður demo fixtures and self-contained pages."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO_DIR = ROOT / "demo"
-FIXTURE_PATH = DEMO_DIR / "guardllm_demo_fixtures.json"
-FIXED_CANARY_SECRET = "guardllm-demo-fixture-secret-v1"
+FIXTURE_PATH = DEMO_DIR / "vordur_demo_fixtures.json"
+FIXED_CANARY_SECRET = "vordur-demo-fixture-secret-v1"
 
 # How a fixture step relates to the steps before it. The distinction is load
 # bearing: a reader must not infer that four independent demonstrations were one
@@ -64,19 +64,19 @@ def _ensure_library_matches_tree(library_file: str | None = None) -> None:
     Git worktrees do not prevent it. They isolate the files, not the import.
     """
     if library_file is None:
-        import guardllm
+        import vordur
 
-        library_file = guardllm.__file__
+        library_file = vordur.__file__
     imported = Path(library_file).resolve()
     # Compare against the exact expected package file, not mere containment
     # under ROOT. Containment would accept a second checkout nested anywhere
     # inside this tree, which PYTHONPATH can select, and that is the same
     # wrong-library failure wearing a path this test would have allowed.
-    expected = (ROOT / "src" / "guardllm" / "__init__.py").resolve()
+    expected = (ROOT / "src" / "vordur" / "__init__.py").resolve()
     if imported == expected:
         return
     raise SystemExit(
-        f"refusing to generate: this script expects guardllm at {expected}, "
+        f"refusing to generate: this script expects vordur at {expected}, "
         f"but it was imported from {imported}.\n"
         f"Generating demos against a library from another tree rewrites every "
         f"page with that tree's fields.\n"
@@ -86,7 +86,7 @@ def _ensure_library_matches_tree(library_file: str | None = None) -> None:
     )
 
 
-# The host obligation the library deliberately does not perform. guardllm
+# The host obligation the library deliberately does not perform. vordur
 # validates AuthorizationEvents; it never parses natural language to create
 # them, and Guard.authorize is a caller-trusting factory (see A-AS8 in
 # docs/threat_model.md).
@@ -109,7 +109,7 @@ def derive_authorization(user_turn: str, tool: str, args: dict, timestamp: float
     Anchored and whole-string on purpose. Free prose cannot match it, whoever
     wrote the prose and whichever channel carried it.
     """
-    from guardllm import Guard
+    from vordur import Guard
 
     if tool != "set_monitor_ignore":
         return None
@@ -411,22 +411,22 @@ def build_fixtures() -> dict:
     # Before any library call, prove the library is this tree's.
     _ensure_library_matches_tree()
 
-    from guardllm import Guard
-    from guardllm.security.canary import detect_canary as detect_remembered_canary
-    from guardllm.security.isolation import wrap_untrusted
-    from guardllm.security.normalization import (
+    from vordur import Guard
+    from vordur.security.canary import detect_canary as detect_remembered_canary
+    from vordur.security.isolation import wrap_untrusted
+    from vordur.security.normalization import (
         compute_lcs_length,
         compute_ngram_overlap,
         normalize_confusables,
         normalize_for_overlap,
     )
-    from guardllm.security.pipeline import SecurityPipeline
-    from guardllm.security.policy_engine import PolicyEngine
-    from guardllm.security.prompt_injection_detector import detect_prompt_injection
-    from guardllm.security.provenance import ProvenancedSpan, ProvenanceTracker
-    from guardllm.security.rate_limiter import RateLimiter
-    from guardllm.security.sanitizer import sanitize
-    from guardllm.security.types import (
+    from vordur.security.pipeline import SecurityPipeline
+    from vordur.security.policy_engine import PolicyEngine
+    from vordur.security.prompt_injection_detector import detect_prompt_injection
+    from vordur.security.provenance import ProvenancedSpan, ProvenanceTracker
+    from vordur.security.rate_limiter import RateLimiter
+    from vordur.security.sanitizer import sanitize
+    from vordur.security.types import (
         AuthorizationEvent,
         ContentType,
         PolicyConfig,
@@ -700,11 +700,11 @@ def build_fixtures() -> dict:
     original_add_span = ingress_pipe._provenance.add_span
     with (
         patch(
-            "guardllm.security.pipeline.normalize_confusables",
+            "vordur.security.pipeline.normalize_confusables",
             side_effect=traced("normalize_confusables", normalize_confusables),
         ),
         patch(
-            "guardllm.security.pipeline.detect_prompt_injection",
+            "vordur.security.pipeline.detect_prompt_injection",
             side_effect=traced("detect_prompt_injection", detect_prompt_injection),
         ),
         patch.object(
@@ -713,7 +713,7 @@ def build_fixtures() -> dict:
             side_effect=traced("sanitize", sanitize),
         ),
         patch(
-            "guardllm.security.pipeline.wrap_untrusted",
+            "vordur.security.pipeline.wrap_untrusted",
             side_effect=traced("wrap_untrusted", wrap_untrusted),
         ),
         patch.object(
@@ -727,7 +727,7 @@ def build_fixtures() -> dict:
             side_effect=traced("provenance.add_span", original_add_span),
         ),
         patch(
-            "guardllm.security.pipeline.detect_canary",
+            "vordur.security.pipeline.detect_canary",
             side_effect=traced("detect_canary", detect_remembered_canary),
         ),
     ):
@@ -746,7 +746,7 @@ def build_fixtures() -> dict:
     limiter = RateLimiter()
     rate_steps = []
     rate_preseed_before = limiter_state(limiter, rate_ctx.source_id, "gmail_send_email")
-    with patch("guardllm.security.rate_limiter.time.time", return_value=-7200.0):
+    with patch("vordur.security.rate_limiter.time.time", return_value=-7200.0):
         limiter.record("gmail_send_email", rate_ctx, recipient="team@acme.com")
     rate_preseed_after = limiter_state(limiter, rate_ctx.source_id, "gmail_send_email")
     rate_steps.append(
@@ -769,7 +769,7 @@ def build_fixtures() -> dict:
     rate_events = []
     for when in (0.0, 4.0, 8.0, 9.0):
         state_before = limiter_state(limiter, rate_ctx.source_id, "gmail_send_email")
-        with patch("guardllm.security.rate_limiter.time.time", return_value=when):
+        with patch("vordur.security.rate_limiter.time.time", return_value=when):
             result = limiter.check_and_record(
                 "gmail_send_email",
                 rate_ctx,
@@ -806,7 +806,7 @@ def build_fixtures() -> dict:
     cap_preseed_times = [float(i * 60) for i in range(10)]
     cap_preseed_before = limiter_state(cap, cap_ctx.source_id, "gmail_send_email")
     for when in cap_preseed_times:
-        with patch("guardllm.security.rate_limiter.time.time", return_value=when):
+        with patch("vordur.security.rate_limiter.time.time", return_value=when):
             assert cap.check_and_record("gmail_send_email", cap_ctx).allowed
     cap_preseed_after = limiter_state(cap, cap_ctx.source_id, "gmail_send_email")
     rate_steps.append(
@@ -826,7 +826,7 @@ def build_fixtures() -> dict:
         }
     )
     cap_state_before = limiter_state(cap, cap_ctx.source_id, "gmail_send_email")
-    with patch("guardllm.security.rate_limiter.time.time", return_value=601.0):
+    with patch("vordur.security.rate_limiter.time.time", return_value=601.0):
         cap_result = cap.check("gmail_send_email", cap_ctx)
     cap_state_after = limiter_state(cap, cap_ctx.source_id, "gmail_send_email")
     rate_steps.append(
@@ -863,7 +863,7 @@ def build_fixtures() -> dict:
         timestamp=1000.0,
         source="demo-host",
     )
-    with patch("guardllm.security.policy_engine.time.time", return_value=1000.0):
+    with patch("vordur.security.policy_engine.time.time", return_value=1000.0):
         destructive_verified = engine.check_tool_execution(
             "shell_execute",
             {"command": "echo demo"},
@@ -885,7 +885,7 @@ def build_fixtures() -> dict:
 
     message = "Search the quarterly plan"
     message_hash = Guard.hash_message(message)
-    with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
+    with patch("vordur.security.request_binding.time.time", return_value=1000.0):
         binding = Guard.bind_request(
             "search",
             {"query": "quarterly plan"},
@@ -896,7 +896,7 @@ def build_fixtures() -> dict:
     # produced by the same stateless factory.
     binding_pipe = SecurityPipeline()
     binding_before_mutation = pipeline_state(binding_pipe)
-    with patch("guardllm.security.types.time.time", return_value=1001.0):
+    with patch("vordur.security.types.time.time", return_value=1001.0):
         binding_result = binding_pipe.check_tool_execution(
             "search",
             {"query": "quarterly plan", "scope": "all"},
@@ -905,7 +905,7 @@ def build_fixtures() -> dict:
             message_hash=message_hash,
         )
     binding_after_mutation = pipeline_state(binding_pipe)
-    with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
+    with patch("vordur.security.request_binding.time.time", return_value=1000.0):
         expiring_binding = Guard.bind_request(
             "search",
             {"query": "quarterly plan"},
@@ -913,7 +913,7 @@ def build_fixtures() -> dict:
             ttl=1,
         )
     binding_before_expiry = pipeline_state(binding_pipe)
-    with patch("guardllm.security.types.time.time", return_value=1002.0):
+    with patch("vordur.security.types.time.time", return_value=1002.0):
         expired_binding_result = binding_pipe.check_tool_execution(
             "search",
             {"query": "quarterly plan"},
@@ -1020,8 +1020,8 @@ def build_fixtures() -> dict:
         """
         before = pipeline_state(pipe)
         with (
-            patch("guardllm.security.types.time.time", return_value=1001.0),
-            patch("guardllm.security.policy_engine.time.time", return_value=1001.0),
+            patch("vordur.security.types.time.time", return_value=1001.0),
+            patch("vordur.security.policy_engine.time.time", return_value=1001.0),
         ):
             result = pipe.check_tool_execution(
                 mcp_tool,
@@ -1072,7 +1072,7 @@ def build_fixtures() -> dict:
 
     # The same tool, the same arguments, the same contaminated session, asked
     # for by the user instead.
-    with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
+    with patch("vordur.security.request_binding.time.time", return_value=1000.0):
         mcp_binding = Guard.bind_request(
             mcp_tool,
             mcp_args,
@@ -1102,7 +1102,7 @@ def build_fixtures() -> dict:
     mcp_second_auth = derive_authorization(
         mcp_second_message, mcp_tool, mcp_second_args, timestamp=1000.0
     )
-    with patch("guardllm.security.request_binding.time.time", return_value=1000.0):
+    with patch("vordur.security.request_binding.time.time", return_value=1000.0):
         mcp_second_binding = Guard.bind_request(
             mcp_tool,
             mcp_second_args,
@@ -1209,7 +1209,7 @@ def build_fixtures() -> dict:
         )
     return {
         "schema_version": 4,
-        "library_version": version("guardllm"),
+        "library_version": version("vordur"),
         "scenarios": {
             "escalation": scenario(
                 configuration={"escalated_tool_policy": "require_auth"},
@@ -2334,25 +2334,25 @@ STYLE = """
 # Ingress boundary already opens, which adds clicks without adding information,
 # and a lane, an arrow, or a sink is a relationship rather than a mechanism.
 MAP_DESTINATIONS: dict[str, tuple[str, str]] = {
-    "ingress": ("guardllm_pipeline_demo.html", "ingress demo"),
-    "egress": ("guardllm_canary_demos.html", "DLP and canary demo"),
-    "authorization": ("guardllm_policy_matrix_demo.html", "policy demo"),
-    "integrity": ("guardllm_request_binding_demo.html", "request binding demo"),
-    "model": ("guardllm_demos.html", "primary narrative"),
-    "RAG": ("guardllm_rag_demos.html", "RAG provenance demo"),
-    "MCP": ("guardllm_mcp_demo.html", "MCP tool surface demo"),
+    "ingress": ("vordur_pipeline_demo.html", "ingress demo"),
+    "egress": ("vordur_canary_demos.html", "DLP and canary demo"),
+    "authorization": ("vordur_policy_matrix_demo.html", "policy demo"),
+    "integrity": ("vordur_request_binding_demo.html", "request binding demo"),
+    "model": ("vordur_demos.html", "primary narrative"),
+    "RAG": ("vordur_rag_demos.html", "RAG provenance demo"),
+    "MCP": ("vordur_mcp_demo.html", "MCP tool surface demo"),
     # The per-flow rail heading, not its terms. The five fields share one
     # destination, so the rail is labelled once rather than five times.
     "per-flow context": (
-        "guardllm_security_context_demo.html",
+        "vordur_security_context_demo.html",
         "security context demo",
     ),
-    "remembered canary": ("guardllm_canary_demos.html", "DLP and canary demo"),
-    "provenance": ("guardllm_rag_demos.html", "RAG provenance demo"),
-    "DLP history": ("guardllm_canary_demos.html", "DLP and canary demo"),
-    "contamination": ("guardllm_tool_feedback_demo.html", "tool feedback demo"),
-    "escalation": ("guardllm_demos.html", "primary narrative"),
-    "rate counters": ("guardllm_rate_limit_demo.html", "rate limiting demo"),
+    "remembered canary": ("vordur_canary_demos.html", "DLP and canary demo"),
+    "provenance": ("vordur_rag_demos.html", "RAG provenance demo"),
+    "DLP history": ("vordur_canary_demos.html", "DLP and canary demo"),
+    "contamination": ("vordur_tool_feedback_demo.html", "tool feedback demo"),
+    "escalation": ("vordur_demos.html", "primary narrative"),
+    "rate counters": ("vordur_rate_limit_demo.html", "rate limiting demo"),
 }
 
 # Labels that must never render as links, asserted by the generator tests.
@@ -2453,7 +2453,7 @@ def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
         '<span class="rail-terms">source trust &middot; principal trust &middot; '
         "sensitivity &middot; content type &middot; policy</span>"
     )
-    session_terms = '<span class="rail-note">Retained by GuardLLM across calls</span>' + "".join(
+    session_terms = '<span class="rail-note">Retained by Vörður across calls</span>' + "".join(
         pill(term)
         for term in (
             "remembered canary",
@@ -2465,7 +2465,7 @@ def _map(active: str, *, compact: bool = False, current_page: str = "") -> str:
         )
     )
     compact_class = " compact-map" if compact else ""
-    return f"""<nav class="system-map-nav" aria-label="Architecture navigation"><a class="skip-map" href="#{SKIP_MAP_TARGET}">Skip architecture links</a><div class="system-map{compact_class}" aria-label="GuardLLM surface map">
+    return f"""<nav class="system-map-nav" aria-label="Architecture navigation"><a class="skip-map" href="#{SKIP_MAP_TARGET}">Skip architecture links</a><div class="system-map{compact_class}" aria-label="Vörður surface map">
 <div class="sources">{sources_html}</div>
 <div class="flow">{ingress_html}{model_html}<div class="branches"><div class="lane">{outbound_html}<span class="arrow" aria-hidden="true">↓</span>{egress_html}{users_sink_html}</div><div class="lane">{proposal_html}<span class="arrow" aria-hidden="true">↓</span>{authorization_html}{integrity_html}{tools_sink_html}</div></div></div>
 <p class="lane-note"><strong>The lanes can overlap:</strong> a tool call can require authorization and integrity checks while its outbound arguments require separate egress inspection.</p>
@@ -2600,7 +2600,7 @@ controls.hidden=false;back.onclick=()=>show(current-1);next.onclick=()=>show(cur
         # highlight are hidden in the served markup and revealed here, so with
         # scripting off every act is readable and nothing claims a state.
         act_script = """
-const actData=JSON.parse(document.getElementById('guardllm-acts').textContent);
+const actData=JSON.parse(document.getElementById('vordur-acts').textContent);
 const rail=document.querySelector('.act-rail'),panel=document.querySelector('.act-state');
 const actButtons=[...document.querySelectorAll('.act')];
 const contam=document.getElementById('act-contam'),escal=document.getElementById('act-escal'),note=document.getElementById('act-note');
@@ -2677,7 +2677,7 @@ const baseShow=show;show=function(n,moveFocus=true){baseShow(n,moveFocus);paint(
         )
 
     act_data_html = (
-        f'<script id="guardllm-acts" type="application/json">{act_json}</script>'
+        f'<script id="vordur-acts" type="application/json">{act_json}</script>'
         if act_json
         else ""
     )
@@ -2693,7 +2693,7 @@ const baseShow=show;show=function(n,moveFocus=true){baseShow(n,moveFocus);paint(
         raise ValueError(f"Unknown orientation mode: {orientation}")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{STYLE}</style></head>
-<body><main class="{wrap_class}"><nav aria-label="Demo navigation"><a href="https://github.com/mhcoen/guardllm">GuardLLM</a><a href="guardllm_demos.html">Primary narrative</a><a href="guardllm_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}{act_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}<details><summary>Evidence, scope, and reproduction</summary>{caveat_html}{evidence}<p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="guardllm-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('guardllm-behavior').textContent),null,2);{script}</script>{act_data_html}{act_script_html}</body></html>
+<body><main class="{wrap_class}"><nav aria-label="Demo navigation"><a href="https://github.com/mhcoen/vordur">Vörður</a><a href="vordur_demos.html">Primary narrative</a><a href="vordur_surface_map.html">View the full system map</a></nav><h1>{html.escape(title)}</h1><p class="lead">{html.escape(lead)}</p>{orientation_html}{act_html}<div class="steps layout-{html.escape(layout)}{lead_class}">{"".join(step_html)}</div>{after_steps_html}{controls}<details><summary>Evidence, scope, and reproduction</summary>{caveat_html}{evidence}<p>Exact fixture test: <code>{html.escape(test_node)}</code></p><pre>{html.escape(command)}</pre><p><strong>Generated fixture</strong></p><pre id="raw"></pre></details></main><script id="vordur-behavior" type="application/json">{fixture_json}</script><script>document.getElementById('raw').textContent=JSON.stringify(JSON.parse(document.getElementById('vordur-behavior').textContent),null,2);{script}</script>{act_data_html}{act_script_html}</body></html>
 """
 
 
@@ -2701,13 +2701,13 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     s = fixtures["scenarios"]
     esc = s["escalation"]
     pages: dict[Path, str] = {}
-    pages[DEMO_DIR / "guardllm_demos.html"] = _page(
+    pages[DEMO_DIR / "vordur_demos.html"] = _page(
         title="How one blocked leak changes the next decision",
-        lead="An inbox assistant reads external text, attempts to expose a credential, and then proposes an ordinary search. GuardLLM remembers the blocked exfiltration and tightens the later call.",
+        lead="An inbox assistant reads external text, attempts to expose a credential, and then proposes an ordinary search. Vörður remembers the blocked exfiltration and tightens the later call.",
         active="",
         fixture=esc,
         orientation="full",
-        map_current_page="guardllm_demos.html",
+        map_current_page="vordur_demos.html",
         layout="stepper",
         # One act per moment, each naming the fixture step whose state it shows.
         # Setup acts name none, so the panel reads "not run" rather than
@@ -2761,7 +2761,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
                     ("User message", "Summarize today's email and check my next meeting."),
                     ("Processed email tool message", esc["processed"]["content"]),
                 ],
-                "The host preserves the email's message envelope and GuardLLM adds <untrusted_content> framing inside it. Framing helps the model interpret origin; it does not authorize actions.",
+                "The host preserves the email's message envelope and Vörður adds <untrusted_content> framing inside it. Framing helps the model interpret origin; it does not authorize actions.",
             ),
             (
                 "The unprotected run",
@@ -2799,7 +2799,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             ),
             (
                 "Why detection is not the whole design",
-                "This exact email produced no detector warning. GuardLLM still records origin, inspects egress, and feeds high-confidence enforcement outcomes into later policy.",
+                "This exact email produced no detector warning. Vörður still records origin, inspects egress, and feeds high-confidence enforcement outcomes into later policy.",
                 "Detection is one signal. Provenance, canaries, DLP, authorization, integrity, and session state enforce independent invariants.",
             ),
         ],
@@ -2842,7 +2842,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             )
         )
 
-    pages[DEMO_DIR / "guardllm_pipeline_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_pipeline_demo.html"] = _page(
         title="The observed ingress call order",
         lead="Seven instrumented call sites inside one canary-enabled SecurityPipeline.process_inbound call, in the order they were observed.",
         caveats=(
@@ -2857,7 +2857,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     rag = s["rag"]
-    pages[DEMO_DIR / "guardllm_rag_demos.html"] = _page(
+    pages[DEMO_DIR / "vordur_rag_demos.html"] = _page(
         title="RAG provenance is lexical, not semantic",
         lead="Provenance matches text, not meaning.",
         caveats=(
@@ -2899,7 +2899,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     feedback = s["tool_feedback"]
-    pages[DEMO_DIR / "guardllm_tool_feedback_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_tool_feedback_demo.html"] = _page(
         title="A guard can enforce only what the host registered",
         lead="The same document and egress guard produce opposite outcomes. The only variable is whether the tool result cycles through process_inbound before returning to the model.",
         active="ingress+egress",
@@ -2947,9 +2947,9 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     dlp = s["dlp_canary"]
-    pages[DEMO_DIR / "guardllm_canary_demos.html"] = _page(
+    pages[DEMO_DIR / "vordur_canary_demos.html"] = _page(
         title="Five egress signals, with the strongest attribution first",
-        lead="A remembered canary receives specific attribution because GuardLLM already knows its value. The other four signals do not.",
+        lead="A remembered canary receives specific attribution because Vörður already knows its value. The other four signals do not.",
         caveats=(
             "Each signal below runs on its own fresh, named pipeline. These are independent comparisons, not one five-step session.",
         ),
@@ -2959,11 +2959,11 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         layout="taxonomy",
         steps=[
             # The title claims the strongest attribution comes first, so it does.
-            # The canary is the only signal GuardLLM can name rather than infer,
+            # The canary is the only signal Vörður can name rather than infer,
             # and it spans the row it leads.
             (
                 "Remembered canary",
-                f"GuardLLM provisioned this token itself, so a match is identification rather than inference. Host-provisioned token: {dlp['canary_display']}",
+                f"Vörður provisioned this token itself, so a match is identification rather than inference. Host-provisioned token: {dlp['canary_display']}",
                 f"{dlp['canary_result']['reason']}; canary_detected={dlp['canary_result']['canary_detected']}; session_escalated={dlp['state_after_canary']['session_escalated']}",
                 "blocked",
             ),
@@ -3051,7 +3051,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
         )
     policy_path_html += "</ol>"
 
-    pages[DEMO_DIR / "guardllm_policy_matrix_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_policy_matrix_demo.html"] = _page(
         title="A scoped view of client tool policy",
         lead="Each gate returns on failure, so a denied call never reaches the gates below it.",
         caveats=(
@@ -3114,7 +3114,7 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             "blocked",
         ),
     ]
-    pages[DEMO_DIR / "guardllm_rate_limit_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_rate_limit_demo.html"] = _page(
         title="Rate limiting: signals versus blocks",
         lead="Recipient novelty and burst patterns are non-blocking anomalies. The hard hourly cap denies.",
         caveats=(
@@ -3133,9 +3133,9 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     )
 
     binding = s["request_binding"]
-    pages[DEMO_DIR / "guardllm_request_binding_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_request_binding_demo.html"] = _page(
         title="Request binding catches argument mutation",
-        lead="Authorization is not the last integrity check. GuardLLM binds a proposed tool and its arguments to the current message, then rejects execution if the arguments change.",
+        lead="Authorization is not the last integrity check. Vörður binds a proposed tool and its arguments to the current message, then rejects execution if the arguments change.",
         active="integrity",
         fixture=binding,
         interactive=False,
@@ -3184,8 +3184,8 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     sc = s["security_context"]
     sc_untrusted = sc["untrusted_inbound"]["content"].split("\n", 1)[0]
     sc_trusted = sc["trusted_inbound"]["content"].split("\n", 1)[0]
-    pages[DEMO_DIR / "guardllm_security_context_demo.html"] = _page(
-        title="What GuardLLM knows outside the model",
+    pages[DEMO_DIR / "vordur_security_context_demo.html"] = _page(
+        title="What Vörður knows outside the model",
         lead="Per-flow context is supplied by the host on every call. It is never inferred from content, and it is not retained between flows.",
         caveats=(
             "This page runs one text through two sessions that differ in a single declared field, so the effect of the declaration can be read off the results rather than argued for.",
@@ -3250,14 +3250,14 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
             '<p class="lane-note"><strong>Why per flow and not per session:</strong> trust, '
             "sensitivity, and content type describe one flow, and a single session commonly mixes "
             "flows. An operator instruction and a retrieved web page arrive on the same session and "
-            "must not inherit each other's trust. What GuardLLM retains across a session is state it "
+            "must not inherit each other's trust. What Vörður retains across a session is state it "
             "derived itself: contamination, provenance, DLP history, and rate counters.</p>"
         ),
     )
 
     mcp = s["mcp_tool_surface"]
     mcp_steps = {step["step_id"]: step for step in mcp["steps"]}
-    pages[DEMO_DIR / "guardllm_mcp_demo.html"] = _page(
+    pages[DEMO_DIR / "vordur_mcp_demo.html"] = _page(
         title="A record can ask for a write; it cannot authorize one",
         lead="A third-party record requests a write in prose, and a user authorizes one with a directive. Each row states only what the call it displays actually reached.",
         active="ingress+authorization+egress",
@@ -3325,59 +3325,59 @@ def build_pages(fixtures: dict) -> dict[Path, str]:
     cards = [
         (
             "Security context",
-            "guardllm_security_context_demo.html",
+            "vordur_security_context_demo.html",
             "What the host declares per flow",
         ),
-        ("Ingress", "guardllm_pipeline_demo.html", "Actual processing order"),
+        ("Ingress", "vordur_pipeline_demo.html", "Actual processing order"),
         (
             "MCP tool surface",
-            "guardllm_mcp_demo.html",
+            "vordur_mcp_demo.html",
             "Prose asks; only a directive authorizes",
         ),
-        ("RAG provenance", "guardllm_rag_demos.html", "Lexical no-copy boundary"),
-        ("Tool feedback", "guardllm_tool_feedback_demo.html", "Host closes the loop"),
+        ("RAG provenance", "vordur_rag_demos.html", "Lexical no-copy boundary"),
+        ("Tool feedback", "vordur_tool_feedback_demo.html", "Host closes the loop"),
         (
             "DLP and canary",
-            "guardllm_canary_demos.html",
+            "vordur_canary_demos.html",
             "Known, statistical, and remembered signals",
         ),
-        ("Policy", "guardllm_policy_matrix_demo.html", "Scoped decision lanes"),
-        ("Rate limiting", "guardllm_rate_limit_demo.html", "Anomaly versus denial"),
-        ("Request binding", "guardllm_request_binding_demo.html", "Argument integrity"),
+        ("Policy", "vordur_policy_matrix_demo.html", "Scoped decision lanes"),
+        ("Rate limiting", "vordur_rate_limit_demo.html", "Anomaly versus denial"),
+        ("Request binding", "vordur_request_binding_demo.html", "Argument integrity"),
     ]
     card_html = "".join(
         f'<a class="card" href="{href}"><strong>{html.escape(name)}</strong><span>{html.escape(desc)}</span></a>'
         for name, href, desc in cards
     )
     pages[
-        DEMO_DIR / "guardllm_surface_map.html"
-    ] = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GuardLLM system map</title><style>{STYLE}</style></head><body><main class="wrap"><nav aria-label="Demo navigation"><a href="https://github.com/mhcoen/guardllm">GuardLLM</a></nav><h1>GuardLLM system map</h1><p class="lead">Five source families feed four trust boundaries and two outbound lanes. Per-flow context and per-session state remain separate because they answer different questions and change on different lifecycles.</p><a class="cta" href="guardllm_demos.html"><strong>Start here: see one blocked leak change the next decision</strong><span>Primary narrative &middot; cross-stage escalation across all four boundaries</span></a>{_map("", current_page="guardllm_surface_map.html")}<p class="cards-heading">Explore one mechanism</p><div class="cards">{card_html}</div></main></body></html>
+        DEMO_DIR / "vordur_surface_map.html"
+    ] = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vörður system map</title><style>{STYLE}</style></head><body><main class="wrap"><nav aria-label="Demo navigation"><a href="https://github.com/mhcoen/vordur">Vörður</a></nav><h1>Vörður system map</h1><p class="lead">Five source families feed four trust boundaries and two outbound lanes. Per-flow context and per-session state remain separate because they answer different questions and change on different lifecycles.</p><a class="cta" href="vordur_demos.html"><strong>Start here: see one blocked leak change the next decision</strong><span>Primary narrative &middot; cross-stage escalation across all four boundaries</span></a>{_map("", current_page="vordur_surface_map.html")}<p class="cards-heading">Explore one mechanism</p><div class="cards">{card_html}</div></main></body></html>
 """
     return pages
 
 
 def readme() -> str:
-    return """# GuardLLM generated demos
+    return """# Vörður generated demos
 
 These self-contained pages combine results generated from the shipped library with reviewed
 explanatory text. The fixture tests execute each displayed scenario exactly. Conceptual prose
 and threat mappings remain reviewable documentation claims rather than library outputs. Open
-`guardllm_surface_map.html` or any card directly with `file://`; no server or external asset is
+`vordur_surface_map.html` or any card directly with `file://`; no server or external asset is
 required.
 
-- `guardllm_demos.html`: primary cross-stage narrative
-- `guardllm_surface_map.html`: shared architecture map and portfolio index
-- `guardllm_security_context_demo.html`: what the host declares on each flow
-- `guardllm_pipeline_demo.html`: instrumented ingress call order
-- `guardllm_mcp_demo.html`: a third-party MCP tool surface, where a record asks in prose and only a user directive authorizes
-- `guardllm_rag_demos.html`: provenance and lexical-overlap boundary
-- `guardllm_tool_feedback_demo.html`: host feedback-loop obligation
-- `guardllm_canary_demos.html`: DLP, entropy, decoding, and remembered canary
-- `guardllm_policy_matrix_demo.html`: scoped policy lanes
-- `guardllm_rate_limit_demo.html`: anomaly versus hard cap
-- `guardllm_request_binding_demo.html`: argument-integrity binding
+- `vordur_demos.html`: primary cross-stage narrative
+- `vordur_surface_map.html`: shared architecture map and portfolio index
+- `vordur_security_context_demo.html`: what the host declares on each flow
+- `vordur_pipeline_demo.html`: instrumented ingress call order
+- `vordur_mcp_demo.html`: a third-party MCP tool surface, where a record asks in prose and only a user directive authorizes
+- `vordur_rag_demos.html`: provenance and lexical-overlap boundary
+- `vordur_tool_feedback_demo.html`: host feedback-loop obligation
+- `vordur_canary_demos.html`: DLP, entropy, decoding, and remembered canary
+- `vordur_policy_matrix_demo.html`: scoped policy lanes
+- `vordur_rate_limit_demo.html`: anomaly versus hard cap
+- `vordur_request_binding_demo.html`: argument-integrity binding
 
-`guardllm_demo_fixtures.json` is the canonical generated data. Each page embeds its fixture
+`vordur_demo_fixtures.json` is the canonical generated data. Each page embeds its fixture
 at build time, so no runtime fetch is used.
 
 Every scenario declares the objects it ran against under `pipelines`, and every step names the

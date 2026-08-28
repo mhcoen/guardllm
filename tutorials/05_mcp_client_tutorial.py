@@ -1,4 +1,4 @@
-"""Tutorial 05: MCP client hardening with guardllm.
+"""Tutorial 05: MCP client hardening with vordur.
 
 Focus: safely invoking external MCP server tools.
 """
@@ -10,8 +10,8 @@ import time
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm import Guard
-from guardllm.security.types import ConfirmationHandler, PolicyConfig
+from vordur import Guard
+from vordur.security.types import ConfirmationHandler, PolicyConfig
 
 
 class ApproveCorpRecipients(ConfirmationHandler):

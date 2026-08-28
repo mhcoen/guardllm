@@ -1,13 +1,13 @@
-# guardllm Documentation
+# Vörður Documentation
 
-This directory contains architecture and integration documentation for using guardllm to harden MCP servers, MCP clients, and unknown-provenance input sources (web search, email, documents, calendar data, and other untrusted content).
+This directory contains architecture and integration documentation for using Vörður to harden MCP servers, MCP clients, and unknown-provenance input sources (web search, email, documents, calendar data, and other untrusted content).
 
 ## Where to start
 
 In order of how much time each takes, shortest first.
 
-1. [Watch an attack get stopped](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html): every value on the page is real output from the library.
-2. [The visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/): six strips, one mechanism each, for a reader meeting the architecture for the first time.
+1. [Watch an attack get stopped](https://mhcoen.github.io/vordur/demo/vordur_demos.html): every value on the page is real output from the library.
+2. [The visual mechanism guide](https://mhcoen.github.io/vordur/docs/mechanisms/): six strips, one mechanism each, for a reader meeting the architecture for the first time.
 3. [quick_start.md](quick_start.md), then [tutorial 01](../tutorials/01_web_search_sanitization.md), which is a page to read and a script to run.
 4. [threat_model.md](threat_model.md): the assumptions each control rests on, and what each one costs when false.
 5. [production_checklist.md](production_checklist.md) before any deployment, since several defaults are deliberately permissive for compatibility.
@@ -36,7 +36,7 @@ In order of how much time each takes, shortest first.
 
 - [configuration.md](configuration.md): policy controls and deployment guidance.
 - [policy_tuning.md](policy_tuning.md): guidance for safely tuning policy strictness.
-- [rego.md](rego.md): writing an access policy in Rego against the session facts GuardLLM computes, evaluated locally.
+- [rego.md](rego.md): writing an access policy in Rego against the session facts Vörður computes, evaluated locally.
 - [gateway.md](gateway.md): the OpenAI-compatible proxy that runs the checks itself, so an application changes only its `base_url`.
 - [production_checklist.md](production_checklist.md): deployment checklist for production hardening and operations.
 
@@ -51,20 +51,20 @@ Six illustrated explanations, one mechanism each, for readers meeting the
 architecture for the first time. They are normative about mechanism and carry no
 measurements: the Markdown documents above remain the authoritative specification.
 
-- [All six strips](https://mhcoen.github.io/guardllm/docs/mechanisms/), with a map of how they interlock.
-- [01 What the Guard Remembers](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html): a fact recorded at
+- [All six strips](https://mhcoen.github.io/vordur/docs/mechanisms/), with a map of how they interlock.
+- [01 What the Guard Remembers](https://mhcoen.github.io/vordur/docs/mechanisms/01-session-risk.html): a fact recorded at
   ingest denies a tool call two turns later once `contaminated_tool_policy` is set to
   `require_auth` or `deny`, and why four point tools cannot.
-- [02 A Marker Only the Model Sees](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html): canary tokens, and
+- [02 A Marker Only the Model Sees](https://mhcoen.github.io/vordur/docs/mechanisms/02-canary.html): canary tokens, and
   what a match proves.
-- [03 The Call That Came Back Changed](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html): request binding
+- [03 The Call That Came Back Changed](https://mhcoen.github.io/vordur/docs/mechanisms/03-request-binding.html): request binding
   and deferred-execution replay.
-- [04 What the Provider Sees Instead](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html): substitution at the
+- [04 What the Provider Sees Instead](https://mhcoen.github.io/vordur/docs/mechanisms/04-privacy-vault.html): substitution at the
   model boundary, what a default configuration does not detect, and the two gates on the way
   back.
-- [05 The Path Around the Guard](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html): why installed is
+- [05 The Path Around the Guard](https://mhcoen.github.io/vordur/docs/mechanisms/05-mediated-paths.html): why installed is
   not the same as in the way, and what the gateway does about it.
-- [06 One Call, Two Questions](https://mhcoen.github.io/guardllm/docs/mechanisms/06-two-questions.html): the tool gate rules
+- [06 One Call, Two Questions](https://mhcoen.github.io/vordur/docs/mechanisms/06-two-questions.html): the tool gate rules
   on the action, egress rules on the bytes, and passing one is not passing the other.
 
 The source for each strip is in [mechanisms/](mechanisms/).
@@ -74,7 +74,7 @@ The source for each strip is in [mechanisms/](mechanisms/).
 - [Executable demos](../demo/README.md): self-contained pages generated from the
   shipped library. Every displayed result carries the metadata that produced it
   and names the exact test that reproduces it. Start at the
-  [system map](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html).
+  [system map](https://mhcoen.github.io/vordur/demo/vordur_surface_map.html).
 - [Tutorials](../tutorials/README.md): step-by-step end-to-end integrations, each
   with a script you can run from the repo root.
 - [Benchmarks](../benchmarks/methodology.md): evaluation methodology and

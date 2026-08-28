@@ -1,6 +1,6 @@
-# Contributing to GuardLLM
+# Contributing to Vörður
 
-GuardLLM is a security library, so contributions are reviewed with that lens. The goal is to keep the threat model coherent, the pipeline auditable, and the public API stable for downstream applications.
+Vörður is a security library, so contributions are reviewed with that lens. The goal is to keep the threat model coherent, the pipeline auditable, and the public API stable for downstream applications.
 
 This guide covers practical contribution steps. For security reporting, see [SECURITY.md](SECURITY.md). For project background, see [README.md](README.md).
 
@@ -15,15 +15,15 @@ This guide covers practical contribution steps. For security reporting, see [SEC
 ## Where Contributions Need Care
 
 - **Sanitizer / detector heuristic changes**: these change the false-positive and false-negative profile. Include benchmark deltas (`benchmarks/run_benchmarks.py`) so reviewers can see the tradeoff.
-- **Public API changes** (anything exported from `guardllm` or `guardllm.security`): require a deprecation path and a CHANGELOG entry. Breaking changes need a minor version bump.
+- **Public API changes** (anything exported from `vordur` or `vordur.security`): require a deprecation path and a CHANGELOG entry. Breaking changes need a minor version bump.
 - **Benchmark dataset changes**: governed separately. See `benchmarks/methodology.md`. Do not modify dataset files (`CSE-8000`, `CBX-1200`, etc.) as part of a feature PR.
 - **The paper** (`paper/`): off-limits for contributor PRs. Open an issue if you find an error.
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/mhcoen/guardllm.git
-cd guardllm
+git clone https://github.com/mhcoen/vordur.git
+cd vordur
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 ```

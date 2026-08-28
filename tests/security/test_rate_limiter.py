@@ -12,8 +12,8 @@ import threading
 
 import pytest
 
-from guardllm.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
-from guardllm.security.types import SecurityContext, TrustLevel
+from vordur.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
+from vordur.security.types import SecurityContext, TrustLevel
 
 
 @pytest.fixture
@@ -121,13 +121,13 @@ class TestExceedHourlyLimit:
             }
         )
         # Record 5 calls at t=0
-        with patch("guardllm.security.rate_limiter.time") as mock_time:
+        with patch("vordur.security.rate_limiter.time") as mock_time:
             mock_time.time.return_value = 0
             for _ in range(5):
                 custom_limiter.record("gmail_send_email", ctx)
 
         # Check at t=5140 (within 7200s window, would be outside 3600s default)
-        with patch("guardllm.security.rate_limiter.time") as mock_time:
+        with patch("vordur.security.rate_limiter.time") as mock_time:
             mock_time.time.return_value = 5140
             result = custom_limiter.check("gmail_send_email", ctx)
         assert result.allowed is False
@@ -139,13 +139,13 @@ class TestExceedHourlyLimit:
 
         custom_limiter = RateLimiter(limits={"emails_per_hour": 5})
         # Record 5 calls at t=0
-        with patch("guardllm.security.rate_limiter.time") as mock_time:
+        with patch("vordur.security.rate_limiter.time") as mock_time:
             mock_time.time.return_value = 0
             for _ in range(5):
                 custom_limiter.record("gmail_send_email", ctx)
 
         # At t=3601, old calls are pruned (outside default 3600s window)
-        with patch("guardllm.security.rate_limiter.time") as mock_time:
+        with patch("vordur.security.rate_limiter.time") as mock_time:
             mock_time.time.return_value = 3601
             result = custom_limiter.check("gmail_send_email", ctx)
         assert result.allowed is True
@@ -338,7 +338,7 @@ class TestRateLimitOverrides:
 
     def test_override_reduces_hourly_limit(self):
         """Override can lower hourly limit for untrusted principals."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         limiter = RateLimiter()
         ctx = SecurityContext(
@@ -362,7 +362,7 @@ class TestRateLimitOverrides:
 
     def test_override_increases_hourly_limit(self):
         """Override can raise hourly limit for trusted principals."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         limiter = RateLimiter()
         ctx = SecurityContext(
@@ -387,7 +387,7 @@ class TestRateLimitOverrides:
 
     def test_override_merges_with_defaults(self):
         """Override only replaces specified keys, defaults fill the rest."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         limiter = RateLimiter()
         ctx = SecurityContext(
@@ -412,7 +412,7 @@ class TestRateLimitOverrides:
 
     def test_no_override_uses_defaults(self):
         """Without overrides, DEFAULT_LIMITS are used."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         limiter = RateLimiter()
         ctx = SecurityContext(
@@ -427,7 +427,7 @@ class TestRateLimitOverrides:
 
     def test_non_matching_trust_level_uses_defaults(self):
         """Override for TRUSTED doesn't affect UNTRUSTED principal."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         limiter = RateLimiter()
         ctx = SecurityContext(
@@ -446,7 +446,7 @@ class TestRateLimitOverrides:
 
     def test_does_not_mutate_default_limits(self):
         """Merge must not modify DEFAULT_LIMITS."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         original = dict(DEFAULT_LIMITS)
         limiter = RateLimiter()
@@ -518,8 +518,8 @@ class TestPolicyRateLimits:
     """
 
     def test_a_policy_limit_is_enforced(self):
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig
 
         policy = PolicyConfig(rate_limits={"emails_per_hour": 0}, enable_destructive=True)
         context = Guard.context_mcp_client(client_id="c", policy=policy)
@@ -530,8 +530,8 @@ class TestPolicyRateLimits:
         assert "0/0" in result.reason
 
     def test_the_default_still_applies_without_one(self):
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig
 
         context = Guard.context_mcp_client(
             client_id="c", policy=PolicyConfig(enable_destructive=True)
@@ -543,8 +543,8 @@ class TestPolicyRateLimits:
         )
 
     def test_a_partial_policy_does_not_unset_the_rest(self):
-        from guardllm.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
-        from guardllm.security.types import PolicyConfig, SecurityContext
+        from vordur.security.rate_limiter import DEFAULT_LIMITS, RateLimiter
+        from vordur.security.types import PolicyConfig, SecurityContext
 
         limiter = RateLimiter()
         context = SecurityContext(
@@ -559,8 +559,8 @@ class TestPolicyRateLimits:
         assert DEFAULT_LIMITS["emails_per_hour"] == 10  # not mutated
 
     def test_a_trust_override_still_wins_over_the_policy_base(self):
-        from guardllm.security.rate_limiter import RateLimiter
-        from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+        from vordur.security.rate_limiter import RateLimiter
+        from vordur.security.types import PolicyConfig, SecurityContext, TrustLevel
 
         limiter = RateLimiter()
         context = SecurityContext(

@@ -9,7 +9,7 @@ Covers:
 
 import pytest
 
-from guardllm.security.canary import detect_canary, generate_canary
+from vordur.security.canary import detect_canary, generate_canary
 
 
 class TestCanaryGeneration:

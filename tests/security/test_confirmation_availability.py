@@ -11,8 +11,8 @@ import asyncio
 import dataclasses
 import time
 
-from guardllm import Guard, PolicyConfig
-from guardllm.security.types import SecurityContext
+from vordur import Guard, PolicyConfig
+from vordur.security.types import SecurityContext
 
 
 class _Approves:

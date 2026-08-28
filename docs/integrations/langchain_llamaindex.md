@@ -18,7 +18,7 @@ Treat external retrieval and tool execution as trust boundaries.
 ## Minimal sketch
 
 ```python
-from guardllm import Guard
+from vordur import Guard
 
 guard = Guard()
 ctx = Guard.context_document(document_id="retrieved-doc")

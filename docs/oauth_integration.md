@@ -4,10 +4,10 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-This guide shows how to combine OAuth/OIDC with GuardLLM so tool execution is constrained by user-granted scopes.
+This guide shows how to combine OAuth/OIDC with Vörður so tool execution is constrained by user-granted scopes.
 
 Important boundary:
-- GuardLLM is application-layer hardening.
+- Vörður is application-layer hardening.
 - OAuth token issuance, validation, and least-privilege credentialing remain host-application responsibilities.
 
 ## Architecture
@@ -15,8 +15,8 @@ Important boundary:
 1. User authenticates with OAuth provider (Google, Microsoft, etc.).
 2. Host app validates token/session and stores user scopes server-side.
 3. Host app maps scopes to allowed tools/actions.
-4. Host app builds GuardLLM `PolicyConfig` and `AuthorizationEvent` from that mapping.
-5. GuardLLM enforces policy + binding + optional confirmation before tool execution.
+4. Host app builds Vörður `PolicyConfig` and `AuthorizationEvent` from that mapping.
+5. Vörður enforces policy + binding + optional confirmation before tool execution.
 
 ## Scope Mapping Pattern
 
@@ -32,8 +32,8 @@ Keep mappings explicit and deny-by-default.
 ## End-to-End Example
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.types import PolicyConfig
 
 
 def scopes_to_tool_allowlist(scopes: set[str]) -> dict:
@@ -108,7 +108,7 @@ def check_tool_with_oauth(
 
 ## Required Host-Side Controls
 
-- Validate OAuth token signature/issuer/audience/expiry before GuardLLM checks.
+- Validate OAuth token signature/issuer/audience/expiry before Vörður checks.
 - Use per-user tokens, not shared global API credentials.
 - Keep token refresh and secret storage outside model/tool runtime.
 - Re-check scopes on each sensitive action.
@@ -122,7 +122,7 @@ def check_tool_with_oauth(
 - Use `bind_request` for all write-capable tools to prevent replay.
 - Use `confirm_action` or `guard_tool_call(..., require_confirmation=True)` for high-impact operations.
 
-## What GuardLLM Does Not Replace
+## What Vörður Does Not Replace
 
 - OAuth/OIDC login flows
 - token storage and rotation

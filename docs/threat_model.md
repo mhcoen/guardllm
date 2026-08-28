@@ -1,18 +1,18 @@
-# GuardLLM Threat Model
+# Vörður Threat Model
 
 <!-- nav:start -->
 [Docs index](README.md)
 <!-- nav:end -->
 
-This document states the threats GuardLLM is designed to mitigate, the assumptions it makes about its environment, and the threats it explicitly does not mitigate. It complements `docs/security.md` (architecture) and `SECURITY.md` (reporting policy).
+This document states the threats Vörður is designed to mitigate, the assumptions it makes about its environment, and the threats it explicitly does not mitigate. It complements `docs/security.md` (architecture) and `SECURITY.md` (reporting policy).
 
-The aim is to be precise about *what GuardLLM is responsible for* so application authors can make informed decisions about what additional controls they still need.
+The aim is to be precise about *what Vörður is responsible for* so application authors can make informed decisions about what additional controls they still need.
 
 ## System Model
 
-A GuardLLM-using application is, abstractly:
+A Vörður-using application is, abstractly:
 
-![GuardLLM trust boundaries and the session-risk loop](diagrams/threat_model.svg)
+![Vörður trust boundaries and the session-risk loop](diagrams/threat_model.svg)
 
 <sub>Source: [`diagrams/threat_model.tex`](diagrams/threat_model.tex). Rebuild with `pdflatex threat_model.tex && pdftocairo -svg threat_model.pdf threat_model.svg`.</sub>
 
@@ -22,16 +22,16 @@ The diagram answers one question the tables below cannot: **what crosses each bo
 - **The model is a separate party.** Every byte of every prompt leaves the application process, and no control inspects that crossing (T-IN13). Metadata crosses with it and is irreducible: volume, timing, topic, structure, and the tool inventory remain visible regardless of what the payload contains.
 - **The four edges on the session state are the loop.** Ingress writes labels; egress and the authorization gates read them; a high-confidence egress block writes escalation back. Because the gates read state that a *previous* cycle wrote, a block now tightens a later call in the same session. Content passes through the model; labels travel around it, which is why a decision at egress can still read what ingress established.
 
-GuardLLM sits on the data path between untrusted external sources and trusted decision points (the model, tool invocation, outbound destinations). Decisions downstream of ingress can refer back to source trust, provenance, and detection results, but these come from two separate places rather than from one object travelling end to end:
+Vörður sits on the data path between untrusted external sources and trusted decision points (the model, tool invocation, outbound destinations). Decisions downstream of ingress can refer back to source trust, provenance, and detection results, but these come from two separate places rather than from one object travelling end to end:
 
 - **Per-flow context** is a `SecurityContext` the host supplies on *every* call: mode, source type and id, source trust, principal trust, sensitivity, content type, and policy. It describes one flow. It is never inferred from content and is not retained between flows, because a single session commonly mixes flows: an operator instruction and a retrieved web page must not inherit each other's trust.
 - **Per-session state** is what the pipeline derives and retains itself: contamination, egress escalation, provenance spans, DLP history, the remembered canary, and rate counters.
 
-A downstream decision reads both. The [security context demo](../demo/guardllm_security_context_demo.html) runs one text through two sessions differing in a single declared field to show which of the two is doing the work.
+A downstream decision reads both. The [security context demo](../demo/vordur_security_context_demo.html) runs one text through two sessions differing in a single declared field to show which of the two is doing the work.
 
 ## Trust Boundaries
 
-GuardLLM enforces a label discipline across four boundaries:
+Vörður enforces a label discipline across four boundaries:
 
 1. **Ingress** - content enters from a typed source (`Guard.context_web`, `Guard.context_mcp_server`, etc.). The source determines initial `source_trust`. Content is sanitized, normalized, and wrapped in `<untrusted_content>` framing.
 2. **Authorization** - a tool call is admitted only when a structured `AuthorizationEvent` matches policy. Untrusted-content-derived prompts cannot synthesize their own `AuthorizationEvent`.
@@ -42,25 +42,25 @@ GuardLLM enforces a label discipline across four boundaries:
 
 ## Deployment Shapes
 
-GuardLLM runs in two shapes, and they differ in where the trust boundary falls.
+Vörður runs in two shapes, and they differ in where the trust boundary falls.
 
 **As a library, in process.** The host imports `Guard` and calls it. Everything above applies directly, and the assumptions A-AS1, A-AS2 and A-AS9 are host obligations because only the host knows which paths exist.
 
-**As a gateway, as a proxy.** `guardllm.gateway` presents an OpenAI-compatible endpoint, so an application changes its `base_url` and makes no GuardLLM calls at all. That removes A-AS1, A-AS2 and A-AS9 as things the application can forget: a `tool` role message is ingested as untrusted content, the reply is checked on the way back, tool-call arguments are checked as an outbound channel string by string before the call is allowed, and none of it is optional. Provenance is taken from the channel (message role, tool name) and never from content, so "nothing is inferred from content" survives the move into a proxy.
+**As a gateway, as a proxy.** `vordur.gateway` presents an OpenAI-compatible endpoint, so an application changes its `base_url` and makes no Vörður calls at all. That removes A-AS1, A-AS2 and A-AS9 as things the application can forget: a `tool` role message is ingested as untrusted content, the reply is checked on the way back, tool-call arguments are checked as an outbound channel string by string before the call is allowed, and none of it is optional. Provenance is taken from the channel (message role, tool name) and never from content, so "nothing is inferred from content" survives the move into a proxy.
 
 Two limits on that, stated because the sentence above is a security claim. The proxy ingests the `tool` role and no other, so untrusted text arriving on a `user` turn is a path it does not mediate and A-AS1 still applies to it. And the prompt sent to the inference provider is still T-IN13, in gateway mode exactly as in library mode.
 
 Three properties of that shape are worth stating because they are not obvious:
 
 - **The gateway never holds an upstream key.** The client's `Authorization` header is forwarded verbatim and is never read, stored, or logged. A proxy that demanded its own provider key would be a different liability.
-- **Session state is keyed by a client-supplied header.** `X-GuardLLM-Session` selects the session whose contamination, escalation and decision chain a request joins. Generated ids are `uuid4().hex`, but an id the gateway does not hold is honoured as the id of a *new* session, so the header is what identifies a session and nothing else does. See A-AS10.
+- **Session state is keyed by a client-supplied header.** `X-Vordur-Session` selects the session whose contamination, escalation and decision chain a request joins. Generated ids are `uuid4().hex`, but an id the gateway does not hold is honoured as the id of a *new* session, so the header is what identifies a session and nothing else does. See A-AS10.
 - **The diagnostic endpoints are unauthenticated and enumerate sessions.** `GET /sessions` and `GET /forensics` list every live session id. The gateway ships no authentication of its own. See A-AS11.
 
 The gateway is the single-instance tier: state is in memory, replicas do not share it, and streaming responses are not inspected incrementally.
 
 ## Adversaries
 
-GuardLLM considers four adversary classes. A1, A2, and A3 are manipulation adversaries: they act on the application to make it do something. A4 is not, and the difference matters for what a control can look like.
+Vörður considers four adversary classes. A1, A2, and A3 are manipulation adversaries: they act on the application to make it do something. A4 is not, and the difference matters for what a control can look like.
 
 ### A1. Untrusted Content Author
 
@@ -91,7 +91,7 @@ Intercepts traffic between the application and external services.
 the application process, which T-OUT2 already declares trusted, and
 verification recomputes the canonical argument hash, matches the message hash,
 and enforces the TTL. That catches arguments mutated between proposal and
-dispatch, and a stale proposal replayed after its TTL, **before GuardLLM hands
+dispatch, and a stale proposal replayed after its TTL, **before Vörður hands
 the call to the transport**.
 
 It does not cover what A3 does after that point. Once the checked call leaves
@@ -113,7 +113,7 @@ Receives every prompt the application sends and returns every completion. Applie
 
 **Third-party exposure.** Even where A4 behaves exactly as contracted, retained prompts are a target for whoever breaches the provider and a source for whoever subpoenas it. The disclosure creates attack surface that outlives the request.
 
-The application itself, the policy configuration, and the principal identity are **trusted**. GuardLLM does not defend against an attacker who can edit `PolicyConfig`, mint principal sessions, or run code in the application process.
+The application itself, the policy configuration, and the principal identity are **trusted**. Vörður does not defend against an attacker who can edit `PolicyConfig`, mint principal sessions, or run code in the application process.
 
 ## Threats In Scope (T-IN)
 
@@ -138,19 +138,19 @@ The application itself, the policy configuration, and the principal identity are
 
 | ID     | Threat                                                                              | Why out of scope                                                                 |
 |--------|--------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
-| T-OUT1 | Model not honoring `<untrusted_content>` framing                                     | Application layer choice; GuardLLM provides the framing, the application chooses to use it. Use stronger models or system-prompt discipline. |
+| T-OUT1 | Model not honoring `<untrusted_content>` framing                                     | Application layer choice; Vörður provides the framing, the application chooses to use it. Use stronger models or system-prompt discipline. |
 | T-OUT2 | Compromise of the application process                                                | A1/A2/A3 do not include local code execution. If the attacker can edit policy, the game is over. |
 | T-OUT3 | Misconfigured policy admitting a destructive tool to untrusted principals            | Operator responsibility; production checklist covers this.                       |
-| T-OUT4 | Attacks requiring the network attacker to break TLS                                  | TLS is a layer below GuardLLM.                                                   |
+| T-OUT4 | Attacks requiring the network attacker to break TLS                                  | TLS is a layer below Vörður.                                                   |
 | T-OUT5 | Side-channel timing attacks on the detector                                          | Heuristics are intentionally fast; we do not claim timing-side-channel resistance. |
-| T-OUT6 | Adversarial perturbation of LLM weights (model supply-chain)                         | Layer above GuardLLM; use trusted model sources.                                 |
-| T-OUT7 | Vulnerabilities in `beautifulsoup4`, `confusables`, or other runtime deps           | Tracked via Dependabot and pip-audit; CVEs fixed by upgrading, not patched in GuardLLM. |
+| T-OUT6 | Adversarial perturbation of LLM weights (model supply-chain)                         | Layer above Vörður; use trusted model sources.                                 |
+| T-OUT7 | Vulnerabilities in `beautifulsoup4`, `confusables`, or other runtime deps           | Tracked via Dependabot and pip-audit; CVEs fixed by upgrading, not patched in Vörður. |
 | T-OUT8 | Detection of human-targeted social engineering not aimed at the model                | Not a content-injection threat.                                                  |
 | T-OUT9 | Authentication and access control on the gateway's own HTTP surface                 | The gateway is designed to run inside the trust boundary of the application it serves, behind that deployment's existing authentication, and deliberately ships none of its own. Access control at the port is A-AS11. |
 
 ## Assumptions
 
-GuardLLM relies on these assumptions. If any of them is violated, the corresponding mitigations may not hold.
+Vörður relies on these assumptions. If any of them is violated, the corresponding mitigations may not hold.
 
 | ID     | Assumption                                                                          | Failure mode if violated                                       |
 |--------|--------------------------------------------------------------------------------------|----------------------------------------------------------------|
@@ -171,20 +171,20 @@ GuardLLM relies on these assumptions. If any of them is violated, the correspond
 | A-AS7  | `<untrusted_content>` framing is preserved through to the model                     | Without framing the model sees untrusted text as system-level  |
 | A-AS8  | Only trusted application adapters construct `AuthorizationEvent`s                    | An attacker who can mint `AuthorizationEvent`s in-process holds authorization authority; the library validates event contents, not origin |
 | A-AS9  | The application calls `check_outbound` on every outbound channel it *can*, including the content carried in tool-call arguments, and enforces a block. **Scope:** this covers tool-call arguments, tool responses, and outbound payloads. It does not cover the prompt sent to an inference provider, which is a channel `check_outbound` is not called on and could not usefully be called on, since blocking it would block the request itself. That gap is T-IN13, not an instance of this assumption being violated | Egress DLP, provenance, and canary checks never run on that channel, so untrusted or sensitive content leaves uninspected. `check_tool_call` gates the *action* (policy, rate limit, binding) and does not inspect argument content: gating a send does not inspect what is sent. A missed high-confidence DLP or canary block also means egress-feedback escalation never fires, so subsequent tool calls are not tightened |
-| A-AS10 | **Gateway only.** `X-GuardLLM-Session` is treated as a bearer credential by the client and by any intermediary that can see it | A party holding a session id joins that session: it inherits the session's contamination and escalation state, contributes decisions to its chain, and can read that chain through `GET /sessions/<id>`, `GET /forensics/<id>` and `GET /support/<id>`. Joining a contaminated session only ever tightens what the joiner may do, so this is a disclosure and interference risk rather than a way to escape enforcement |
+| A-AS10 | **Gateway only.** `X-Vordur-Session` is treated as a bearer credential by the client and by any intermediary that can see it | A party holding a session id joins that session: it inherits the session's contamination and escalation state, contributes decisions to its chain, and can read that chain through `GET /sessions/<id>`, `GET /forensics/<id>` and `GET /support/<id>`. Joining a contaminated session only ever tightens what the joiner may do, so this is a disclosure and interference risk rather than a way to escape enforcement |
 | A-AS11 | **Gateway only.** The gateway's HTTP port is reachable only by the applications it serves | The gateway ships no authentication. `GET /sessions` and `GET /forensics` list every live session id, so a party that can reach the port can enumerate sessions rather than having to guess a `uuid4`, and then read or join any of them per A-AS10. Put the port behind whatever authentication the deployment already runs; do not publish it |
 
 ## Defense-in-Depth Reminder
 
-GuardLLM materially reduces risk in T-IN1 through T-IN12. It does not eliminate it. Applications should also have:
+Vörður materially reduces risk in T-IN1 through T-IN12. It does not eliminate it. Applications should also have:
 
 - Strong authentication and authorization for principals
 - Network and runtime isolation between tools
 - Secret management with rotation
-- Monitoring and incident response that consumes GuardLLM's audit events
-- Rate limiting at the request layer (not only inside GuardLLM)
+- Monitoring and incident response that consumes Vörður's audit events
+- Rate limiting at the request layer (not only inside Vörður)
 
-The benchmark numbers in `benchmarks/results.md` are GuardLLM's measured effectiveness on the documented suites; they are not a guarantee against novel attack classes that emerge after release.
+The benchmark numbers in `benchmarks/results.md` are Vörður's measured effectiveness on the documented suites; they are not a guarantee against novel attack classes that emerge after release.
 
 ## Updating This Document
 

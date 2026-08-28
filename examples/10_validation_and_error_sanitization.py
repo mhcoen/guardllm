@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from _bootstrap import ROOT  # noqa: F401
 
-from guardllm.security.error_sanitizer import (
+from vordur.security.error_sanitizer import (
     InvalidParamsError,
     PermissionDeniedError,
     sanitize_error,
 )
-from guardllm.security.validation import validate_arguments
+from vordur.security.validation import validate_arguments
 
 
 def checked_dispatch(tool: str, args: dict) -> dict:

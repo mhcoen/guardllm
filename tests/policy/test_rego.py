@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from guardllm.policy import PolicyDecision, RegoPolicy, build_input, decide
+from vordur.policy import PolicyDecision, RegoPolicy, build_input, decide
 
 _HERE = Path(__file__).parent
 _OPA = shutil.which("opa")
@@ -29,7 +29,7 @@ pytest.importorskip("wasmtime", reason="wasmtime is not installed")
 def policy(tmp_path_factory) -> RegoPolicy:
     bundle = tmp_path_factory.mktemp("rego") / "bundle.tar.gz"
     subprocess.run(  # noqa: S603 - fixed argv, no shell, path from shutil.which
-        [_OPA, "build", "-t", "wasm", "-e", "guardllm/deny", "example.rego", "-o", str(bundle)],
+        [_OPA, "build", "-t", "wasm", "-e", "vordur/deny", "example.rego", "-o", str(bundle)],
         cwd=_HERE,
         check=True,
         capture_output=True,
@@ -53,7 +53,7 @@ class TestInputDocument:
         )
         assert doc["tool"] == "wire_funds"
         assert doc["args"] == {"amount": 100}
-        assert doc["guardllm"] == {
+        assert doc["vordur"] == {
             "session_contaminated": True,
             "session_escalated": True,
             # Sorted so a policy comparing the list is not at the mercy of
@@ -82,14 +82,14 @@ class TestInputDocument:
 
     def test_the_defaults_are_the_safe_ones(self):
         doc = build_input(tool="x")
-        facts = doc["guardllm"]
+        facts = doc["vordur"]
         assert facts["session_contaminated"] is False
         assert facts["session_escalated"] is False
         assert facts["untrusted_sources"] == []
 
 
 class TestOrdering:
-    """A Rego allow must never overturn a GuardLLM deny."""
+    """A Rego allow must never overturn a Vörður deny."""
 
     class _AlwaysAllows:
         def evaluate(self, _doc):
@@ -99,10 +99,10 @@ class TestOrdering:
         def evaluate(self, _doc):
             return PolicyDecision(allowed=False, reasons=("policy says no",))
 
-    def test_a_guardllm_deny_is_final_and_the_policy_is_not_consulted(self):
+    def test_a_vordur_deny_is_final_and_the_policy_is_not_consulted(self):
         """The policy is not merely overruled here, it is never asked.
 
-        A policy able to overturn a GuardLLM deny would be a way to configure
+        A policy able to overturn a Vörður deny would be a way to configure
         the enforcement off, so the call is not made at all.
         """
         asked = []
@@ -120,7 +120,7 @@ class TestOrdering:
         )
         assert verdict.allowed is False
         assert verdict.reasons == ("session escalated=deny",)
-        assert asked == [], "the policy was consulted on a GuardLLM deny"
+        assert asked == [], "the policy was consulted on a Vörður deny"
 
     def test_a_policy_may_narrow_an_allow(self):
         verdict = decide(
@@ -156,7 +156,7 @@ class TestCompiledPolicy:
     """Real Rego, compiled to WASM by OPA, evaluated in process."""
 
     def test_a_rule_reading_session_state_denies(self, policy):
-        """The rule a customer cannot write without GuardLLM.
+        """The rule a customer cannot write without Vörður.
 
         OPA has no way to learn that this session ingested untrusted content
         three turns ago; that fact only exists because the library computed it.
@@ -198,7 +198,7 @@ class TestCompiledPolicy:
 
         bundle = tmp_path / "b.tar.gz"
         subprocess.run(  # noqa: S603 - fixed argv, no shell
-            [_OPA, "build", "-t", "wasm", "-e", "guardllm/deny", "example.rego", "-o", str(bundle)],
+            [_OPA, "build", "-t", "wasm", "-e", "vordur/deny", "example.rego", "-o", str(bundle)],
             cwd=_HERE,
             check=True,
             capture_output=True,
@@ -233,14 +233,14 @@ class TestInputVersion:
     """
 
     def test_the_document_carries_its_version(self):
-        from guardllm.policy import POLICY_INPUT_VERSION
+        from vordur.policy import POLICY_INPUT_VERSION
 
         assert POLICY_INPUT_VERSION == 1
         assert build_input(tool="x")["version"] == POLICY_INPUT_VERSION
 
     def test_the_version_does_not_disturb_the_rest_of_the_schema(self):
         doc = build_input(tool="x")
-        assert set(doc) == {"version", "user", "tool", "args", "guardllm"}
+        assert set(doc) == {"version", "user", "tool", "args", "vordur"}
 
     @_needs_opa
     def test_a_policy_can_branch_on_it(self, policy):
@@ -266,7 +266,7 @@ class TestInputVersion:
 #: A rule whose only condition lives in the bundle's own data document. It
 #: needs no builtin, so it loads; if the data is not there, the reference is
 #: undefined, the rule body is undefined, and the deny does not fire.
-_DATA_POLICY = """package guardllm
+_DATA_POLICY = """package vordur
 
 deny contains msg if {
     some blocked in data.config.blocked_tools
@@ -278,7 +278,7 @@ deny contains msg if {
 #: `sprintf` is not compiled into the WASM module; OPA expects the host to
 #: supply it. It is the common case, because it is how a deny message
 #: interpolates what it objected to.
-_BUILTIN_POLICY = """package guardllm
+_BUILTIN_POLICY = """package vordur
 
 deny contains msg if {
     input.tool == "wire_funds"
@@ -295,7 +295,7 @@ def _build(tmp_path, source: str, data: str | None = None) -> Path:
         (tmp_path / "config" / "data.json").write_text(data)
     bundle = tmp_path / "bundle.tar.gz"
     subprocess.run(  # noqa: S603 - fixed argv, no shell, path from shutil.which
-        [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "guardllm/deny", "-o", str(bundle)],
+        [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "vordur/deny", "-o", str(bundle)],
         cwd=tmp_path,
         check=True,
         capture_output=True,
@@ -328,7 +328,7 @@ class TestBundleData:
         bundle = _build(tmp_path, _DATA_POLICY, '{"blocked_tools": ["search"]}')
         document = {"tool": "search"}
         native = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            [_OPA, "eval", "-b", ".", "-I", "data.guardllm.deny"],
+            [_OPA, "eval", "-b", ".", "-I", "data.vordur.deny"],
             cwd=tmp_path,
             input=json.dumps(document),
             capture_output=True,
@@ -413,7 +413,7 @@ class TestBundleDataLayout:
             (d / "data.json").write_text('{"blocked_tools": ["search"]}')
         bundle = tmp_path / "bundle.tar.gz"
         subprocess.run(  # noqa: S603 - fixed argv, no shell
-            [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "guardllm/deny", "-o", str(bundle)],
+            [_OPA, "build", "-t", "wasm", "-b", ".", "-e", "vordur/deny", "-o", str(bundle)],
             cwd=tmp_path,
             check=True,
             capture_output=True,

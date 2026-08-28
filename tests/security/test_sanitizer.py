@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from guardllm.security.sanitizer import sanitize
-from guardllm.security.types import ContentType
+from vordur.security.sanitizer import sanitize
+from vordur.security.types import ContentType
 
 # ===================================================================
 # HTML hidden element stripping (spec tests 1-9)
@@ -414,7 +414,7 @@ def test_html_sanitizer_handles_tag_with_none_attrs():
     assert div is not None
     div.attrs = None
 
-    with patch("guardllm.security.sanitizer.BeautifulSoup", return_value=soup):
+    with patch("vordur.security.sanitizer.BeautifulSoup", return_value=soup):
         result = sanitize(html, ContentType.HTML)
 
     assert "ok" in result.cleaned_text

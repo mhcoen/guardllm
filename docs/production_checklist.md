@@ -4,7 +4,7 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-Use this checklist before deploying guardllm-backed flows.
+Use this checklist before deploying vordur-backed flows.
 
 ## 1. Dependency and Environment
 

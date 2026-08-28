@@ -2,12 +2,12 @@
 
 import pytest
 
-from guardllm.security.outbound_dlp import (
+from vordur.security.outbound_dlp import (
     OutboundDLP,
     _scan_secrets,
     _shannon_entropy,
 )
-from guardllm.security.types import PolicyConfig, SecurityContext, TrustLevel
+from vordur.security.types import PolicyConfig, SecurityContext, TrustLevel
 
 
 @pytest.fixture
@@ -336,8 +336,8 @@ class TestOverlapCoversTheWholePayload:
     )
 
     def _session(self, ingested: str):
-        from guardllm import Guard
-        from guardllm.security.types import SecurityContext, TrustLevel
+        from vordur import Guard
+        from vordur.security.types import SecurityContext, TrustLevel
 
         guard = Guard()
         guard.process_inbound(
@@ -372,7 +372,7 @@ class TestOverlapCoversTheWholePayload:
     def test_content_beyond_what_is_scanned_is_refused_not_passed(self):
         """Refusing is the honest answer; reporting clean on unread content is
         the bug this replaced."""
-        from guardllm.security.normalization import MAX_OVERLAP_SCAN_CHARS
+        from vordur.security.normalization import MAX_OVERLAP_SCAN_CHARS
 
         guard, egress = self._session(f"retrieved document. {self.PASSAGE}")
         result = guard.check_outbound("x" * (MAX_OVERLAP_SCAN_CHARS + 100), egress)

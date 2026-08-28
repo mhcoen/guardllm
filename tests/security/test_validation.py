@@ -9,7 +9,7 @@ Covers:
 - Missing required field (provenance with too many fields) -> invalid
 """
 
-from guardllm.security.validation import (
+from vordur.security.validation import (
     validate_arguments,
 )
 
@@ -452,7 +452,7 @@ class TestPolicyArgumentLimits:
     """
 
     def test_a_policy_limit_is_enforced(self):
-        from guardllm.security.validation import validate_arguments
+        from vordur.security.validation import validate_arguments
 
         assert validate_arguments("search", {"query": "ab"}).valid
         tightened = validate_arguments("search", {"query": "ab"}, {"query": {"max_chars": 1}})
@@ -460,8 +460,8 @@ class TestPolicyArgumentLimits:
         assert "exceeds maximum size" in tightened.errors[0]
 
     def test_it_reaches_the_gate(self):
-        from guardllm import Guard
-        from guardllm.security.types import PolicyConfig
+        from vordur import Guard
+        from vordur.security.types import PolicyConfig
 
         guard = Guard()
         policy = PolicyConfig(argument_limits={"query": {"max_chars": 1}})
@@ -472,19 +472,19 @@ class TestPolicyArgumentLimits:
         ).allowed
 
     def test_a_partial_override_keeps_its_siblings(self):
-        from guardllm.security.validation import _merged_limits
+        from vordur.security.validation import _merged_limits
 
         merged = _merged_limits({"query": {"max_chars": 1}})
         assert merged["query"] == {"max_chars": 1, "strip_unicode": True}
 
     def test_it_can_add_an_argument_the_defaults_do_not_know(self):
-        from guardllm.security.validation import validate_arguments
+        from vordur.security.validation import validate_arguments
 
         result = validate_arguments("t", {"ticket": "AB-1234"}, {"ticket": {"pattern": r"^\d+$"}})
         assert not result.valid
 
     def test_the_defaults_are_never_mutated(self):
-        from guardllm.security.validation import ARGUMENT_LIMITS, _merged_limits
+        from vordur.security.validation import ARGUMENT_LIMITS, _merged_limits
 
         _merged_limits({"query": {"max_chars": 1}})
         assert ARGUMENT_LIMITS["query"]["max_chars"] == 1_000
@@ -506,7 +506,7 @@ class TestArgumentNamesAreNotEchoed:
     ]
 
     def test_a_credential_argument_name_is_not_quoted_back(self):
-        from guardllm.security.validation import validate_arguments
+        from vordur.security.validation import validate_arguments
 
         for secret in self.CREDENTIALS:
             result = validate_arguments("file_write", {secret: "../etc/passwd"})
@@ -517,7 +517,7 @@ class TestArgumentNamesAreNotEchoed:
     def test_it_does_not_reach_the_audit_record(self):
         import json
 
-        from guardllm import Guard
+        from vordur import Guard
 
         class Capture:
             def __init__(self):
@@ -534,14 +534,14 @@ class TestArgumentNamesAreNotEchoed:
 
     def test_an_ordinary_name_stays_readable(self):
         """The common error must not become unreadable to fix the rare one."""
-        from guardllm.security.validation import validate_arguments
+        from vordur.security.validation import validate_arguments
 
         assert "Parameter path" in validate_arguments("file_write", {"path": "../x"}).errors[0]
         long_name = "expect_any_anomaly_contains"
         assert long_name in validate_arguments("t", {long_name: "../x"}).errors[0]
 
     def test_the_digest_is_stable_so_reports_correlate(self):
-        from guardllm.security.validation import _safe_arg_label
+        from vordur.security.validation import _safe_arg_label
 
         secret = self.CREDENTIALS[0]
         assert _safe_arg_label(secret) == _safe_arg_label(secret)

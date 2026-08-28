@@ -35,8 +35,8 @@ What each example demonstrates:
 
 `demo_local_llm.py` runs a real LLM (Qwen2.5-3B-Instruct) through the same pipeline twice to demonstrate the full attack-and-defense cycle:
 
-1. **Without GuardLLM**: raw untrusted web content (with a hidden injection payload) is passed directly to the model alongside a sensitive CRM record. The model may follow the injection and exfiltrate the account number via a markdown link.
-2. **With GuardLLM**: the web content is sanitized (hidden div stripped, injection flagged), content is isolated with trust metadata, and the egress gate blocks outbound content that mixes sensitive data with untrusted context.
+1. **Without Vörður**: raw untrusted web content (with a hidden injection payload) is passed directly to the model alongside a sensitive CRM record. The model may follow the injection and exfiltrate the account number via a markdown link.
+2. **With Vörður**: the web content is sanitized (hidden div stripped, injection flagged), content is isolated with trust metadata, and the egress gate blocks outbound content that mixes sensitive data with untrusted context.
 
 ```bash
 pip install transformers torch accelerate

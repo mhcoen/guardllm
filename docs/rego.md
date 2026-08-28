@@ -4,18 +4,18 @@
 [Docs index](README.md)
 <!-- nav:end -->
 
-GuardLLM's own checks decide whether a call is safe. A Rego policy decides
+Vörður's own checks decide whether a call is safe. A Rego policy decides
 whether it is *permitted*, using facts nothing else in a normal stack knows.
 
 Needs the WASM runtime, which is not in the core install:
-`pip install 'guardllm[rego]'`.
+`pip install 'vordur[rego]'`.
 
 ## The seam
 
 OPA expresses who may do what. It has no way to learn that this session already
 ingested untrusted web content, or that an exfiltration was blocked two turns
-ago, because nothing in an ordinary stack computes those facts. GuardLLM
-computes exactly those. So GuardLLM produces the facts and Rego decides on
+ago, because nothing in an ordinary stack computes those facts. Vörður
+computes exactly those. So Vörður produces the facts and Rego decides on
 them.
 
 That makes the input document the real interface, more than the OPA wiring:
@@ -26,7 +26,7 @@ That makes the input document the real interface, more than the OPA wiring:
   "user":  {"id": "alice", "roles": ["support"]},
   "tool":  "wire_funds",
   "args":  {"amount": 100},
-  "guardllm": {
+  "vordur": {
     "session_contaminated": true,
     "session_escalated":    false,
     "untrusted_sources":    ["web_search"],
@@ -40,10 +40,10 @@ That makes the input document the real interface, more than the OPA wiring:
 Which lets a rule be written that cannot be written without it:
 
 ```rego
-package guardllm
+package vordur
 
 deny contains msg if {
-    input.guardllm.session_contaminated
+    input.vordur.session_contaminated
     input.tool == "wire_funds"
     msg := "contaminated session may not move money"
 }
@@ -52,11 +52,11 @@ deny contains msg if {
 ## Using it
 
 ```bash
-opa build -t wasm -e guardllm/deny policy.rego -o bundle.tar.gz
+opa build -t wasm -e vordur/deny policy.rego -o bundle.tar.gz
 ```
 
 ```python
-from guardllm.policy import RegoPolicy, build_input, decide
+from vordur.policy import RegoPolicy, build_input, decide
 
 policy = RegoPolicy("bundle.tar.gz")
 gate = guard.check_tool_call(tool, args, ctx)
@@ -94,7 +94,7 @@ Build with `-b` so the directory layout becomes the data path
 ### Builtins are refused, not stubbed
 
 OPA compiles most builtins into the WASM module. A few it does not, and expects
-the host to supply them; `builtins()` names exactly those. **GuardLLM supplies
+the host to supply them; `builtins()` names exactly those. **Vörður supplies
 none, and refuses at load any policy that needs one**, naming it.
 
 That refusal is the feature. The alternative is to answer such a call with
@@ -115,7 +115,7 @@ msg := "wire_funds is refused from a contaminated session"
 ```
 
 The fixture policy in this repository requires no host builtin at all, and
-neither does any rule written against `input.guardllm`.
+neither does any rule written against `input.vordur`.
 
 ## The stability contract
 
@@ -131,21 +131,21 @@ working across an increment rather than failing at the first changed field:
 deny contains msg if {
     input.version >= 1
     input.tool == "export_all"
-    input.guardllm.session_contaminated
+    input.vordur.session_contaminated
     msg := "no bulk export from a contaminated session"
 }
 ```
 
-`guardllm.policy.POLICY_INPUT_VERSION` is the current value.
+`vordur.policy.POLICY_INPUT_VERSION` is the current value.
 
 ## Ordering
 
-1. GuardLLM's own checks run first: binding, replay, validation, contamination,
+1. Vörður's own checks run first: binding, replay, validation, contamination,
    escalation.
-2. **A GuardLLM deny is final and the policy is not consulted.** Not merely
+2. **A Vörður deny is final and the policy is not consulted.** Not merely
    overruled: never asked. A policy able to overturn it would be a way to
    configure the enforcement off.
-3. On a GuardLLM allow, Rego is consulted and may still deny.
+3. On a Vörður allow, Rego is consulted and may still deny.
 
 Rego only ever narrows. This is the same strictest-wins rule the library
 already applies when contamination and escalation both fire.

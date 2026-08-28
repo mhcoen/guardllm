@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from guardllm.security.action_gate import ActionGate, ActionProposal
-from guardllm.security.types import (
+from vordur.security.action_gate import ActionGate, ActionProposal
+from vordur.security.types import (
     ConfirmationHandler,
     SecurityContext,
     TrustLevel,
@@ -200,7 +200,7 @@ class TestConfirmAllBelow:
 
     def test_requires_confirmation_below_threshold(self, gate, proposal):
         """UNTRUSTED principal requires confirmation when threshold is UNTRUSTED."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         ctx = SecurityContext(
             mode="client",
@@ -213,7 +213,7 @@ class TestConfirmAllBelow:
 
     def test_requires_confirmation_at_semi_trusted(self, gate, proposal):
         """SEMI_TRUSTED principal requires confirmation when threshold is SEMI_TRUSTED."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         ctx = SecurityContext(
             mode="client",
@@ -226,7 +226,7 @@ class TestConfirmAllBelow:
 
     def test_untrusted_requires_when_threshold_semi_trusted(self, gate, proposal):
         """UNTRUSTED (below SEMI_TRUSTED) requires confirmation."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         ctx = SecurityContext(
             mode="client",
@@ -239,7 +239,7 @@ class TestConfirmAllBelow:
 
     def test_trusted_skips_when_threshold_semi_trusted(self, gate, proposal):
         """TRUSTED (above SEMI_TRUSTED) does not require confirmation."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         ctx = SecurityContext(
             mode="client",
@@ -263,7 +263,7 @@ class TestConfirmAllBelow:
 
     def test_confirm_passes_trust_gated_flag_to_handler(self, gate, proposal):
         """confirm() passes trust_gated_confirmation context to handler."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         handler = _AcceptingHandler()
         ctx = SecurityContext(
@@ -279,7 +279,7 @@ class TestConfirmAllBelow:
 
     def test_web_derived_independent_of_confirm_all_below(self, gate, proposal):
         """Web-derived warning is additive, not gated by confirm_all_below."""
-        from guardllm.security.types import PolicyConfig
+        from vordur.security.types import PolicyConfig
 
         ctx = SecurityContext(
             mode="client",

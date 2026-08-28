@@ -12,8 +12,8 @@ import time
 
 import pytest
 
-from guardllm.security.request_binding import create_binding, verify_binding
-from guardllm.security.types import AuthorizationEvent
+from vordur.security.request_binding import create_binding, verify_binding
+from vordur.security.types import AuthorizationEvent
 
 
 @pytest.fixture

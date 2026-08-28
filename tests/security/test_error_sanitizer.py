@@ -17,7 +17,7 @@ import sqlite3
 
 import pytest
 
-from guardllm.security.error_sanitizer import (
+from vordur.security.error_sanitizer import (
     InvalidHandleError,
     InvalidParamsError,
     PermissionDeniedError,

@@ -1,8 +1,8 @@
-"""Local LLM demo: attack-and-defense cycle with GuardLLM.
+"""Local LLM demo: attack-and-defense cycle with Vörður.
 
 Shows the same pipeline twice:
-  RUN 1 - Without GuardLLM: injection succeeds, account number exfiltrated.
-  RUN 2 - With GuardLLM: contamination detected, egress gate blocks exfiltration.
+  RUN 1 - Without Vörður: injection succeeds, account number exfiltrated.
+  RUN 2 - With Vörður: contamination detected, egress gate blocks exfiltration.
 
 Requires: pip install transformers torch accelerate
 Model downloads automatically from HuggingFace on first run (~6 GB).
@@ -158,13 +158,13 @@ def check_exfiltration(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Run 1: Without GuardLLM
+# Run 1: Without Vörður
 # ---------------------------------------------------------------------------
 
 
 def run_without_guard(model, tokenizer) -> None:
     print("=" * 60)
-    print("RUN 1: Without GuardLLM")
+    print("RUN 1: Without Vörður")
     print("=" * 60)
     print()
 
@@ -213,16 +213,16 @@ def run_without_guard(model, tokenizer) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Run 2: With GuardLLM
+# Run 2: With Vörður
 # ---------------------------------------------------------------------------
 
 
 def run_with_guard(model, tokenizer) -> None:
-    from guardllm import Guard
-    from guardllm.security.types import ContentType, SecurityContext, SensitivityLevel, TrustLevel
+    from vordur import Guard
+    from vordur.security.types import ContentType, SecurityContext, SensitivityLevel, TrustLevel
 
     print("=" * 60)
-    print("RUN 2: With GuardLLM")
+    print("RUN 2: With Vörður")
     print("=" * 60)
     print()
 
@@ -239,7 +239,7 @@ def run_with_guard(model, tokenizer) -> None:
         content_type=ContentType.PLAINTEXT,
     )
     guard.process_inbound(crm_data, crm_ctx)
-    print("[GuardLLM] Ingested CRM record (trusted, sensitive)")
+    print("[Vörður] Ingested CRM record (trusted, sensitive)")
 
     # Step 2: Sanitize untrusted web content
     web_ctx = SecurityContext(
@@ -250,7 +250,7 @@ def run_with_guard(model, tokenizer) -> None:
         content_type=ContentType.HTML,
     )
     processed = guard.process_inbound(WEB_PAGE, web_ctx)
-    print("[GuardLLM] Processed web content (untrusted)")
+    print("[Vörður] Processed web content (untrusted)")
     if processed.warnings:
         for w in processed.warnings:
             print(f"  Warning: {w}")
@@ -291,7 +291,7 @@ def run_with_guard(model, tokenizer) -> None:
         source_id="email-tool",
     )
     outbound = guard.check_outbound(response, out_ctx)
-    print("[GuardLLM] Outbound egress check:")
+    print("[Vörður] Outbound egress check:")
     print(f"  Allowed: {outbound.allowed}")
     print(f"  Reason: {outbound.reason}")
     if outbound.contamination_triggered:
@@ -302,7 +302,7 @@ def run_with_guard(model, tokenizer) -> None:
 
     if not outbound.allowed:
         print("Result: EXFILTRATION BLOCKED")
-        print("  GuardLLM egress gate fired: sensitive content cannot leave")
+        print("  Vörður egress gate fired: sensitive content cannot leave")
         print("  via a channel contaminated by untrusted input.")
     else:
         print("Result: Outbound allowed (no sensitive content in output).")
@@ -316,9 +316,9 @@ def run_with_guard(model, tokenizer) -> None:
 
 def main() -> None:
     print()
-    print("GuardLLM Local LLM Demo")
-    print("Shows how prompt injection exfiltrates data without GuardLLM,")
-    print("and how GuardLLM's defense-in-depth pipeline blocks it.")
+    print("Vörður Local LLM Demo")
+    print("Shows how prompt injection exfiltrates data without Vörður,")
+    print("and how Vörður's defense-in-depth pipeline blocks it.")
     print()
 
     model, tokenizer = load_model()
@@ -330,12 +330,12 @@ def main() -> None:
     print("Summary")
     print("=" * 60)
     print()
-    print("Without GuardLLM:")
+    print("Without Vörður:")
     print("  - Raw HTML (with hidden injection) passed directly to model")
     print("  - No sanitization, no content isolation, no egress checks")
     print("  - Model may follow injected instructions and leak data")
     print()
-    print("With GuardLLM:")
+    print("With Vörður:")
     print("  - HTML sanitized: hidden div stripped, injection flagged")
     print("  - Content isolated with trust/source metadata")
     print("  - Egress gate checks outbound for sensitive data contamination")

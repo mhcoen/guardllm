@@ -1,52 +1,53 @@
-# GuardLLM
+# Vörður
 
-[![CI](https://github.com/mhcoen/guardllm/actions/workflows/ci.yml/badge.svg)](https://github.com/mhcoen/guardllm/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/mhcoen/guardllm/actions/workflows/codeql.yml/badge.svg)](https://github.com/mhcoen/guardllm/actions/workflows/codeql.yml)
+[![CI](https://github.com/mhcoen/vordur/actions/workflows/ci.yml/badge.svg)](https://github.com/mhcoen/vordur/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/mhcoen/vordur/actions/workflows/codeql.yml/badge.svg)](https://github.com/mhcoen/vordur/actions/workflows/codeql.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-GuardLLM (`guardllm`) is a Python library that puts deterministic security controls in the application around an LLM. It makes no external API calls, so the decision path has no network round trip, and it has three runtime dependencies, none of them a model.
+Vörður (package `vordur`) is a Python library that puts deterministic security controls in the application around an LLM. It makes no external API calls, so the decision path has no network round trip, and it has three runtime dependencies, none of them a model.
 
-> **GuardLLM is not protecting LLMs. It is protecting the companies that use them.**
+> **Vörður is not protecting LLMs. It is protecting the companies that use them.**
 >
-> GuardLLM assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate GuardLLM by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through GuardLLM.
+> Vörður assumes an LLM cannot be made secure. It treats the model as an untrusted stochastic actor and places deterministic controls in the surrounding application over provenance, model-visible data, tool authorization, request integrity, privacy restoration, and egress. Prompt-injection detection is a necessary defense-in-depth measure, but it is a small part of the system: a detection miss does not by itself grant authority or bypass the other controls. Evaluate Vörður by the policy invariants it preserves when the model is compromised, not by injection-detector F1 alone. Those guarantees apply to security-relevant paths mediated through Vörður.
 
-**[Watch an attack get stopped →](https://mhcoen.github.io/guardllm/demo/guardllm_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
-[A record asks for a write and a user authorizes one](https://mhcoen.github.io/guardllm/demo/guardllm_mcp_demo.html), against a third-party MCP tool surface.
-[See all the demos](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
+**[Watch an attack get stopped →](https://mhcoen.github.io/vordur/demo/vordur_demos.html)** A hidden instruction is stripped out of a web page, a credential is caught on its way out, and the next tool call is refused because of what just happened. Every value on the page is real output from the library.
+[A record asks for a write and a user authorizes one](https://mhcoen.github.io/vordur/demo/vordur_mcp_demo.html), against a third-party MCP tool surface.
+[See all the demos](https://mhcoen.github.io/vordur/demo/vordur_surface_map.html) &middot; [Run them yourself](tutorials/README.md)
 
-## How GuardLLM Works
+## How Vörður Works
 
-![GuardLLM trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
+![Vörður trust boundaries and the session-risk loop](docs/diagrams/threat_model.svg)
 
 Data changes hands at three party crossings: ingress, the model, and egress. Authorization and integrity are gates inside the trusted region, so they admit or refuse a flow and never move data across a boundary. The four edges on the retained session state are the loop. Ingress writes labels, the authorization gates and egress checks read them, and a remembered canary or a DLP hard block at egress writes escalation back, so a block now tightens a later call in the same session. Content passes through the model. Labels travel around it, which is why a decision at egress can still read what ingress recorded. The model crossing is the one no control inspects ([T-IN13](docs/threat_model.md)).
 
 Decisions read two inputs: a per-flow `SecurityContext` the host supplies on every call, and the session state the pipeline derives and retains itself. Neither is inferred from content. Not every check reads them. Request binding reads neither: it is an intra-process consistency check over the tool, its arguments, the message, and a TTL. Error sanitization is unconditional and takes no context at all.
 
-> New to GuardLLM? The [visual mechanism guide](https://mhcoen.github.io/guardllm/docs/mechanisms/) draws six mechanisms one at a time: session risk, canary tokens, request binding, the privacy vault, mediated paths, and the two questions asked of one tool call.
+> New to Vörður? The [visual mechanism guide](https://mhcoen.github.io/vordur/docs/mechanisms/) draws six mechanisms one at a time: session risk, canary tokens, request binding, the privacy vault, mediated paths, and the two questions asked of one tool call.
 
-The loop is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the [published surface evidence](benchmarks/published/surface_controls.md), while GuardLLM reaches 100%, because a decision late in the session can still read what an earlier stage recorded. That is a measurement of one composition, not a proof that no composition could be built to do it.
+The loop is the architectural gap that point tools leave open. Individual tools like OPA (policy), Redis (rate limiting), Casbin (RBAC), and JSON Schema (validation) are strong at their respective checks, but they do not share security context. Carrying state from an egress outcome into a later tool decision is not something any of them does on its own, so a composition has to add that wiring itself. The stack we evaluated does not: `surface_stack` reaches 65.98% on the 5,224 surface cases in the [published surface evidence](benchmarks/published/surface_controls.md), while Vörður reaches 100%, because a decision late in the session can still read what an earlier stage recorded. That is a measurement of one composition, not a proof that no composition could be built to do it.
 
-That is not an argument against those tools, and GuardLLM replaces none of them. It computes the facts they have no way to learn and hands them over: `guardllm.policy.build_input` gives a Rego rule `session_contaminated`, `session_escalated`, `injection_detected` and the rest, so a policy can say that a session which ingested untrusted content may not move money. OPA cannot express that on its own, not because it is a weak policy engine but because nothing else in the stack computes the fact the rule has to read. See [docs/rego.md](docs/rego.md).
+That is not an argument against those tools, and Vörður replaces none of them. It computes the facts they have no way to learn and hands them over: `vordur.policy.build_input` gives a Rego rule `session_contaminated`, `session_escalated`, `injection_detected` and the rest, so a policy can say that a session which ingested untrusted content may not move money. OPA cannot express that on its own, not because it is a weak policy engine but because nothing else in the stack computes the fact the rule has to read. See [docs/rego.md](docs/rego.md).
 
 ## Get Started
 
-> **Do not install from PyPI.** The published `guardllm` package is 1.1.0 and predates
-> both the session-risk feedback loop this README describes and the detector, DLP, canary,
-> and isolation hardening in 1.2.0. Install from source until a current release is
-> published.
+> **Do not install from PyPI.** There is no `vordur` release yet. The `guardllm`
+> package on PyPI is 1.1.0, published under this project's former name; it predates
+> both the session-risk feedback loop this README describes and the detector, DLP,
+> canary, and isolation hardening in 1.2.0, and it will not be updated. Install from
+> source until a `vordur` release is published.
 
 Install the current version from source:
 
 ```bash
-pip install git+https://github.com/mhcoen/guardllm.git
+pip install git+https://github.com/mhcoen/vordur.git
 ```
 
 To modify the library, run the tests, or work through the tutorials, clone it instead:
 
 ```bash
-git clone https://github.com/mhcoen/guardllm.git
-cd guardllm
+git clone https://github.com/mhcoen/vordur.git
+cd vordur
 pip install -e '.[dev]'
 ```
 
@@ -70,17 +71,17 @@ pip install -e '.[dev]'
 
 ## Security Disclaimer
 
-GuardLLM applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
+Vörður applies a defense-in-depth security model across untrusted content handling, tool authorization, outbound controls, provenance tracking, replay resistance, and auditability. These controls materially raise the bar against prompt injection, data exfiltration, and cross-boundary abuse.
 
-However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. GuardLLM reduces risk; it does not eliminate it. Use GuardLLM as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
+However, perfect security is not achievable in any system, especially LLM-based systems interacting with external content and tools. Vörður reduces risk; it does not eliminate it. Use Vörður as one layer in a broader security architecture that also includes robust authentication/authorization, network and runtime isolation, secret management, monitoring, and incident response.
 
-Production protection depends on mediating every relevant path through GuardLLM and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. What that means in practice, and why one unmediated path degrades the paths that are mediated, is illustrated in [The Path Around the Guard](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html). See the [production checklist](docs/production_checklist.md) and the [documented compatibility exceptions](SECURITY.md#documented-compatibility-exceptions) in SECURITY.md.
+Production protection depends on mediating every relevant path through Vörður and on enabling the documented fail-closed policy settings, since several defaults are deliberately permissive for compatibility. What that means in practice, and why one unmediated path degrades the paths that are mediated, is illustrated in [The Path Around the Guard](https://mhcoen.github.io/vordur/docs/mechanisms/05-mediated-paths.html). See the [production checklist](docs/production_checklist.md) and the [documented compatibility exceptions](SECURITY.md#documented-compatibility-exceptions) in SECURITY.md.
 
 ## Example: A Fact Recorded At Ingest Refuses A Later Call
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import PolicyConfig
+from vordur import Guard
+from vordur.security.types import PolicyConfig
 
 guard = Guard()
 policy = PolicyConfig(contaminated_tool_policy="deny")
@@ -206,28 +207,28 @@ Every capability the README names, with the call or setting that reaches it. Row
 
 | Capability | Reach | Docs |
 |---|---|---|
-| OpenAI-compatible proxy | `python -m guardllm.gateway` | [gateway](docs/gateway.md) |
-| YAML policy | `guardllm.config.load_policy` | [configuration](docs/configuration.md) |
-| Rego, evaluated locally | `guardllm.policy.RegoPolicy` | [rego](docs/rego.md) |
+| OpenAI-compatible proxy | `python -m vordur.gateway` | [gateway](docs/gateway.md) |
+| YAML policy | `vordur.config.load_policy` | [configuration](docs/configuration.md) |
+| Rego, evaluated locally | `vordur.policy.RegoPolicy` | [rego](docs/rego.md) |
 | Session forensics viewer | gateway only, no library call | [gateway](docs/gateway.md) |
-| Diagnostic bundle | `guardllm.support.write_bundle`, `python -m guardllm.support` | [support](docs/support.md) |
+| Diagnostic bundle | `vordur.support.write_bundle`, `python -m vordur.support` | [support](docs/support.md) |
 
 ## Benchmark Highlights
 
-GuardLLM is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
+Vörður is benchmarked head-to-head against leading commercial and open-source threat mitigation systems, including OpenAI, Anthropic, AWS Bedrock Guardrails, Azure Prompt Shields, Meta Llama Guard 4, and ProtectAI DeBERTa.
 
-**Detection is not the security boundary.** The text benchmark below measures one supporting signal, not GuardLLM's end-to-end security model.
+**Detection is not the security boundary.** The text benchmark below measures one supporting signal, not Vörður's end-to-end security model.
 
 Text benchmark (prompt-injection detection, `3823` records). **These vendor figures are not
 currently reproducible from a tracked artifact.** The injection section of the checked-in
 [comparison.json](benchmarks/results/comparison.json) is empty, and the runs that produced the
 table below live under `benchmarks/runs/`, which is not committed. Treat them as reported
 rather than verifiable until a published evidence bundle lands. The non-text figures below
-and GuardLLM's own surface result are backed by the tracked artifact.
+and Vörður's own surface result are backed by the tracked artifact.
 
 | Strategy | F1 | Precision | Recall | Avg Latency |
 |---|---:|---:|---:|---:|
-| GuardLLM | 85.46 | 99.10% | 75.12% | 0.07ms |
+| Vörður | 85.46 | 99.10% | 75.12% | 0.07ms |
 | OpenAI (`gpt-4.1-mini`) | 61.79 | 96.47% | 45.45% | 615.68ms |
 | ProtectAI DeBERTa | 53.75 | 80.47% | 40.35% | 27.10ms |
 | Anthropic (`claude-3-5-haiku-latest`) | 49.29 | 89.00% | 34.08% | 662.14ms |
@@ -241,7 +242,7 @@ and GuardLLM's own surface result are backed by the tracked artifact.
 
 Table emphasizes F1/recall because class imbalance (`1021` attacks, `2802` benign) inflates accuracy for low-recall strategies.
 
-**On the latency column.** GuardLLM's `0.07ms` is a local function call. Against the two systems that run a neural network locally, that is `387x` ProtectAI DeBERTa and `2550x` Llama Guard 4 on an A100. Against the hosted filters it is `2991x` to `10690x`, most of which is network round trip, so the local comparisons are the ones to reason from. The vendor latencies behind these ratios carry the column's caveat: reported, not reproducible from a tracked artifact.
+**On the latency column.** Vörður's `0.07ms` is a local function call. Against the two systems that run a neural network locally, that is `387x` ProtectAI DeBERTa and `2550x` Llama Guard 4 on an A100. Against the hosted filters it is `2991x` to `10690x`, most of which is network round trip, so the local comparisons are the ones to reason from. The vendor latencies behind these ratios carry the column's caveat: reported, not reproducible from a tracked artifact.
 
 Non-text controls: `5224/5224` (`100%`) across 8 security kinds. Every figure here is generated from the [published surface evidence](benchmarks/published/surface_controls.md), which carries the run id, commit, and dataset hash that produced it.
 
@@ -274,8 +275,8 @@ A single team should be able to protect an application without paying. Organizat
 ## Documentation
 
 - **Getting started**: [Quick Start](docs/quick_start.md) | [Tutorials](tutorials/README.md) | [Documentation index](docs/README.md)
-- **Visual mechanism guide**: [All six strips](https://mhcoen.github.io/guardllm/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/guardllm/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/guardllm/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/guardllm/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/guardllm/docs/mechanisms/04-privacy-vault.html) | [Mediated paths](https://mhcoen.github.io/guardllm/docs/mechanisms/05-mediated-paths.html) | [Two questions](https://mhcoen.github.io/guardllm/docs/mechanisms/06-two-questions.html)
-- **Demos**: [Executable demos](demo/README.md) | [System map](https://mhcoen.github.io/guardllm/demo/guardllm_surface_map.html)
+- **Visual mechanism guide**: [All six strips](https://mhcoen.github.io/vordur/docs/mechanisms/) | [Session risk](https://mhcoen.github.io/vordur/docs/mechanisms/01-session-risk.html) | [Canary tokens](https://mhcoen.github.io/vordur/docs/mechanisms/02-canary.html) | [Request binding](https://mhcoen.github.io/vordur/docs/mechanisms/03-request-binding.html) | [Privacy vault](https://mhcoen.github.io/vordur/docs/mechanisms/04-privacy-vault.html) | [Mediated paths](https://mhcoen.github.io/vordur/docs/mechanisms/05-mediated-paths.html) | [Two questions](https://mhcoen.github.io/vordur/docs/mechanisms/06-two-questions.html)
+- **Demos**: [Executable demos](demo/README.md) | [System map](https://mhcoen.github.io/vordur/demo/vordur_surface_map.html)
 - **Architecture & API**: [Security Architecture](docs/security.md) | [Threat Model](docs/threat_model.md) | [API Reference](docs/api_spec.md) | [Configuration](docs/configuration.md)
 - **Integration**: [Integration Patterns](docs/integration.md) | [OAuth/OIDC](docs/oauth_integration.md) | [Framework Integrations](docs/integrations/README.md)
 - **Operations**: [Production Checklist](docs/production_checklist.md) | [Troubleshooting](docs/troubleshooting.md) | [Benchmark Methodology](benchmarks/methodology.md) | [Canonical Results](benchmarks/results.md)
@@ -296,7 +297,7 @@ python benchmarks/run_benchmarks.py
 python benchmarks/compare_mitigations.py
 ```
 
-Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves. See [CONTRIBUTING.md](https://github.com/mhcoen/guardllm/blob/main/CONTRIBUTING.md) for the dev workflow and [SECURITY.md](SECURITY.md) for the vulnerability reporting policy.
+Collaborators are welcome, especially for new vulnerability classes, benchmark cases, and hardening improvements as the threat landscape evolves. See [CONTRIBUTING.md](https://github.com/mhcoen/vordur/blob/main/CONTRIBUTING.md) for the dev workflow and [SECURITY.md](SECURITY.md) for the vulnerability reporting policy.
 
 ## Author
 

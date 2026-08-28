@@ -34,13 +34,13 @@ token before the prompt is sent, and puts the real value back only where your
 policy says it may go.
 
 The vault is entirely opt-in. Without `privacy=PrivacyConfig(...)` nothing in
-this document runs and no other GuardLLM verdict changes.
+this document runs and no other Vörður verdict changes.
 
 ## Enabling it
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import (
+from vordur import Guard
+from vordur.security.types import (
     PrivacyConfig,
     PIIClass,
     Destination,
@@ -211,19 +211,19 @@ A deployment that needs a token to keep meaning the same person across a
 restart attaches a store:
 
 ```python
-from guardllm import Guard
-from guardllm.security.types import PrivacyConfig
-from guardllm.security.vault_store import EncryptedFileVaultStore
+from vordur import Guard
+from vordur.security.types import PrivacyConfig
+from vordur.security.vault_store import EncryptedFileVaultStore
 
-# Reads the key from GUARDLLM_VAULT_KEY, and refuses if it is unset.
-store = EncryptedFileVaultStore.from_env("/var/lib/guardllm/vault.bin")
+# Reads the key from VORDUR_VAULT_KEY, and refuses if it is unset.
+store = EncryptedFileVaultStore.from_env("/var/lib/vordur/vault.bin")
 
 guard = Guard(privacy=PrivacyConfig(), vault_store=store)
 guard.deidentify("...")
 guard.persist_vault()  # end of turn, checkpoint, or shutdown
 ```
 
-Needs the `vault` extra: `pip install 'guardllm[vault]'`.
+Needs the `vault` extra: `pip install 'vordur[vault]'`.
 
 **What this buys is continuity, not protection.** Nothing crosses to the
 provider that would not have crossed before. Without a store a restart loses
@@ -241,8 +241,8 @@ plaintext.
 
 **The key is yours and the library will not invent one.** `generate_key()`
 returns a fresh 256-bit key as base64 for a secret manager; nothing in
-GuardLLM writes a key anywhere. `EncryptedFileVaultStore.from_env(path)` reads
-one from `GUARDLLM_VAULT_KEY` and refuses when it is unset, rather than
+Vörður writes a key anywhere. `EncryptedFileVaultStore.from_env(path)` reads
+one from `VORDUR_VAULT_KEY` and refuses when it is unset, rather than
 generating one and coming up healthy and empty against a file it can no longer
 read. Lose the key and you lose the file, which is the intended property.
 
@@ -290,7 +290,7 @@ evidence sit above the interface rather than inside it.
   sees.
 - **It does not protect a path that does not go through it.** Content the host
   sends to a provider without calling `deidentify` is not covered, in the same
-  way the rest of GuardLLM governs the paths routed through it.
+  way the rest of Vörður governs the paths routed through it.
 - **It may replace a whole line.** When credential material survives
   substitution, the vault replaces the line carrying it rather than the
   document, and says so in `warnings`.

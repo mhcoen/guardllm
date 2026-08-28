@@ -58,26 +58,26 @@
 </details>
 <!-- toc:end -->
 
-This document is the complete public API contract for GuardLLM (`guardllm`) as implemented in:
-- `src/guardllm/__init__.py`
-- `src/guardllm/api.py`
-- `src/guardllm/security/types.py`
+This document is the complete public API contract for Vörður (`vordur`) as implemented in:
+- `src/vordur/__init__.py`
+- `src/vordur/api.py`
+- `src/vordur/security/types.py`
 
 ## Scope and Stability
 
-- Public package export surface: `guardllm.Guard`
+- Public package export surface: `vordur.Guard`
 - Stability target: `Guard` methods and the data types referenced below.
-- Internal modules under `guardllm.security.*` are implementation details unless explicitly referenced in this spec.
-- The privacy types are public and referenced here, but are imported from `guardllm.security.types` rather than from the package root: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DeidentifyResult`, `PreparedCall`.
-- Four supported modules sit outside the `Guard` facade: `guardllm.config` (policy files), `guardllm.policy` (Rego), `guardllm.support` (diagnostic bundles), and `guardllm.security.vault_store` (vault persistence: the `VaultStore` protocol, `EncryptedFileVaultStore`, `MemoryVaultStore`, `VaultSnapshot`, `VaultEntry`, `VaultStoreError`, `generate_key`, and `VAULT_SNAPSHOT_VERSION`). Each has its own page under [docs](README.md). `guardllm.api` also exports `joined_call_payload(args)`, a tool call's string *values* concatenated in traversal order with field names excluded: `prepare_tool_call` and the gateway check it as one outbound payload after checking each field, so a secret, canary, or copied passage cut across two fields is seen. It does not reach a split whose field ordering keeps the halves apart, nor one spread across separate calls or turns; that needs cross-request accumulation.
+- Internal modules under `vordur.security.*` are implementation details unless explicitly referenced in this spec.
+- The privacy types are public and referenced here, but are imported from `vordur.security.types` rather than from the package root: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DeidentifyResult`, `PreparedCall`.
+- Four supported modules sit outside the `Guard` facade: `vordur.config` (policy files), `vordur.policy` (Rego), `vordur.support` (diagnostic bundles), and `vordur.security.vault_store` (vault persistence: the `VaultStore` protocol, `EncryptedFileVaultStore`, `MemoryVaultStore`, `VaultSnapshot`, `VaultEntry`, `VaultStoreError`, `generate_key`, and `VAULT_SNAPSHOT_VERSION`). Each has its own page under [docs](README.md). `vordur.api` also exports `joined_call_payload(args)`, a tool call's string *values* concatenated in traversal order with field names excluded: `prepare_tool_call` and the gateway check it as one outbound payload after checking each field, so a secret, canary, or copied passage cut across two fields is seen. It does not reach a split whose field ordering keeps the halves apart, nor one spread across separate calls or turns; that needs cross-request accumulation.
 
 ## Public Export
 
 ```python
-from guardllm import Guard
+from vordur import Guard
 ```
 
-`src/guardllm/__init__.py` exports thirteen names. `Guard` is the facade; the
+`src/vordur/__init__.py` exports thirteen names. `Guard` is the facade; the
 rest are the types its methods accept and return, so they are public because
 callers need them for annotations and construction:
 
@@ -123,7 +123,7 @@ guard.canary_token -> str | None
 Behavior:
 - Returns the remembered token when the Guard was constructed with `canary_session_id`.
 - Returns `None` when canary protection is disabled.
-- Trusted host code places this value in private model context. GuardLLM does not assemble the host's system prompt.
+- Trusted host code places this value in private model context. Vörður does not assemble the host's system prompt.
 
 ### Method: `reset`
 
@@ -539,7 +539,7 @@ Return behavior:
 
 ## Type Specification
 
-All types below are from `guardllm.security.types`.
+All types below are from `vordur.security.types`.
 
 ### Enum: `TrustLevel`
 
@@ -744,7 +744,7 @@ Supported mappings:
 
 If `Guard(..., audit_logger=logger)` is provided:
 - logger must either be:
-1. an instance of `guardllm.security.audit.AuditLogger`, or
+1. an instance of `vordur.security.audit.AuditLogger`, or
 2. any object with method `log(event)`
 
 `event` is an `AuditEvent` instance.

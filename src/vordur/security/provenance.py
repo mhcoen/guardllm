@@ -35,6 +35,23 @@ class ProvenancedSpan:
     source_trust: TrustLevel = TrustLevel.UNTRUSTED
     sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     topic_of_origin: str | None = None  # For cross-topic leak detection
+    #: Authenticated identity of the principal who authored this span, or None.
+    #:
+    #: This is NOT source_id. source_id is a descriptive label -- source_gate
+    #: documents it as possibly an email sender -- and nothing makes it unique
+    #: across source types: an mcp_client and an unrelated mcp_server may both
+    #: use "shared". Keying an exemption on it therefore exempts more than the
+    #: caller named.
+    #:
+    #: principal_id is a separate field with one job, and the integrator must
+    #: set it ONLY from an identity their transport actually authenticated (a
+    #: verified session, API key, or token subject). Never populate it from
+    #: content, from a client-supplied header, or by copying source_id.
+    #:
+    #: Defaults to None, and None is never exempt, so a span has to be
+    #: deliberately attributed to an authenticated principal before
+    #: check_outbound will skip it.
+    principal_id: str | None = None
 
 
 class ProvenanceTracker:
@@ -62,17 +79,55 @@ class ProvenanceTracker:
         lcs_threshold: int = 50,
         ngram_threshold: float = 0.30,
         contaminated: bool = False,
+        egress_to_principal_id: str | None = None,
     ) -> tuple[bool, str]:
         """Check if outbound content violates no-copy policy.
+
+        ``egress_to_principal_id`` is the authenticated identity of the
+        principal this egress is addressed TO. Untrusted spans that principal
+        authored are skipped, because no-copy protects untrusted content from
+        reaching a THIRD party and returning a principal's own words to that
+        principal is not exfiltration -- the recipient is the author.
+
+        Without it, a gateway that marks the principal UNTRUSTED (so
+        contamination arms the sensitive-leak check) blocks ordinary answers,
+        because ordinary answers restate the question.
+
+        The exemption is bound to :attr:`ProvenancedSpan.principal_id`, never
+        to ``source_id``. source_id is a descriptive label that is not unique
+        across source types, so keying on it would let an unrelated tool whose
+        source_id collided with the principal's ride out of the session
+        unchecked. A span is skipped only when it carries an authenticated
+        principal_id equal to this one; spans with ``principal_id is None`` --
+        which is every span the integrator did not deliberately attribute --
+        are always checked. Empty strings never match on either side.
+
+        Deliberately narrow: only the UNTRUSTED selection is filtered.
+        Sensitive spans are always compared, so naming a recipient can never
+        disarm leak detection.
 
         Returns (allowed, reason).
         """
         if has_quoting_directive:
             return (True, "quoting directive")
 
+        def _is_own_span(span: ProvenancedSpan) -> bool:
+            """True when `span` was authored by the principal being replied to.
+
+            Requires a truthy identity on BOTH sides, so neither None nor ""
+            can pair off into an accidental exemption.
+            """
+            return bool(
+                egress_to_principal_id
+                and span.principal_id
+                and span.principal_id == egress_to_principal_id
+            )
+
         # Select spans to check: always untrusted, plus sensitive when contaminated
         check_spans: list[tuple[ProvenancedSpan, str]] = [
-            (s, "untrusted") for s in self._spans if s.source_trust == TrustLevel.UNTRUSTED
+            (s, "untrusted")
+            for s in self._spans
+            if s.source_trust == TrustLevel.UNTRUSTED and not _is_own_span(s)
         ]
         if contaminated:
             check_spans.extend(

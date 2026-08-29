@@ -283,6 +283,7 @@ class SecurityPipeline:
                 source_id=ctx.source_id,
                 source_trust=ctx.source_trust,
                 sensitivity=ctx.sensitivity,
+                principal_id=ctx.principal_id,
             )
         )
 
@@ -326,6 +327,8 @@ class SecurityPipeline:
         content: str,
         ctx: SecurityContext,
         has_quoting_directive: bool = False,
+        *,
+        egress_to_principal_id: str | None = None,
     ) -> OutboundResult:
         """L5, L3, and L4 with no L6 quota or action accounting.
 
@@ -340,7 +343,9 @@ class SecurityPipeline:
         outbound action there would let repeatedly denied proposals consume
         quota and mark recipients as known for calls that never happened.
         """
-        return self._content_checks(content, ctx, has_quoting_directive)
+        return self._content_checks(
+            content, ctx, has_quoting_directive, egress_to_principal_id=egress_to_principal_id
+        )
 
     def check_outbound(
         self,
@@ -348,6 +353,8 @@ class SecurityPipeline:
         ctx: SecurityContext,
         has_quoting_directive: bool = False,
         recipient: str | None = None,
+        *,
+        egress_to_principal_id: str | None = None,
     ) -> OutboundResult:
         """Check content leaving the system.
 
@@ -369,7 +376,9 @@ class SecurityPipeline:
         Client mode: tool arguments (e.g. email body).
         Server mode: tool responses.
         """
-        result = self._content_checks(content, ctx, has_quoting_directive)
+        result = self._content_checks(
+            content, ctx, has_quoting_directive, egress_to_principal_id=egress_to_principal_id
+        )
         if not result.allowed:
             return result
 
@@ -394,6 +403,7 @@ class SecurityPipeline:
         content: str,
         ctx: SecurityContext,
         has_quoting_directive: bool = False,
+        egress_to_principal_id: str | None = None,
     ) -> OutboundResult:
         if ctx.principal_trust != self._principal_trust:
             raise ValueError(
@@ -450,6 +460,7 @@ class SecurityPipeline:
             lcs_threshold=int(getattr(ctx.policy, "provenance_verbatim_lcs_min", 50)),
             ngram_threshold=float(getattr(ctx.policy, "provenance_ngram_overlap_min", 0.30)),
             contaminated=self._context_contaminated,
+            egress_to_principal_id=egress_to_principal_id,
         )
         if not prov_allowed:
             contamination_triggered = "sensitive" in prov_reason and self._context_contaminated

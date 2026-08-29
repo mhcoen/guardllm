@@ -351,3 +351,163 @@ class TestProvenanceCoversTheWholeSpan:
         assert not result.allowed
         # Attribution must survive the windowing.
         assert "mcp_server:web" in result.reason or "untrusted" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# Principal-bound no-copy exemption
+# ---------------------------------------------------------------------------
+
+
+class TestEgressToPrincipalId:
+    """`egress_to_principal_id` exempts a principal's own untrusted spans.
+
+    Every test here also pins the boundary of the exemption, because the whole
+    risk of the feature is that it exempts more than the caller named.
+    """
+
+    PRINCIPAL = "user:e3b0c442-98fc-1c14-9afb-f4c8996fb924"
+    QUESTION = (
+        "What is the capital of France, and roughly how many people live in "
+        "the metropolitan area around it these days?"
+    )
+    TOOL_SECRET = (
+        "The internal escalation code for tier-three incidents is "
+        "ORANGE-HORIZON-4417, rotate it every quarter."
+    )
+
+    #: Distinguishes "caller said nothing" from "caller explicitly said None",
+    #: which is exactly the case these tests need to exercise.
+    _UNSET = object()
+
+    def _principal_span(self, text=None, principal_id=_UNSET):
+        return ProvenancedSpan(
+            text=text or self.QUESTION,
+            source_type="mcp_client",
+            source_id="shared",
+            source_trust=TrustLevel.UNTRUSTED,
+            principal_id=(self.PRINCIPAL if principal_id is self._UNSET else principal_id),
+        )
+
+    def _tool_span(self, source_id="shared"):
+        """An unrelated tool. Note source_id deliberately collides."""
+        return ProvenancedSpan(
+            text=self.TOOL_SECRET,
+            source_type="mcp_server",
+            source_id=source_id,
+            source_trust=TrustLevel.UNTRUSTED,
+        )
+
+    # -- the behaviour the feature exists for ------------------------------
+
+    def test_echo_to_the_author_is_allowed_when_named(self):
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        allowed, _ = t.check_outbound(self.QUESTION, egress_to_principal_id=self.PRINCIPAL)
+        assert allowed
+
+    def test_echo_to_the_author_is_blocked_without_the_exemption(self):
+        """Pins the default: nothing changes unless a caller opts in."""
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        allowed, reason = t.check_outbound(self.QUESTION)
+        assert not allowed
+        assert "mcp_client:shared" in reason
+
+    def test_echo_to_a_different_principal_is_still_blocked(self):
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        allowed, _ = t.check_outbound(self.QUESTION, egress_to_principal_id="user:someone-else")
+        assert not allowed
+
+    # -- the regression the maintainer reported ----------------------------
+
+    def test_a_tool_sharing_the_principals_source_id_is_still_blocked(self):
+        """The reported bug, pinned.
+
+        A client and an unrelated tool both use source_id "shared". Naming the
+        principal must not carry the tool's content out with it: the tool span
+        has no principal_id, so it stays under no-copy.
+        """
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        t.add_span(self._tool_span(source_id="shared"))
+
+        allowed, reason = t.check_outbound(self.TOOL_SECRET, egress_to_principal_id=self.PRINCIPAL)
+        assert not allowed
+        assert "mcp_server:shared" in reason
+
+    def test_naming_a_source_id_exempts_nothing(self):
+        """source_id is not an identity, so it cannot buy an exemption.
+
+        Passing the principal's *source_id* where its principal_id belongs must
+        do nothing at all -- not exempt the tool, and not exempt the principal.
+        """
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        t.add_span(self._tool_span(source_id="shared"))
+
+        for content in (self.TOOL_SECRET, self.QUESTION):
+            allowed, _ = t.check_outbound(content, egress_to_principal_id="shared")
+            assert not allowed
+
+    def test_unattributed_spans_are_never_exempt(self):
+        """A span with principal_id None is checked no matter what is passed."""
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span(principal_id=None))
+        allowed, _ = t.check_outbound(self.QUESTION, egress_to_principal_id=self.PRINCIPAL)
+        assert not allowed
+
+    @pytest.mark.parametrize("empty", ["", None])
+    def test_empty_identities_never_pair_off(self, empty):
+        """Neither side may match on a falsy identity.
+
+        Without the truthiness guard, a span left at "" and a caller passing ""
+        would match each other and exempt content nobody authenticated.
+        """
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span(principal_id=empty))
+        allowed, _ = t.check_outbound(self.QUESTION, egress_to_principal_id=empty)
+        assert not allowed
+
+    def test_default_is_none(self):
+        import inspect
+
+        sig = inspect.signature(ProvenanceTracker.check_outbound)
+        assert sig.parameters["egress_to_principal_id"].default is None
+
+    # -- the exemption stays narrow ----------------------------------------
+
+    def test_other_untrusted_spans_still_block_when_one_is_exempt(self):
+        t = ProvenanceTracker()
+        t.add_span(self._principal_span())
+        t.add_span(self._tool_span(source_id="unrelated-tool"))
+        allowed, reason = t.check_outbound(self.TOOL_SECRET, egress_to_principal_id=self.PRINCIPAL)
+        assert not allowed
+        assert "mcp_server:unrelated-tool" in reason
+
+    def test_exemption_does_not_disarm_the_sensitive_leak_check(self):
+        """Scoped to the UNTRUSTED selection only.
+
+        The principal's span is ALSO marked sensitive here. Naming them exempts
+        it from the untrusted pass, but the contaminated/sensitive pass still
+        compares it, so a leak cannot be laundered by addressing the reply to
+        whoever happens to have authored the sensitive text.
+        """
+        from vordur.security.types import SensitivityLevel
+
+        t = ProvenanceTracker()
+        t.add_span(
+            ProvenancedSpan(
+                text=self.QUESTION,
+                source_type="mcp_client",
+                source_id="shared",
+                source_trust=TrustLevel.UNTRUSTED,
+                sensitivity=SensitivityLevel.SENSITIVE,
+                principal_id=self.PRINCIPAL,
+            )
+        )
+        allowed, reason = t.check_outbound(
+            self.QUESTION, contaminated=True, egress_to_principal_id=self.PRINCIPAL
+        )
+        assert not allowed
+        assert "sensitive" in reason

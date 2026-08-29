@@ -216,6 +216,7 @@ class Guard:
         content_type: ContentType = ContentType.PLAINTEXT,
         policy: PolicyConfig | None = None,
         principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
+        principal_id: str | None = None,
     ) -> SecurityContext:
         return profiles.mcp_client_request(
             client_id=client_id,
@@ -223,6 +224,7 @@ class Guard:
             content_type=content_type,
             policy=policy,
             principal_trust=principal_trust,
+            principal_id=principal_id,
         )
 
     @staticmethod
@@ -548,6 +550,7 @@ class Guard:
         context: SecurityContext,
         *,
         has_quoting_directive: bool = False,
+        egress_to_principal_id: str | None = None,
     ) -> OutboundResult:
         """Content checks only: L5, L3 and L4, with no L6 quota accounting.
 
@@ -563,7 +566,12 @@ class Guard:
         still sets session escalation, so a leak found in an argument still
         tightens later tool calls.
         """
-        result = self._pipeline.check_outbound_content(content, context, has_quoting_directive)
+        result = self._pipeline.check_outbound_content(
+            content,
+            context,
+            has_quoting_directive,
+            egress_to_principal_id=egress_to_principal_id,
+        )
         self._audit(
             AuditEvent(
                 event_type="outbound_content_checked",
@@ -588,17 +596,29 @@ class Guard:
         *,
         has_quoting_directive: bool = False,
         recipient: str | None = None,
+        egress_to_principal_id: str | None = None,
     ) -> OutboundResult:
         """Run outbound DLP/provenance/rate checks.
 
         Records an outbound action against L6. For several checks belonging to
         one action, use ``check_outbound_content``.
+
+        ``egress_to_principal_id`` is the authenticated identity of the
+        principal this egress is addressed to. That principal's own untrusted
+        spans are skipped by the no-copy check -- returning someone their own
+        words is not exfiltration. It matches
+        :attr:`ProvenancedSpan.principal_id`, which the integrator must set
+        only from an identity they actually authenticated; it is deliberately
+        NOT ``source_id``, which is a descriptive label and not unique across
+        source types. Sensitive spans are always still compared, so this
+        cannot disarm leak detection.
         """
         result = self._pipeline.check_outbound(
             content=content,
             ctx=context,
             has_quoting_directive=has_quoting_directive,
             recipient=recipient,
+            egress_to_principal_id=egress_to_principal_id,
         )
         self._audit(
             AuditEvent(

@@ -1473,3 +1473,79 @@ class TestRateLimitAnomaliesSurfaced:
         r = pipe.check_outbound("hello", ctx, recipient="new@example.com")
         assert r.allowed is True
         assert r.anomalies  # advisory signal present but non-blocking
+
+
+class TestEgressToPrincipalIdThreading:
+    """The kwarg reaches provenance, and spans carry the context's principal."""
+
+    PRINCIPAL = "user:e3b0c442-98fc-1c14-9afb-f4c8996fb924"
+
+    def _pipeline(self):
+        from vordur.security.pipeline import SecurityPipeline
+
+        return SecurityPipeline()
+
+    def test_process_inbound_stamps_the_contexts_principal_onto_the_span(self):
+        from vordur.security.types import SecurityContext, TrustLevel
+
+        p = self._pipeline()
+        p.process_inbound(
+            "the quick brown fox jumps over the lazy dog",
+            SecurityContext(
+                mode="server",
+                source_type="mcp_client",
+                source_id="shared",
+                source_trust=TrustLevel.UNTRUSTED,
+                principal_id=self.PRINCIPAL,
+            ),
+        )
+        assert [s.principal_id for s in p._provenance._spans] == [self.PRINCIPAL]
+
+    def test_a_context_without_a_principal_leaves_the_span_unattributed(self):
+        from vordur.security.types import SecurityContext, TrustLevel
+
+        p = self._pipeline()
+        p.process_inbound(
+            "the quick brown fox jumps over the lazy dog",
+            SecurityContext(
+                mode="server",
+                source_type="mcp_server",
+                source_id="shared",
+                source_trust=TrustLevel.UNTRUSTED,
+            ),
+        )
+        assert [s.principal_id for s in p._provenance._spans] == [None]
+
+    def test_pipeline_forwards_the_kwarg_to_provenance(self):
+        seen = {}
+        p = self._pipeline()
+        real = p._provenance.check_outbound
+
+        def spy(content, has_quoting_directive=False, **kw):
+            seen.update(kw)
+            return real(content, has_quoting_directive, **kw)
+
+        p._provenance.check_outbound = spy
+
+        from vordur.security.types import SecurityContext
+
+        ctx = SecurityContext(mode="client", source_type="mcp_server", source_id="model")
+        p.check_outbound("hello there", ctx, egress_to_principal_id=self.PRINCIPAL)
+        assert seen["egress_to_principal_id"] == self.PRINCIPAL
+
+    def test_pipeline_default_is_unchanged(self):
+        seen = {}
+        p = self._pipeline()
+        real = p._provenance.check_outbound
+
+        def spy(content, has_quoting_directive=False, **kw):
+            seen.update(kw)
+            return real(content, has_quoting_directive, **kw)
+
+        p._provenance.check_outbound = spy
+
+        from vordur.security.types import SecurityContext
+
+        ctx = SecurityContext(mode="client", source_type="mcp_server", source_id="model")
+        p.check_outbound("hello there", ctx)
+        assert seen["egress_to_principal_id"] is None

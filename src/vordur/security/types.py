@@ -409,6 +409,15 @@ class SecurityContext:
     source_id: str  # server_id or client_id
     source_trust: TrustLevel = TrustLevel.UNTRUSTED
     principal_trust: TrustLevel = TrustLevel.UNTRUSTED
+    #: Authenticated identity of the principal on whose behalf this flow runs,
+    #: or None. Stamped onto every provenance span this context produces, and
+    #: the only thing `check_outbound(egress_to_principal_id=...)` will exempt.
+    #:
+    #: Set it ONLY from an identity the transport authenticated, and only on
+    #: the context used to ingest that principal's own turns. A context used
+    #: to ingest tool or server output must leave it None -- otherwise that
+    #: output is attributed to the principal and becomes exempt from no-copy.
+    principal_id: str | None = None
     sensitivity: SensitivityLevel = SensitivityLevel.PUBLIC
     content_type: ContentType = ContentType.PLAINTEXT
     policy: PolicyConfig = field(default_factory=PolicyConfig)

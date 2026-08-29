@@ -36,14 +36,27 @@ def mcp_client_request(
     content_type: ContentType = ContentType.PLAINTEXT,
     policy: PolicyConfig | None = None,
     principal_trust: TrustLevel = TrustLevel.UNTRUSTED,
+    principal_id: str | None = None,
 ) -> SecurityContext:
-    """Context for inbound content from an MCP client to a server app."""
+    """Context for inbound content from an MCP client to a server app.
+
+    ``principal_id`` attributes this content to an authenticated principal, so
+    that a reply addressed back to them can skip it under no-copy. Pass it only
+    when the transport authenticated the caller, and never derive it from
+    ``client_id``: client_id is a descriptive label, not an identity.
+
+    This is the only profile that takes one. The others describe content from
+    servers, documents, the web, or internal storage -- none of which is a
+    principal's own words -- so they cannot attribute a span to a principal
+    and their spans are always subject to no-copy.
+    """
     return SecurityContext(
         mode="server",
         source_type="mcp_client",
         source_id=client_id,
         source_trust=source_trust,
         principal_trust=principal_trust,
+        principal_id=principal_id,
         content_type=content_type,
         policy=policy or PolicyConfig(),
     )

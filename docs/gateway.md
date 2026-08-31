@@ -138,6 +138,17 @@ This is the single-instance tier. Session state is in memory, so multiple
 replicas do not share it, and streaming responses are not yet inspected
 incrementally. Both are recorded in the strategy notes as later work.
 
+It also cannot use the no-copy recipient exemption. `check_outbound` accepts
+`egress_to_principal_id`, which skips the untrusted spans a principal authored
+so that returning someone their own words is not treated as exfiltration. The
+gateway does not pass it, and could not pass it honestly: per `A-AS12` the id
+must come from an identity the transport authenticated, and per `A-AS11` the
+gateway ships no authentication at all. So a proxy deployment that marks the
+principal `UNTRUSTED`, which it must for contamination to arm the sensitive-leak
+check, will still see ordinary answers blocked when they restate the question.
+An application that wraps the library and brings its own authentication can use
+the exemption today; the gateway needs authentication first.
+
 ## Related
 
 - [configuration.md](configuration.md): the policy file the gateway loads.

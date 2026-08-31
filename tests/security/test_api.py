@@ -762,3 +762,95 @@ class TestPreparedCallJoinsItsFields:
 
         assert joined_call_payload({"a": "one", "b": ["two", {"c": "three"}]}) == "onetwothree"
         assert joined_call_payload({"k": 5, "n": None, "s": "x"}) == "x"
+
+
+class TestEgressToPrincipalIdEndToEnd:
+    """The gateway shape, end to end through the public Guard surface.
+
+    A proxy marks the principal UNTRUSTED so contamination arms the
+    sensitive-leak check, then replies to that same principal. The reply
+    restates their question, which no-copy would otherwise block.
+    """
+
+    PRINCIPAL = "user:e3b0c442-98fc-1c14-9afb-f4c8996fb924"
+    QUESTION = (
+        "What is the capital of France, and roughly how many people live in "
+        "the metropolitan area around it these days?"
+    )
+    TOOL_SECRET = (
+        "The internal escalation code for tier-three incidents is "
+        "ORANGE-HORIZON-4417, rotate it every quarter."
+    )
+
+    def _guard_with_both_sources(self):
+        """Principal and an unrelated tool, deliberately sharing a source_id."""
+        from vordur import Guard
+        from vordur.security.types import ContentType, TrustLevel
+
+        guard = Guard()
+        guard.process_inbound(
+            self.QUESTION,
+            Guard.context_mcp_client(
+                client_id="shared",
+                source_trust=TrustLevel.UNTRUSTED,
+                content_type=ContentType.PLAINTEXT,
+                principal_id=self.PRINCIPAL,
+            ),
+        )
+        # Tool output. context_mcp_server takes no principal_id at all, so this
+        # span cannot be attributed to the principal even though the ids collide.
+        guard.process_inbound(
+            self.TOOL_SECRET,
+            Guard.context_mcp_server(
+                server_id="shared",
+                source_trust=TrustLevel.UNTRUSTED,
+                content_type=ContentType.PLAINTEXT,
+            ),
+        )
+        return guard
+
+    def _egress_ctx(self):
+        from vordur.security.types import SecurityContext
+
+        return SecurityContext(mode="client", source_type="mcp_server", source_id="upstream-llm")
+
+    def test_the_principals_own_question_comes_back(self):
+        guard = self._guard_with_both_sources()
+        result = guard.check_outbound(
+            self.QUESTION, self._egress_ctx(), egress_to_principal_id=self.PRINCIPAL
+        )
+        assert result.allowed, result.reason
+
+    def test_the_colliding_tools_secret_does_not(self):
+        guard = self._guard_with_both_sources()
+        result = guard.check_outbound(
+            self.TOOL_SECRET, self._egress_ctx(), egress_to_principal_id=self.PRINCIPAL
+        )
+        assert not result.allowed
+        assert result.provenance_blocked
+
+    def test_default_still_blocks_the_echo(self):
+        """No opt-in, no change in behaviour."""
+        guard = self._guard_with_both_sources()
+        result = guard.check_outbound(self.QUESTION, self._egress_ctx())
+        assert not result.allowed
+
+    def test_check_outbound_content_takes_it_too(self):
+        guard = self._guard_with_both_sources()
+        assert guard.check_outbound_content(
+            self.QUESTION, self._egress_ctx(), egress_to_principal_id=self.PRINCIPAL
+        ).allowed
+        assert not guard.check_outbound_content(
+            self.TOOL_SECRET, self._egress_ctx(), egress_to_principal_id=self.PRINCIPAL
+        ).allowed
+
+    def test_server_context_cannot_claim_a_principal(self):
+        """The exemption is unreachable for server/tool content by construction."""
+        import inspect
+
+        from vordur import Guard
+
+        assert "principal_id" in inspect.signature(Guard.context_mcp_client).parameters
+        assert "principal_id" not in inspect.signature(Guard.context_mcp_server).parameters
+        assert "principal_id" not in inspect.signature(Guard.context_document).parameters
+        assert "principal_id" not in inspect.signature(Guard.context_web).parameters

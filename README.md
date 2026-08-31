@@ -188,6 +188,7 @@ rather than through a method.
 
 - `Guard.check_outbound(...)`: DLP and provenance at egress
 - `Guard.check_outbound_content(...)`: the same checks without consuming egress quota
+- `Guard.check_outbound(..., egress_to_principal_id=...)`: skip the no-copy comparison against spans the recipient authored, which needs `principal_id` on the context that ingested them and an identity you authenticated ([A-AS12](docs/threat_model.md))
 - `Guard.sanitize_exception(...)`: strip internal detail from user-facing errors
 - `Guard(audit_logger=...)` (constructor): structured audit events
 

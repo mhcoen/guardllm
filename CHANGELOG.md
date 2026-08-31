@@ -4,6 +4,13 @@ All notable changes to GuardLLM are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Added
+- **A no-copy exemption for the principal an egress is addressed to**, contributed in #39. The no-copy rule protects untrusted content from reaching a *third* party, but it compared an egress against every untrusted span including ones the recipient authored, so returning someone their own words read as exfiltration. `check_outbound(egress_to_principal_id=...)` now skips the untrusted spans carrying a matching `principal_id`.
+  - The exemption is bound to a new `SecurityContext.principal_id`, never to `source_id`. `source_id` is a descriptive label that is not unique across source types, so an unrelated `mcp_server` span sharing a string with an `mcp_client` one would have ridden out on a collision.
+  - Deliberately narrow, and verified so rather than asserted: only the untrusted selection is filtered. Sensitive spans, the remembered canary and the secret scan are all still enforced with an exemption in play, both identities must be truthy so no pair of empty values can match, a different principal is never exempt, and a span the integrator did not attribute is never exempt.
+  - Only `Guard.context_mcp_client` accepts a `principal_id`. The server, document, web and internal-sensitive profiles have no such parameter, so tool and server output cannot be attributed to a principal through a profile. Constructing a `SecurityContext` directly can still do it, which is why this is written down as an assumption rather than described as impossible: see **A-AS12**.
+  - **The gateway does not use this and cannot yet.** A-AS12 requires an authenticated identity and A-AS11 records that the gateway ships no authentication, so a proxy deployment still blocks answers that restate the question. `docs/gateway.md` says so under "What it is not, yet". An application that wraps the library and brings its own authentication can use it today.
+
 ### Changed
 - **The project is now Vörður, the Icelandic word for guardian.** Two spellings, and which one applies is mechanical rather than a matter of taste: Vörður is the name and appears in headings and prose, `vordur` is the identifier and appears only in code font. The identifier is introduced once per document, in the first sentence naming the package. `tests/test_naming_rule.py` enforces this, including that the unaccented "Vordur" never appears in prose, since it is neither the word nor the identifier.
   - **Breaking: the import path.** `import guardllm` becomes `import vordur`. Every module moves with it, `guardllm.security.types` to `vordur.security.types` and so on. The public surface is otherwise unchanged: `Guard` and every method on it keep their names.

@@ -9,7 +9,7 @@ This guide is for integrating `vordur` quickly into any LLM-based app, not only 
 ## 1) Install and Sanity Check
 
 ```bash
-pip install git+https://github.com/mhcoen/vordur.git
+pip install vordur
 ```
 
 Install from source, not PyPI: the published `vordur` package is 1.1.0 and predates the

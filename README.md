@@ -31,17 +31,14 @@ That is not an argument against those tools, and Vörður replaces none of them.
 
 ## Get Started
 
-> **Do not install from PyPI.** There is no `vordur` release yet. The `guardllm`
-> package on PyPI is 1.1.0, published under this project's former name; it predates
-> both the session-risk feedback loop this README describes and the detector, DLP,
-> canary, and isolation hardening in 1.2.0, and it will not be updated. Install from
-> source until a `vordur` release is published.
-
-Install the current version from source:
-
 ```bash
-pip install git+https://github.com/mhcoen/vordur.git
+pip install vordur
 ```
+
+> The `guardllm` package on PyPI is this project's former name, frozen at 1.1.0. It
+> predates the session-risk feedback loop this README describes and the detector,
+> DLP, canary, and isolation hardening in 1.2.0, and it will not be updated. Install
+> `vordur`.
 
 To modify the library, run the tests, or work through the tutorials, clone it instead:
 

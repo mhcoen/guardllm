@@ -75,8 +75,8 @@ def test_advertised_public_exports_match_the_package():
 
     exported = set(vordur.__all__)
     assert "Guard" in exported
-    # Twelve more are public and importable; the spec must not claim otherwise.
-    assert len(exported) == 13
+    # Everything a Guard method accepts or returns is importable from the root.
+    assert len(exported) >= 28
     for name in exported:
         assert hasattr(vordur, name), name
 

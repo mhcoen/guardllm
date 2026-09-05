@@ -74,7 +74,7 @@ Recommended pattern for write-capable tools:
 
 ## Privacy Vault (opt-in)
 
-Available only when the guard was constructed with `privacy=PrivacyConfig(...)`. The first three raise `ValueError` without it rather than returning something that looks like a result; `prepare_tool_call` instead passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
+Available only when the guard was constructed with `privacy=PrivacyConfig(...)`. The types these methods take and return (`PrivacyConfig`, `PIIClass`, `Destination`, `ClassPolicy`, `DeidentifyResult`, `ReidentifyResult`, `PreparedCall`, `PIIFinding`, `Detector`, `DetectedSpan`) are exported from the package root. The first three raise `ValueError` without it rather than returning something that looks like a result; `prepare_tool_call` instead passes the arguments through with `reason="privacy disabled"`, so a host can call it unconditionally in its dispatch path.
 
 - `guard.seed_private_values(values: dict[str, PIIClass]) -> None`: declare values from a session the host has already authenticated. Exact by construction, since nothing is inferred.
 - `guard.deidentify(content: str) -> DeidentifyResult`: replace personal data with opaque tokens before the content reaches a model provider.

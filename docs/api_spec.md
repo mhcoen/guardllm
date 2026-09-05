@@ -70,7 +70,7 @@ This document is the complete public API contract for Vörður (`vordur`) as imp
 - Public package export surface: `vordur.Guard`
 - Stability target: `Guard` methods and the data types referenced below.
 - Internal modules under `vordur.security.*` are implementation details unless explicitly referenced in this spec.
-- The privacy types are public and referenced here, but are imported from `vordur.security.types` rather than from the package root: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DeidentifyResult`, `PreparedCall`.
+- The privacy types are public and exported from the package root as well as from `vordur.security.types`: `PrivacyConfig`, `PIIClass`, `ClassPolicy`, `Destination`, `PIIFinding`, `Detector`, `DetectedSpan`, `DeidentifyResult`, `ReidentifyResult`, `PreparedCall`. So are `ConfirmationHandler`, `AuditLogger`, `SanitizationResult`, `RateLimitResult`, and `ExtractionPolicy`.
 - This document is authoritative. [api.md](api.md) is the overview; where the two differ, this one wins.
 - Four supported modules sit outside the `Guard` facade: `vordur.config` (policy files), `vordur.policy` (Rego), `vordur.support` (diagnostic bundles), and `vordur.security.vault_store` (vault persistence: the `VaultStore` protocol, `EncryptedFileVaultStore`, `MemoryVaultStore`, `VaultSnapshot`, `VaultEntry`, `VaultStoreError`, `generate_key`, and `VAULT_SNAPSHOT_VERSION`). Each has its own page under [docs](README.md). `vordur.api` also exports `joined_call_payload(args)`, a tool call's string *values* concatenated in traversal order with field names excluded: `prepare_tool_call` and the gateway check it as one outbound payload after checking each field, so a secret, canary, or copied passage cut across two fields is seen. It does not reach a split whose field ordering keeps the halves apart, nor one spread across separate calls or turns; that needs cross-request accumulation.
 
@@ -88,19 +88,34 @@ A `Guard` holds the state of one logical session: the contamination and escalati
 from vordur import Guard
 ```
 
-`src/vordur/__init__.py` exports thirteen names. `Guard` is the facade; the
+`src/vordur/__init__.py` exports the names below. `Guard` is the facade; the
 rest are the types its methods accept and return, so they are public because
 callers need them for annotations and construction:
 
-- `Guard`
 - `AuditEvent`
+- `AuditLogger`
 - `AuthorizationEvent`
 - `Binding`
+- `ClassPolicy`
+- `ConfirmationHandler`
 - `ContentType`
+- `DeidentifyResult`
+- `Destination`
+- `DetectedSpan`
+- `Detector`
+- `ExtractionPolicy`
 - `GateResult`
+- `Guard`
 - `OutboundResult`
+- `PIIClass`
+- `PIIFinding`
 - `PolicyConfig`
+- `PreparedCall`
+- `PrivacyConfig`
 - `ProcessedContent`
+- `RateLimitResult`
+- `ReidentifyResult`
+- `SanitizationResult`
 - `SecurityContext`
 - `SensitivityLevel`
 - `TrustLevel`
@@ -330,6 +345,7 @@ Pipeline behavior:
 - Tracks provenance and warnings.
 - Emits audit event `inbound_processed` if audit logger is configured.
 - Raises `ValueError` when `context.principal_trust` differs from the `Guard`'s `principal_trust`.
+- **Bounded, and refuses rather than truncates.** Content over `MAX_INBOUND_CHARS` (1,000,000 characters, `vordur.security.pipeline`), or that would push the session past what its provenance tracker retains (`MAX_PROVENANCE_SPANS` 10,000 spans or `MAX_PROVENANCE_CHARS` 2,000,000 normalized characters, `vordur.security.provenance`), returns `ProcessedContent(blocked=True)` with `content="[inbound refused: content withheld]"` and a warning naming the bound. Nothing is recorded: contamination, DLP, and provenance are unchanged. The tracker never evicts, because evicting the oldest span would let a flood of junk flush a sensitive span out of the no-copy check; a session that reaches the budget is at a boundary the host has to `reset()` deliberately.
 
 ### Method: `process_inbound_compound`
 
